@@ -265,18 +265,26 @@ const SPEC_FIELDS = [...new Set(Object.values(GROUP_FIELDS).flat())];
 const active = (g) => (g.status ?? 'have') === 'have';
 
 // Напрямок: хижак чи мирна риба; '' — універсальне (видно в обох)
-const DIRS = [['predator', 'Хижак'], ['peaceful', 'Мирна']];
+// Табір — окремо: речі для ночівлі не хижацькі й не мирні, у фільтрах риби їх не видно
+const DIRS = [['predator', 'Хижак'], ['peaceful', 'Мирна'], ['camp', 'Табір']];
 /** Напрямок за замовчуванням — з категорії й типу вудилища; людина може змінити в картці. */
 function inferDir(g) {
   const c = catOf(g.cat);
   if (c.group === 'lures' || g.cat === 'jighead') return 'predator';
   if (c.group === 'feeder') return 'peaceful';
+  if (c.group === 'camp') return 'camp';
   if (c.group === 'rods') return ['spin', 'fly'].includes(g.rodType) ? 'predator' : ['feeder', 'float'].includes(g.rodType) ? 'peaceful' : '';
   return '';
 }
-const dirOf = (g) => g.dir ?? inferDir(g);
+// Усе з розділу «Табір і туризм» — табір, що б не стояло в полі
+const dirOf = (g) => (groupOf(g) === 'camp' ? 'camp' : g.dir ?? inferDir(g));
 let dirFilter = DIRS.some(([k]) => k === recall('fishing-log:dir')) ? recall('fishing-log:dir') : '';
-const inDir = (g) => !dirFilter || !dirOf(g) || dirOf(g) === dirFilter;
+/** Хижак / мирна — свої й універсальні; табір — лише табірне. */
+function inDir(g) {
+  if (!dirFilter) return true;
+  const d = dirOf(g);
+  return dirFilter === 'camp' ? d === 'camp' : d === dirFilter || d === '';
+}
 const gearTitle = (g) => g?.name || [g?.brand, g?.model].filter(Boolean).join(' ') || catOf(g?.cat).name;
 
 // ---------- місця ----------
@@ -578,7 +586,7 @@ async function rewound(g) {
 }
 
 function serviceDueBox() {
-  const list = state.gear.map((g) => ({ g, why: serviceDue(g) })).filter((x) => x.why).sort((a, b) => byGroup(a.g, b.g));
+  const list = state.gear.filter(inDir).map((g) => ({ g, why: serviceDue(g) })).filter((x) => x.why).sort((a, b) => byGroup(a.g, b.g));
   if (!list.length) return null;
   // Картка, як розділи нижче, з жовтою смугою — а не дрібне посилання з лінією над пошуком
   return h('div', { class: 'gear-groups due-box' }, fold('service-due', `${t('Потребує уваги')} · ${list.length}`,
@@ -836,6 +844,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     const c = catOf(f.inputs.cat.value);
     const own = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(qtyCat(c) ? ['qty', 'unit', 'low'] : []), ...(hasWeight(c) ? ['weight'] : [])]);
     for (const n of [...SPEC_FIELDS, 'qty', 'unit', 'low', 'weight']) f.inputs[n].closest('.field').hidden = !own.has(n);
+    f.inputs.dir.closest('.field').hidden = c.group === 'camp';
     f.inputs.price.closest('.field').querySelector('.field-label').textContent = qtyCat(c) ? t('Ціна за одиницю, грн') : t('Ціна, грн');
   };
   f.inputs.cat.addEventListener('change', fit);

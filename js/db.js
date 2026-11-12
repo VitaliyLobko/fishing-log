@@ -153,7 +153,10 @@ export async function mergeImport(changes) {
         store.get(obj.id).onsuccess = (e) => {
           const mine = e.target.result;
           if (mine) {
-            if (stamp(mine) < stamp(obj)) store.put(obj);
+            if (stamp(mine) < stamp(obj)) { store.put(obj); return; }
+            // Локальний новіший — лишається, але поля, яких у ньому ще немає (фото, напрямок з нового файлу покупок), дописуються
+            const extra = Object.keys(obj).filter((k) => mine[k] === undefined);
+            if (extra.length) store.put({ ...mine, ...Object.fromEntries(extra.map((k) => [k, obj[k]])), updated: Math.max(Date.now(), stamp(mine) + 1) });
             return;
           }
           graves.get(obj.id).onsuccess = (g) => { if (!g.target.result || stamp(g.target.result) < stamp(obj)) store.put(obj); };
