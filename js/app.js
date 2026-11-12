@@ -474,9 +474,10 @@ function sectionForm(x) {
   const reopen = () => { close(); sectionForm(sections().find((y) => y.key === d.key)); };
   const catRows = isNew ? null : box(t('Категорії'), h('div', {},
     cats.length ? h('div', { class: 'rows' }, cats.map((c) => h('div', { class: 'row slot' },
-      h('span', { class: 'row-main' }, h('span', { class: 'row-title' }, c.name)),
-      btn(t('Назва'), () => catNameForm(c, null, reopen), 'quiet'),
-      c.builtin ? null : btn(t('Видалити'), () => dropCat(c, reopen), 'quiet')))) : h('p', { class: 'muted small' }, t('Ще немає категорій.')),
+      h('span', { class: 'row-main' }, h('span', { class: 'row-title' }, c.name),
+        h('span', { class: 'muted small' }, (() => { const n = state.gear.filter((g) => g.cat === c.id).length; return n ? t('речей: {n}', { n }) : t('порожня'); })())),
+      toolBtn('edit', t('Перейменувати «{name}»', { name: c.name }), () => catNameForm(c, null, reopen)),
+      c.builtin ? null : toolBtn('delete', t('Видалити «{name}»', { name: c.name }), () => dropCat(c, reopen), 'danger')))) : h('p', { class: 'muted small' }, t('Ще немає категорій.')),
     h('div', { class: 'btn-row' }, btn(t('+ Категорія'), () => catNameForm(null, d.key, reopen)))));
   const close = sheet(isNew ? t('Новий розділ') : t('Розділ'), h('div', {},
     f.el, h('div', { class: 'field-label' }, t('Значок')), icons,
