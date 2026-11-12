@@ -392,9 +392,45 @@ let query = '';
 let groupFilter = recall('fishing-log:group') ?? '';
 let picking = null; // Set id — режим «Вибрати» для перенесення кількох речей
 
+// ---------- уловистість ----------
+
+/** Улов на цю приманку чи насадку: [{ tr, c }] від нових виїздів до старих. */
+const caughtOn = (g) => state.trips.flatMap((tr) => (tr.catches ?? []).filter((c) => c.baitId === g.id).map((c) => ({ tr, c })))
+  .sort((a, b) => collate(b.tr.date, a.tr.date));
+
+// Скільки риб на кожну річ — раз на стан, а не обхід усіх виїздів для кожного рядка списку
+let caughtMemo = { trips: null, map: new Map() };
+function caughtCount(g) {
+  if (caughtMemo.trips !== state.trips) {
+    const map = new Map();
+    for (const tr of state.trips) for (const c of tr.catches ?? []) if (c.baitId) map.set(c.baitId, (map.get(c.baitId) ?? 0) + (num(c.n) || 1));
+    caughtMemo = { trips: state.trips, map };
+  }
+  return caughtMemo.map.get(g.id) ?? 0;
+}
+
+function catchBox(g) {
+  const list = caughtOn(g);
+  if (!list.length) return null;
+  const bySpecies = new Map();
+  for (const { c } of list) bySpecies.set(c.species, (bySpecies.get(c.species) ?? 0) + (num(c.n) || 1));
+  const total = [...bySpecies.values()].reduce((s, n) => s + n, 0);
+  // Найбільша — лише з поштучних записів: вага «разом» за кількох риб не про одну рибину
+  const best = list.filter(({ c }) => (num(c.n) || 1) === 1 && num(c.weight)).sort((a, b) => num(b.c.weight) - num(a.c.weight))[0];
+  return box(`${t('Уловистість')} · 🐟 ${fmt.num(total)}`, h('div', {},
+    kv([...[...bySpecies].sort((a, b) => b[1] - a[1]).map(([s, n]) => [s, fmt.num(n)]),
+      best ? [t('Найбільша'), `${best.c.species} ${fmt.num(best.c.weight)} ${t('кг')} · ${fmt.date(best.tr.date)}`] : null]),
+    h('div', { class: 'rows' }, list.slice(0, 5).map(({ tr, c }) => row(
+      `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
+      [fmt.date(tr.date), tripTitle(tr), c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null].filter(Boolean).join(' · '),
+      '', () => tripDetail(tr.id)))),
+    list.length > 5 ? h('p', { class: 'muted small' }, t('Ще записів: {n}', { n: list.length - 5 })) : null));
+}
+
 function gearRow(g) {
   const qty = isQty(g);
-  const sub = [weightText(g), [g.brand, g.model].filter(Boolean).join(' '), g.color, active(g) ? whereText(g) : t(STATUS[g.status])].filter(Boolean).join(' · ');
+  const fish = caughtCount(g);
+  const sub = [fish ? `🐟 ${fmt.num(fish)}` : null, weightText(g), [g.brand, g.model].filter(Boolean).join(' '), g.color, active(g) ? whereText(g) : t(STATUS[g.status])].filter(Boolean).join(' · ');
   const el = row(gearTitle(g), sub, qty ? qtyText(g) : '',
     () => {
       if (!picking) { gearDetail(g.id); return; }
@@ -633,6 +669,7 @@ function gearBody(g) {
       [t('Нотатка'), g.note ? h('span', { class: 'pre' }, g.note) : null],
       [t('Характеристики'), g.specs ? h('span', { class: 'pre' }, g.specs) : null],
     ]),
+    catchBox(g),
     chain.length ? box(t('Стоїть'), h('div', { class: 'rows' }, chain.map((x) =>
       row(gearTitle(x), [catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: thumbImg(x.photoId, monogram(gearTitle(x))) })))) : null,
     h('div', { class: 'btn-row' }, actions.filter(Boolean)),
