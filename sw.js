@@ -11,6 +11,7 @@ const ASSETS = [
   './css/app.css',
   './css/topo.svg',
   './css/topo-light.svg',
+  './css/waves.svg',
   './css/lines.svg',
   './css/lines-acc.svg',
   './js/app.js',

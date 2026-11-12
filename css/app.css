@@ -1,13 +1,14 @@
 :root {
-  --bg: #0e1114;
-  --bg-glow: #161b21;
-  --surface: #151a1f;
-  --surface-2: #1d242b;
-  --seg-on: #2a333c;
-  --line: #27303a;
-  --line-soft: #20272f;
-  --text: #e6edf2;
-  --muted: #8d9aa6;
+  /* «Вода»: глибина — темний синьо-зелений, акцент — помаранчевий поплавок */
+  --bg: #0b1d26;
+  --bg-glow: #12303b;
+  --surface: #10262f;
+  --surface-2: #17323d;
+  --seg-on: #1f3f4b;
+  --line: #1f3c47;
+  --line-soft: #19333d;
+  --text: #e3eff1;
+  --muted: #8eacb4;
   --accent: #fb923c;
   --accent-2: #fdba74;
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
@@ -47,15 +48,15 @@
 /* Тему ставить data-theme на <html>: скрипт у index.html ще до малювання, потім app.js («Ще → Тема»). */
 :root[data-theme="light"] {
   /* без чисто білого й чисто чорного: текст ~14:1, як у темній, а не 16,6:1 — інакше ріже очі */
-  --bg: #eef2f4;
-  --bg-glow: #e3e9ec;
-  --surface: #fbfcfd;
-  --surface-2: #e8edf0;
+  --bg: #e9f2f3;
+  --bg-glow: #dcebed;
+  --surface: #fafdfd;
+  --surface-2: #e2eef0;
   --seg-on: #ffffff;
-  --line: #d6dde2;
-  --line-soft: #e3e8eb;
-  --text: #1f272d;
-  --muted: #5a6670;
+  --line: #cfe0e3;
+  --line-soft: #deeaec;
+  --text: #15303a;
+  --muted: #52707a;
   /* темний помаранчевий — лише для тексту; кнопки й вибране — яскравий, як у темній, з темним текстом */
   --accent: #c2410c;
   --accent-2: #9a3412;
@@ -729,3 +730,12 @@ body:has(#layer .backdrop) .toast:not(.reminder) { bottom: auto; top: calc(env(s
 .row.gone { opacity: .55; }
 .tree-row { padding-left: calc(12px + var(--depth, 0) * 18px); }
 .pick-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); }
+
+/* «Вода»: хвилі під картками (за замовчуванням), картки м'якші — без рамки, з тінню */
+:root:is([data-bg="waves"], [data-bg="l-waves"]) body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  -webkit-mask: url(waves.svg) center / cover no-repeat; mask: url(waves.svg) center / cover no-repeat;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--accent-2) 9%, transparent));
+}
+.row { border-color: transparent; border-radius: 18px; box-shadow: var(--shadow); }
+.box .row { box-shadow: none; }

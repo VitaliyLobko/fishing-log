@@ -1039,8 +1039,8 @@ function nightLevel() {
 
 // Фон під картками: темний набір — для «Темної» й «Лайму» (спільний вибір), світлий — для «Світлої», у спецрежимах немає
 const BACKDROPS = {
-  dark: [['plain', 'Без малюнка'], ['map', 'Карта'], ['acc-lines', 'З акцентом']],
-  light: [['l-plain', 'Без малюнка'], ['l-map', 'Карта'], ['l-acc-lines', 'З акцентом']],
+  dark: [['waves', 'Хвилі'], ['map', 'Ізобати'], ['acc-lines', 'З акцентом'], ['plain', 'Без малюнка']],
+  light: [['l-waves', 'Хвилі'], ['l-map', 'Ізобати'], ['l-acc-lines', 'З акцентом'], ['l-plain', 'Без малюнка']],
 };
 const bgFamily = (theme) => (theme === 'light' ? 'light' : theme === 'dark' || theme === 'lime' ? 'dark' : null);
 const BG_KEY = { dark: 'fishing-log:bg', light: 'fishing-log:bg-light' };
@@ -1061,7 +1061,7 @@ function applyTheme() {
   const k = nightLevel() / 100;
   document.querySelector('#night-red feColorMatrix')?.setAttribute('values',
     `${(0.5 * k).toFixed(3)} ${(0.6 * k).toFixed(3)} ${(0.1 * k).toFixed(3)} 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0`);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0e1114');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0b1d26');
 }
 
 lightScheme.addEventListener('change', applyTheme);
