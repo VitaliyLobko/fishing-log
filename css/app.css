@@ -648,8 +648,8 @@ body:has(#layer .backdrop) .toast:not(.reminder) { bottom: auto; top: calc(env(s
 
 /* Зона дотику ≥ 44 px для дрібних кнопок: вигляд той самий, палець ловить ширше.
    :where — нульова специфічність, тож власне position кнопки (absolute) не перебивається. */
-:where(.gear, .icon-btn, .box-toggle, .panel.about a, .chips button) { position: relative; }
-:where(.gear, .icon-btn, .box-toggle, .panel.about a, .chips button)::after {
+:where(.gear, .icon-btn, .box-toggle, .panel.about a, .chips button, .link-btn, .undo-btn) { position: relative; }
+:where(.gear, .icon-btn, .box-toggle, .panel.about a, .chips button, .link-btn, .undo-btn)::after {
   content: '';
   position: absolute;
   inset: min(0px, calc(50% - 22px));
@@ -749,7 +749,7 @@ body:has(#layer .backdrop) .toast:not(.reminder) { bottom: auto; top: calc(env(s
 .pack-row .row-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
 
 /* «Налаштування» — найдовша назва вкладки: на вузькому екрані дрібніше, щоб влізло ціле */
-@media (max-width: 400px) { .tabs a { font-size: 10px; letter-spacing: -.01em; } }
+@media (max-width: 400px) { .tabs a { font-size: 11px; letter-spacing: -.02em; } }
 /* Сегменти з довгими назвами («Подаровано»): ширина за текстом, а не порівну — на 360 px не обрізаються */
 .chips.segmented.seg-fit { grid-auto-columns: auto; }
 .chips.segmented.seg-fit button { padding-inline: 6px; }
@@ -760,4 +760,31 @@ body:has(#layer .backdrop) .toast:not(.reminder) { bottom: auto; top: calc(env(s
 @media (max-width: 479px) {
   .icon-chips button:not(.on) { padding-inline: 10px; }
   .icon-chips button:not(.on) .chip-label { display: none; }
+}
+
+/* ---------- UX-аудит 0.6.1 ---------- */
+/* Без подвійного тапу на зум: «−1 Втратив» двічі поспіль — це два списання, а не збільшення сторінки */
+button, a, input, select, textarea, [role="checkbox"] { touch-action: manipulation; }
+/* Відгук на дотик: системне підсвічування вимкнене, тож рядки й чипи світлішають під пальцем */
+.row:active, button.row-main:active, .chips button:active, .photo-btn:active { filter: brightness(1.18); }
+@media (hover: hover) { .row:hover, button.row-main:hover { filter: brightness(1.08); } }
+/* Основна частина рядка — кнопка: працює з клавіатури й читачем екрана, виглядає як текст */
+button.row-main { display: flex; flex: 1; flex-direction: column; align-items: stretch; min-width: 0; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.photo-btn { display: block; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.photo-btn img { display: block; }
+.photo-strip .photo-btn { flex: none; }
+/* Поля — помітна межа (≥3:1 до шторки), а не лише на півтону інший фон */
+.field input, .field select, .field textarea { border-color: color-mix(in srgb, var(--muted) 72%, var(--line)); }
+/* Значок розділу замість монограми */
+.thumb-ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* Галочка збору — намальована, однакова на всіх телефонах */
+.box-check { display: inline-block; width: 18px; height: 18px; margin-right: 8px; vertical-align: -3px; border: 2px solid var(--muted); border-radius: 5px; }
+.box-check.on { border-color: var(--accent); background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%231c0d02' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat; }
+.pack-row.done .box-check { opacity: 1; }
+.btn .ico { display: inline-grid; place-items: center; margin-right: 6px; vertical-align: -3px; }
+.btn .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* «Зменшити рух» у системі — шторки, тости, спалах рядка й FAB без анімації */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

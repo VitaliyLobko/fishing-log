@@ -5,7 +5,7 @@ import * as sync from './sync.js';
 import { t, lang, setLang, LANGS, collate, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
-import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, goTab, confirmed, fieldError, setUndo, swipeStep } from './ui.js';
+import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
 let tab = 'gear';
@@ -89,6 +89,13 @@ function dropPhotos(ids) {
   return list.length ? { photos: { del: list.map((p) => p.id) }, blobs: { del: list.map((p) => p.id) } } : {};
 }
 
+/** Мініатюра речі: фото, а без нього — значок її розділу (монограма «ГП» нічого не каже). */
+function gearThumb(g) {
+  const el = h('span', { class: 'thumb-ico', 'aria-hidden': 'true' });
+  el.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[groupOf(g)] ?? GROUP_ICONS.other}</svg>`;
+  return thumbImg(g.photoId, el);
+}
+
 function thumbImg(photoId, fallback = '') {
   const p = findPhoto(photoId);
   return p ? h('img', { class: 'thumb', src: p.thumb, alt: '' }) : h('span', { class: 'thumb mono', style: '--h: 25' }, fallback);
@@ -158,7 +165,6 @@ function showPhoto(id, ids = [id]) {
 }
 
 
-const monogram = (name) => String(name ?? '').split(/[\s-]+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase() || '?';
 
 // ---------- дані ----------
 
@@ -344,7 +350,7 @@ function photoPicker(current, { file: preset = null, query = () => '', onSearch 
         ondrop: (e) => { e.preventDefault(); take(e.dataTransfer?.files?.[0]); },
       }, src ? h('img', { src, alt: '' }) : h('span', {}, '+ ', t('Фото'))),
       h('div', { class: 'photo-pick-acts' },
-        btn(`🔍 ${t('Знайти фото')}`, search, 'mini'),
+        btn([icon('search'), t('Знайти фото')], search, 'mini'),
         h('div', { class: 'photo-pick-icons' },
           navigator.clipboard?.read ? toolBtn('paste', t('Вставити'), paste) : null,
           toolBtn('gallery', t('З галереї'), () => input.click()),
@@ -436,7 +442,7 @@ function gearRow(g) {
       if (!picking) { gearDetail(g.id); return; }
       if (!picking.delete(g.id)) picking.add(g.id);
       paintGear();
-    }, { id: g.id, cls: [picking?.has(g.id) ? 'picked' : '', active(g) ? '' : 'gone', isLow(g) ? 'low' : ''].join(' '), thumb: thumbImg(g.photoId, monogram(gearTitle(g))) });
+    }, { id: g.id, cls: [picking?.has(g.id) ? 'picked' : '', active(g) ? '' : 'gone', isLow(g) ? 'low' : ''].join(' '), thumb: gearThumb(g) });
   return el;
 }
 
@@ -501,8 +507,11 @@ function renderGear() {
   const all = state.gear.filter(active);
   $('subtitle').textContent = all.length ? t('позицій: {n} · місць: {m}', { n: all.length, m: state.places.length }) : '';
   if (!state.gear.length) {
-    return empty(t('Ще немає снастей'), t('Спершу заведіть місця (гараж, шафа, ящик), потім додавайте речі кнопкою «+». Або завантажте демодані в ⚙.'),
-      [btn(t('Додати'), () => gearForm(), 'primary add'), btn(t('Місця'), () => goTab('#places'))]);
+    // Без місць спершу — місце: інакше речі заводяться «без місця», а відповідь на «де лежить» загублена
+    return state.places.length
+      ? empty(t('Ще немає снастей'), t('Додавайте речі кнопкою «+» або з картки місця — «+ Річ сюди».'), [btn(t('Додати річ'), () => gearForm(), 'primary add')])
+      : empty(t('Ще немає снастей'), t('Спершу заведіть місце, де вони лежать: гараж, шафа, ящик. Або завантажте демодані в ⚙.'),
+        [btn(t('+ Місце'), () => placeForm(null, { onSaved: () => goTab('#places') }), 'primary add'), btn(t('Додати річ без місця'), () => gearForm())]);
   }
   const groups = GROUPS.filter(([g]) => all.some((x) => groupOf(x) === g)).map(([g, l]) => [g, t(l)]);
   const gone = state.gear.some((g) => !active(g));
@@ -544,12 +553,12 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   const src = g ?? preset ?? {};
   const f = form([
     { name: 'name', label: t('Назва'), value: src.name, required: true, placeholder: t('напр. Воблер Jackall Squad Minnow 95') },
-    { name: 'cat', label: t('Категорія'), type: 'select', options: catOptions(), value: src.cat ?? 'other' },
+    { name: 'cat', label: t('Категорія'), type: 'select', options: catOptions(), value: src.cat ?? (g ? 'other' : recall('fishing-log:last-cat') || 'other') },
     { name: 'qty', label: t('Кількість'), type: 'number', value: src.qty ?? 1, half: true },
     { name: 'unit', label: t('Одиниця'), type: 'select', options: UNITS.map(([k, l]) => [k, t(l)]), value: src.unit ?? 'pcs', half: true },
     { name: 'low', label: t('Поріг «мало»'), type: 'number', value: src.low ?? 0, half: true, hint: t('Стільки й менше — у «Докупити»') },
     { name: 'weight', label: t('Вага, г'), type: 'number', value: src.weight, half: true },
-    { name: 'placeId', label: t('Де лежить'), type: 'select', options: placeOptions(), value: src.placeId ?? '', half: true },
+    { name: 'placeId', label: t('Де лежить'), type: 'select', options: placeOptions(), value: src.placeId ?? (g ? '' : recall('fishing-log:last-place') || ''), half: true },
     { name: 'brand', label: t('Бренд'), value: src.brand, half: true },
     { name: 'model', label: t('Модель'), value: src.model, half: true },
     { name: 'color', label: t('Колір'), value: src.color, half: true },
@@ -563,7 +572,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     { name: 'spools', label: t('Запасних шпуль'), type: 'number', value: src.spools, half: true },
     { name: 'pe', label: t('PE'), value: src.pe, half: true, placeholder: '0.8' },
     { name: 'mm', label: t('Діаметр, мм'), type: 'number', value: src.mm, half: true },
-    { name: 'price', label: t('Ціна, грн'), type: 'number', value: src.price, half: true, hint: t('Для кількісних — за одиницю') },
+    { name: 'price', label: t('Ціна, грн'), type: 'number', value: src.price, half: true },
     { name: 'buyDate', label: t('Куплено'), type: 'dmy', value: src.buyDate, half: true },
     { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 2, value: src.note },
     { name: 'specs', label: t('Характеристики'), type: 'textarea', rows: 3, value: src.specs, placeholder: t('Скопіюйте з сайту виробника чи магазину') },
@@ -573,6 +582,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     const c = catOf(f.inputs.cat.value);
     const own = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(qtyCat(c) ? ['qty', 'unit', 'low'] : []), ...(hasWeight(c) ? ['weight'] : [])]);
     for (const n of [...SPEC_FIELDS, 'qty', 'unit', 'low', 'weight']) f.inputs[n].closest('.field').hidden = !own.has(n);
+    f.inputs.price.closest('.field').querySelector('.field-label').textContent = qtyCat(c) ? t('Ціна за одиницю, грн') : t('Ціна, грн');
   };
   f.inputs.cat.addEventListener('change', fit);
   fit();
@@ -582,7 +592,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     file, query: lookup,
     onSearch: () => remember(PHOTO_FOR, JSON.stringify({ gearId: g?.id ?? null, draft: g ? null : f.values() })),
   });
-  f.inputs.specs.closest('.field').after(h('div', { class: 'specs-find' }, btn(`🔍 ${t('Характеристики')}`, () => {
+  f.inputs.specs.closest('.field').after(h('div', { class: 'specs-find' }, btn([icon('search'), t('Характеристики')], () => {
     const q = lookup();
     if (!q) { toast(t('Спершу впишіть назву')); return; }
     window.open(`https://www.google.com/search?q=${encodeURIComponent(`${q} ${t('характеристики')}`)}`, '_blank', 'noopener');
@@ -611,6 +621,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     // Змонтоване не має свого місця, доки стоїть; явно вибране інше місце знімає
     if (g && v.placeId !== (g.placeId ?? null)) rec = logged({ ...rec, onId: v.placeId ? null : rec.onId }, t('Перенесено: {from} → {to}', { from: whereText(g), to: v.placeId ? pathOf(v.placeId) : t('без місця') }));
     await save(joinChanges(changes, { gear: { put: [rec] } }), [rec.id]);
+    if (!g) { remember('fishing-log:last-cat', rec.cat); remember('fishing-log:last-place', rec.placeId ?? ''); }
     onSaved?.(rec);
     if (again) gearForm(null, { preset: { cat: rec.cat, placeId: rec.placeId, brand: rec.brand } });
   };
@@ -651,7 +662,7 @@ function gearBody(g) {
     active(g) ? btn(t('Списати'), () => statusSheet(g)) : btn(t('Повернути в наявні'), () => setStatus(g, 'have', t('Повернуто в наявні'))),
   ];
   return h('div', {},
-    photo ? h('img', { class: 'item-photo', src: photo.thumb, alt: '', onclick: () => showPhoto(photo.id) }) : null,
+    photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) }, h('img', { class: 'item-photo', src: photo.thumb, alt: '' })) : null,
     kv([
       [t('Категорія'), catOf(g.cat).name],
       [t('Де'), active(g) ? where : null],
@@ -671,7 +682,7 @@ function gearBody(g) {
     ]),
     catchBox(g),
     chain.length ? box(t('Стоїть'), h('div', { class: 'rows' }, chain.map((x) =>
-      row(gearTitle(x), [catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: thumbImg(x.photoId, monogram(gearTitle(x))) })))) : null,
+      row(gearTitle(x), [catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: gearThumb(x) })))) : null,
     h('div', { class: 'btn-row' }, actions.filter(Boolean)),
     g.history?.length ? fold('gear-history', t('Історія'), historyList(g.history)) : null);
 }
@@ -915,7 +926,7 @@ function spotForm(s = null, { onSaved = null } = {}) {
     { name: 'coords', label: t('Координати'), value: coordsText(s), placeholder: '50.45012, 30.52341', hint: t('Можна вставити посилання з Google Maps') },
     { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 2, value: s?.note },
   ]);
-  const here = btn(`📍 ${t('Звідси')}`, () => {
+  const here = btn([icon('pin'), t('Звідси')], () => {
     if (!navigator.geolocation) { toast(t('Телефон не дає місце')); return; }
     toast(t('Шукаю місце…'));
     navigator.geolocation.getCurrentPosition(
@@ -946,7 +957,8 @@ function spotForm(s = null, { onSaved = null } = {}) {
 
 const MOON = [['🌑', 'Молодик'], ['🌒', 'Молодий місяць'], ['🌓', 'Перша чверть'], ['🌔', 'Місяць росте'], ['🌕', 'Повня'], ['🌖', 'Місяць спадає'], ['🌗', 'Остання чверть'], ['🌘', 'Старий місяць']];
 const WINDS = ['Пн', 'ПнСх', 'Сх', 'ПдСх', 'Пд', 'ПдЗх', 'Зх', 'ПнЗх'];
-const moonText = (date) => { const [e, l] = MOON[moonPhase(date).idx]; return `${e} ${t(l)}`; };
+// Емодзі фази — лише картинка поруч із назвою: читачу екрана досить назви
+const moonText = (date) => { const [e, l] = MOON[moonPhase(date).idx]; return h('span', {}, h('span', { 'aria-hidden': 'true' }, `${e} `), t(l)); };
 const trend = (dp) => (dp > 0 ? `↗ +${dp}` : dp < 0 ? `↘ −${-dp}` : '→ 0');
 const shortWeather = (w) => (w ? [`${Math.round(w.t)}°`, `${fmt.num(Math.round(w.w))} ${t('м/с')}`, `${w.p} ${trend(w.dp)}`].join(' · ') : null);
 
@@ -1063,7 +1075,7 @@ function tripBody(tr) {
   const catches = tr.catches ?? [];
   const photos = (tr.photoIds ?? []).filter(findPhoto);
   return h('div', {},
-    photos.length ? h('div', { class: 'photo-strip' }, photos.map((pid) => h('img', { src: findPhoto(pid).thumb, alt: '', onclick: () => showPhoto(pid, photos) }))) : null,
+    photos.length ? h('div', { class: 'photo-strip' }, photos.map((pid) => h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(pid, photos) }, h('img', { src: findPhoto(pid).thumb, alt: '' })))) : null,
     kv([
       [t('Коли'), [fmt.date(tr.date), [tr.from, tr.to].filter(Boolean).join('–')].filter(Boolean).join(' · ')],
       [t('Водойма'), s ? link(s.name, () => spotForm(s)) : t('Без водойми')],
@@ -1114,7 +1126,7 @@ function pickConsumable(title, fits, onPick) {
   const paint = () => {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
     rows.replaceChildren(...sorted.filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); }).map((g) =>
-      row(gearTitle(g), [weightText(g), g.color].filter(Boolean).join(' · '), qtyText(g), () => { close(); onPick(g); }, { thumb: thumbImg(g.photoId, monogram(gearTitle(g))) })));
+      row(gearTitle(g), [weightText(g), g.color].filter(Boolean).join(' · '), qtyText(g), () => { close(); onPick(g); }, { thumb: gearThumb(g) })));
   };
   search.addEventListener('input', paint);
   paint();
@@ -1142,10 +1154,10 @@ function catchForm(tr, c = null) {
   rel.classList.add('segmented');
   const pick = photoPicker(findPhoto(c?.photoId), { query: () => f.inputs.species.value.trim() });
   const close = sheet(c ? t('Улов') : t('+ Улов'), h('div', {}, f.el, rel, h('div', { class: 'field-label' }, t('Фото')), pick.el), {
-    tools: c ? [toolBtn('delete', t('Видалити'), async () => {
+    tools: c ? [toolBtn('delete', t('Видалити'), () => confirmSheet(t('Видалити улов «{name}»?', { name: c.species }), t('Скасувати не можна.'), t('Видалити'), async () => {
       close();
       await save(joinChanges(c.photoId ? dropPhotos([c.photoId]) : {}, { trips: { put: [{ ...findTrip(tr.id), catches: (findTrip(tr.id).catches ?? []).filter((x) => x.id !== c.id) }] } }));
-    }, 'danger')] : [],
+    }), 'danger')] : [],
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
       if (invalidField(f)) return;
       const v = f.values();
@@ -1240,7 +1252,10 @@ function packBody(p) {
   const items = packItems(p);
   const checked = new Set(p.checked ?? []);
   const toggle = (k) => { if (!checked.delete(k)) checked.add(k); savePack(p, { checked: [...checked] }); };
-  const drop = (k) => savePack(p, { items: (p.items ?? []).filter((it) => packKey(it) !== k), checked: [...checked].filter((x) => x !== k) });
+  const drop = async (k, name) => {
+    await savePack(p, { items: (p.items ?? []).filter((it) => packKey(it) !== k), checked: [...checked].filter((x) => x !== k) });
+    setUndo(t('Прибрано «{name}»', { name }), () => savePack(findPack(p.id), { items: p.items, checked: p.checked }));
+  };
   const rods = items.filter((x) => x.g && groupOf(x.g) === 'rods').map((x) => x.g.id);
   return h('div', {},
     items.length ? h('p', { class: 'muted small' }, t('Зібрано {d} з {n} · по порядку місць, де лежить', { d: items.filter((x) => checked.has(packKey(x.it))).length, n: items.length })) : null,
@@ -1249,9 +1264,9 @@ function packBody(p) {
       const on = checked.has(k);
       return h('div', { class: `row slot pack-row${on ? ' done' : ''}${g && isLow(g) ? ' low' : ''}` },
         h('span', { class: 'row-main', role: 'checkbox', 'aria-checked': String(on), tabindex: '0', onclick: () => toggle(k), onkeydown: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(k); } } },
-          h('span', { class: 'row-title' }, `${on ? '☑' : '☐'} ${g ? gearTitle(g) : it.text}`),
+          h('span', { class: 'row-title' }, h('span', { class: `box-check${on ? ' on' : ''}`, 'aria-hidden': 'true' }), g ? gearTitle(g) : it.text),
           g ? h('span', { class: 'muted small' }, [weightText(g), g.color, whereText(g), isQty(g) ? `${qtyText(g)}${isLow(g) ? ` — ${t('мало!')}` : ''}` : null].filter(Boolean).join(' · ')) : null),
-        btn('×', () => drop(k), 'quiet'));
+        h('button', { type: 'button', class: 'btn quiet', 'aria-label': t('Прибрати «{name}» зі збору', { name: g ? gearTitle(g) : it.text }), onclick: () => drop(k, g ? gearTitle(g) : it.text) }, '×'));
     })) : h('p', { class: 'muted' }, t('Порожньо. Додайте речі зі снастей і вільні пункти — термос, стілець, ліхтарик.')),
     h('div', { class: 'btn-row' },
       btn(t('+ Річ'), () => pickGear(t('Додати до збору'), (g) => !(findPack(p.id)?.items ?? []).some((it) => it.gearId === g.id), (g) => savePack(findPack(p.id), { items: [...(findPack(p.id).items ?? []), { gearId: g.id }] }))),
@@ -1282,7 +1297,7 @@ function pickGear(title, fits, onPick) {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
     rows.replaceChildren(...state.gear.filter((g) => active(g) && fits(g)).filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); }).sort(byGroup)
       .map((g) => row(gearTitle(g), [weightText(g), g.color, whereText(g)].filter(Boolean).join(' · '), isQty(g) ? qtyText(g) : '',
-        async () => { await onPick(g); paint(); }, { thumb: thumbImg(g.photoId, monogram(gearTitle(g))) })));
+        async () => { await onPick(g); paint(); }, { thumb: gearThumb(g) })));
   };
   search.addEventListener('input', paint);
   paint();
@@ -1336,7 +1351,7 @@ async function printLabels(places) {
 
 function wishRow(w) {
   return h('div', { class: 'row slot', dataset: { id: w.id } },
-    h('span', { class: 'row-main', onclick: () => wishForm(w) },
+    h('button', { type: 'button', class: 'row-main', onclick: () => wishForm(w) },
       h('span', { class: 'row-title' }, w.name),
       h('span', { class: 'muted small' }, [w.price ? fmt.money(w.price) : null, w.note].filter(Boolean).join(' · '))),
     btn(t('Купив'), () => (findGear(w.gearId) ? buySheet(findGear(w.gearId), { onSaved: () => save({ wishes: { del: [w.id] } }) }) : gearForm(null, {
@@ -1383,7 +1398,7 @@ function restockBox() {
   return box(`${t('Докупити')} · ${list.length}`, h('div', { class: 'rows' }, list.map((g) => {
     const wished = state.wishes.some((w) => w.gearId === g.id);
     return h('div', { class: 'row slot low', dataset: { id: g.id } },
-      h('span', { class: 'row-main', onclick: () => gearDetail(g.id) },
+      h('button', { type: 'button', class: 'row-main', onclick: () => gearDetail(g.id) },
         h('span', { class: 'row-title' }, gearTitle(g)),
         h('span', { class: 'muted small' }, [weightText(g), g.color, t('лишилось {n}', { n: qtyText(g) })].filter(Boolean).join(' · '))),
       wished ? h('span', { class: 'muted small' }, t('у «Хочу»')) : btn(t('У «Хочу»'), () => save({
