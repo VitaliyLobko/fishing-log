@@ -1979,10 +1979,10 @@ function renderShop() {
 function renderSettings() {
   $('subtitle').textContent = t('версія {v}', { v: self.APP_VERSION });
   return h('div', { class: 'settings' },
+    settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [catsRow()]),
-    settingsGroup(t('Вигляд'), [themeRow(), backdropRow()]),
-    settingsGroup(t('Про застосунок'), [aboutPanel()]));
+    settingsGroup(t('Вигляд'), [themeRow(), backdropRow()]));
 }
 
 // ---------- навігація ----------
