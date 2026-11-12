@@ -249,6 +249,20 @@ const GROUP_FIELDS = { rods: ['length', 'test', 'action', 'pieces', 'rodType'], 
 const SPEC_FIELDS = [...new Set(Object.values(GROUP_FIELDS).flat())];
 
 const active = (g) => (g.status ?? 'have') === 'have';
+
+// Напрямок: хижак чи мирна риба; '' — універсальне (видно в обох)
+const DIRS = [['predator', 'Хижак'], ['peaceful', 'Мирна']];
+/** Напрямок за замовчуванням — з категорії й типу вудилища; людина може змінити в картці. */
+function inferDir(g) {
+  const c = catOf(g.cat);
+  if (c.group === 'lures' || g.cat === 'jighead') return 'predator';
+  if (c.group === 'feeder') return 'peaceful';
+  if (c.group === 'rods') return ['spin', 'fly'].includes(g.rodType) ? 'predator' : ['feeder', 'float'].includes(g.rodType) ? 'peaceful' : '';
+  return '';
+}
+const dirOf = (g) => g.dir ?? inferDir(g);
+let dirFilter = DIRS.some(([k]) => k === recall('fishing-log:dir')) ? recall('fishing-log:dir') : '';
+const inDir = (g) => !dirFilter || !dirOf(g) || dirOf(g) === dirFilter;
 const gearTitle = (g) => g?.name || [g?.brand, g?.model].filter(Boolean).join(' ') || catOf(g?.cat).name;
 
 // ---------- місця ----------
@@ -400,7 +414,6 @@ async function photoChanges(g, change, ownerId) {
 // ---------- снасті ----------
 
 let query = '';
-let groupFilter = recall('fishing-log:group') ?? '';
 let picking = null; // Set id — режим «Вибрати» для перенесення кількох речей
 
 // ---------- обслуговування ----------
@@ -457,8 +470,9 @@ async function rewound(g) {
 function serviceDueBox() {
   const list = state.gear.map((g) => ({ g, why: serviceDue(g) })).filter((x) => x.why).sort((a, b) => byGroup(a.g, b.g));
   if (!list.length) return null;
-  return fold('service-due', `${t('Потребує уваги')} · ${list.length}`,
-    h('div', { class: 'rows' }, list.map(({ g, why }) => row(gearTitle(g), why, '', () => gearDetail(g.id), { cls: 'low', thumb: gearThumb(g) }))));
+  // Картка, як розділи нижче, з жовтою смугою — а не дрібне посилання з лінією над пошуком
+  return h('div', { class: 'gear-groups due-box' }, fold('service-due', `${t('Потребує уваги')} · ${list.length}`,
+    h('div', { class: 'rows' }, list.map(({ g, why }) => row(gearTitle(g), why, '', () => gearDetail(g.id), { cls: 'low', thumb: gearThumb(g) })))));
 }
 
 function serviceRow() {
@@ -530,12 +544,19 @@ const norm = (s) => String(s ?? '').toLowerCase().replace(/[’ʼ`']/g, "'");
 const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), whereText(g)].join(' '));
 const byGroup = (a, b) => GROUPS.findIndex(([k]) => k === groupOf(a)) - GROUPS.findIndex(([k]) => k === groupOf(b)) || collate(gearTitle(a), gearTitle(b));
 
+/** Пошук — по речах у наявності; списані видно в своєму розділі. */
 function shownGear() {
   const words = norm(query).split(/\s+/).filter(Boolean);
-  return state.gear
-    .filter((g) => (groupFilter === 'gone' ? !active(g) : active(g) && (!groupFilter || groupOf(g) === groupFilter)))
-    .filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); })
-    .sort(byGroup);
+  return state.gear.filter((g) => active(g) && inDir(g)).filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); }).sort(byGroup);
+}
+
+/** Заголовок розділу: значок, назва, праворуч — кількість і «мало». */
+function sectionHead(key, label, n, low = 0) {
+  const ico = h('span', { class: 'sec-ico', 'aria-hidden': 'true' });
+  ico.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[key] ?? GROUP_ICONS.other}</svg>`;
+  return h('span', { class: 'sec-head' }, ico, h('span', { class: 'sec-name' }, label),
+    low ? h('span', { class: 'sec-low' }, t('мало: {n}', { n: low })) : null,
+    h('span', { class: 'sec-count' }, fmt.num(n)));
 }
 
 let gearList = null;
@@ -551,16 +572,16 @@ function paintGear() {
         if (!picking.size) { toast(t('Позначте хоча б одну річ')); return; }
         placePicker(t('Куди перенести'), (placeId) => moveGear([...picking].map(findGear).filter(Boolean), placeId));
       }, 'primary'))) : null;
-  // «Усі» без пошуку — розділи згорнуті з кількістю: видно головне; пошук, фільтр і «Вибрати» — плоский список
-  const grouped = !query && !groupFilter && !picking;
-  const body = !list.length ? h('p', { class: 'muted' }, query ? t('Нічого не знайдено') : t('У цьому розділі порожньо'))
-    : grouped ? h('div', { class: 'gear-groups' }, GROUPS.map(([gk, gl]) => {
-      const items = list.filter((g) => groupOf(g) === gk);
-      const low = items.filter(isLow).length;
-      return items.length ? fold(`gear-${gk}`, [t(gl), fmt.num(items.length), low ? t('мало: {n}', { n: low }) : null].filter(Boolean).join(' · '),
-        h('div', { class: 'rows' }, items.map(gearRow))) : null;
-    }))
-      : h('div', { class: 'rows' }, list.map(gearRow));
+  // Без пошуку — розділи-картки (згорнуті, стан пам'ятається) і «Списані» наприкінці; пошук і «Вибрати» — плоский список
+  const gone = state.gear.filter((g) => !active(g) && inDir(g)).sort(byGroup);
+  const body = query || picking
+    ? (list.length ? h('div', { class: 'rows' }, list.map(gearRow)) : h('p', { class: 'muted' }, t('Нічого не знайдено')))
+    : h('div', { class: 'gear-groups' },
+      GROUPS.map(([gk, gl]) => {
+        const items = list.filter((g) => groupOf(g) === gk);
+        return items.length ? fold(`gear-${gk}`, sectionHead(gk, t(gl), items.length, items.filter(isLow).length), h('div', { class: 'rows' }, items.map(gearRow))) : null;
+      }),
+      gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), h('div', { class: 'rows' }, gone.map(gearRow))) : null);
   gearList.replaceChildren(bar ?? '', body);
 }
 
@@ -580,19 +601,6 @@ const GROUP_ICONS = {
   gone: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
 };
 
-/** Чипи зі значками: на вузькому екрані — лише значок (назва — в aria-label і title), у вибраного — значок і назва. */
-function withIcons(c, icons) {
-  c.classList.add('icon-chips');
-  c.querySelectorAll('button').forEach((b) => {
-    const name = b.textContent;
-    b.setAttribute('aria-label', name);
-    b.title = name;
-    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[b.dataset.value] ?? icons.other}</svg>`;
-    b.append(h('span', { class: 'chip-label' }, name));
-  });
-  return c;
-}
-
 function renderGear() {
   const all = state.gear.filter(active);
   $('subtitle').textContent = all.length ? t('позицій: {n} · місць: {m}', { n: all.length, m: state.places.length }) : '';
@@ -603,20 +611,18 @@ function renderGear() {
       : empty(t('Ще немає снастей'), t('Спершу заведіть місце, де вони лежать: гараж, шафа, ящик. Або завантажте демодані в ⚙.'),
         [btn(t('+ Місце'), () => placeForm(null, { onSaved: () => goTab('#places') }), 'primary add'), btn(t('Додати річ без місця'), () => gearForm())]);
   }
-  const groups = GROUPS.filter(([g]) => all.some((x) => groupOf(x) === g)).map(([g, l]) => [g, t(l)]);
-  const gone = state.gear.some((g) => !active(g));
-  if (groupFilter && !groups.some(([g]) => g === groupFilter) && !(groupFilter === 'gone' && gone)) groupFilter = '';
-  const c = chips([['', t('Усі')], ...groups, ...(gone ? [['gone', t('Списані')]] : [])], groupFilter, (v) => { groupFilter = v; remember('fishing-log:group', v); paintGear(); });
-  c.classList.add('cat-filter');
-  withIcons(c, GROUP_ICONS);
   const search = h('input', {
     type: 'search', class: 'gear-search', placeholder: t('Пошук: назва, бренд, колір, місце…'), 'aria-label': t('Пошук'), enterkeyhint: 'search', autocomplete: 'off',
     oninput: (e) => { query = e.target.value; paintGear(); },
   });
   search.value = query;
   gearList = h('div');
-  const tools = h('div', { class: 'btn-row' }, picking ? null : btn(t('Вибрати кілька'), () => { picking = new Set(); render(); }, 'quiet'));
-  const out = h('div', {}, serviceDueBox(), search, c, tools, gearList);
+  // Пошук і «Вибрати» — одним рядком угорі; нижче — що потребує уваги, далі розділи
+  const top = h('div', { class: 'search-row' }, search, picking ? null : btn(t('Вибрати'), () => { picking = new Set(); render(); }, 'quiet mini'));
+  // Хижак / мирна: універсальне видно в обох; вибір пам'ятається
+  const dirs = chips([['', t('Усі')], ...DIRS.map(([k, l]) => [k, t(l)])], dirFilter, (v) => { dirFilter = v; remember('fishing-log:dir', v); paintGear(); });
+  dirs.classList.add('segmented', 'dir-switch');
+  const out = h('div', {}, top, dirs, serviceDueBox(), gearList);
   queueMicrotask(paintGear);
   return out;
 }
@@ -644,6 +650,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   const f = form([
     { name: 'name', label: t('Назва'), value: src.name, required: true, placeholder: t('напр. Воблер Jackall Squad Minnow 95') },
     { name: 'cat', label: t('Категорія'), type: 'select', options: catOptions(), value: src.cat ?? (g ? 'other' : recall('fishing-log:last-cat') || 'other') },
+    { name: 'dir', label: t('Напрямок'), type: 'select', options: [['', t('Універсальне')], ...DIRS.map(([k, l]) => [k, t(l)])], value: src.dir ?? inferDir({ cat: src.cat ?? (g ? 'other' : recall('fishing-log:last-cat') || 'other'), rodType: src.rodType }) },
     { name: 'qty', label: t('Кількість'), type: 'number', value: src.qty ?? 1, half: true },
     { name: 'unit', label: t('Одиниця'), type: 'select', options: UNITS.map(([k, l]) => [k, t(l)]), value: src.unit ?? 'pcs', half: true },
     { name: 'low', label: t('Поріг «мало»'), type: 'number', value: src.low ?? 0, half: true, hint: t('Стільки й менше — у «Докупити»') },
@@ -675,6 +682,12 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     f.inputs.price.closest('.field').querySelector('.field-label').textContent = qtyCat(c) ? t('Ціна за одиницю, грн') : t('Ціна, грн');
   };
   f.inputs.cat.addEventListener('change', fit);
+  // Напрямок іде за категорією й типом вудилища, доки людина не вибрала його сама
+  let dirTouched = Boolean(src.dir !== undefined && g);
+  f.inputs.dir.addEventListener('change', () => { dirTouched = true; });
+  const followDir = () => { if (!dirTouched) f.inputs.dir.value = inferDir({ cat: f.inputs.cat.value, rodType: f.inputs.rodType.value }); };
+  f.inputs.cat.addEventListener('change', followDir);
+  f.inputs.rodType.addEventListener('change', followDir);
   fit();
   // Головне — назва, категорія, кількість, місце; решта згорнута (стан пам'ятається)
   const moreBody = h('div', { class: 'form' });
@@ -767,6 +780,7 @@ function gearBody(g) {
     photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) }, h('img', { class: 'item-photo', src: photo.thumb, alt: '' })) : null,
     kv([
       [t('Де'), active(g) ? where : null],
+      [t('Напрямок'), label(DIRS, dirOf(g)) || t('Універсальне')],
       active(g) ? null : [t('Стан'), `${t(STATUS[g.status])}${g.statusDate ? ` · ${fmt.date(g.statusDate)}` : ''}`],
       qty ? [t('Кількість'), h('span', { class: isLow(g) ? 'warn-text' : '' }, `${qtyText(g)}${isLow(g) ? ` · ${t('докупити')}` : ''}`)] : null,
       lostCount(g) ? [t('Втрачено'), `${fmt.num(lostCount(g))} ${unitLabel(g)}`] : null,

@@ -870,3 +870,20 @@ button.row-main { display: flex; flex: 1; flex-direction: column; align-items: s
 button.about-avatar { padding: 0; border: 0; }
 .ex-rules { margin: 4px 0 0; padding-left: 20px; }
 .ex-rules li + li { margin-top: 6px; }
+
+/* «Потребує уваги» над пошуком — картка з жовтою смугою */
+.due-box { margin: 0 0 12px; }
+.due-box > .ex-more > summary { box-shadow: inset 3px 0 0 var(--warn), var(--shadow); color: var(--warn); }
+
+/* «Снасті»: пошук і «Вибрати» одним рядком; розділи — картки зі значком, назвою й кількістю праворуч */
+.search-row { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.search-row .gear-search { flex: 1; min-width: 0; margin: 0; }
+.search-row .btn.mini { flex: none; min-height: 44px; }
+.sec-head { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; }
+.sec-ico { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--surface-2); color: var(--accent-2); }
+.sec-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sec-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sec-low { flex: none; color: var(--warn); font-size: 13px; font-weight: 600; }
+.sec-count { flex: none; min-width: 28px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+.gear-groups > .ex-more > summary { gap: 6px; }
+.dir-switch { margin: 0 0 12px; }
