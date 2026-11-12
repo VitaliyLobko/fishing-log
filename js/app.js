@@ -1949,15 +1949,79 @@ function backdropRow() {
   return setRow('backdrop', 'gallery', t('Фон'), t(list.find(([k]) => k === now)[1]), [c]);
 }
 
+/** Довгий текст під розкриттям. */
+const more = (title, node) => h('details', { class: 'ex-more' }, h('summary', {}, title), node);
+
+// Кружка кави в куті портрета котика: пара — два завитки, що здіймаються й тануть
+const CUP_SVG = '<svg viewBox="0 0 16 20" aria-hidden="true">'
+  + '<path class="st" d="M6 8.5c-2-2 2-3 0-6"/><path class="st" d="M10 8.5c-2-2 2-3 0-6"/>'
+  + '<path d="M3 10h9v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="#f4f1ea" stroke="#3a2a1c"/>'
+  + '<path d="M12 11.5h1.2a2 2 0 0 1 0 4H12" fill="none" stroke="#3a2a1c"/><ellipse cx="7.5" cy="10.4" rx="4" ry=".9" fill="#6b3f1f"/></svg>';
+
+// Аватар автора кліпає: шар поверх фото (координати фото 233×233). Контур — білки очей, обведені з самого фото,
+// тож повіки не заходять на обведення. Верхня повіка з опуклою кромкою опускається, нижня трохи підіймається
+// назустріч; зімкнуті — на нижній третині ока, кромка лишається лінією вій. Праве око перше: ліве його перекриває.
+const AVATAR_EYES = [
+  { d: 'M114 63L114 65L117 71L117 78L121 78L122 77L126 77L127 76L132 76L135 79L137 79L139 77L140 72L141 71L141 68L140 67L140 64L135 59L131 57L122 57L118 59Z', box: [114, 57, 142, 80] },
+  { d: 'M99 60L98 61L94 61L87 67L85 71L85 79L87 83L90 86L94 88L102 89L110 86L115 79L115 69L109 62Z', box: [85, 60, 116, 90] },
+];
+const AVATAR_SVG = '<svg viewBox="0 0 233 233" aria-hidden="true"><defs>'
+  + AVATAR_EYES.map(({ d }, i) => `<clipPath id="av-eye${i}"><path d="${d}"/></clipPath>`).join('')
+  + '</defs>'
+  + AVATAR_EYES.map(({ box: [x0, y0, x1, y1] }, i) => {
+    const h = y1 - y0, e = y0 + h * 0.6, k = h * 0.26, cx = (x0 + x1) / 2, l = x0 - 3, r = x1 + 3;
+    const edge = `M${l} ${e}Q${cx} ${e + k} ${r} ${e}`;
+    return `<g clip-path="url(#av-eye${i})" fill="#fcd901">`
+      + `<path class="av-lid low" style="--o:${(y1 - e + 3).toFixed(1)}px" d="${edge}V${y1 + 3}H${l}Z"/>`
+      + `<g class="av-lid" style="--o:-${(e + k - y0 + 3).toFixed(1)}px"><path d="M${l} ${y0 - 3}H${r}V${e}Q${cx} ${e + k} ${l} ${e}Z"/>`
+      + `<path d="${edge}" fill="none" stroke="#1d1d1d" stroke-width="2.6" stroke-linecap="round"/></g></g>`;
+  }).join('')
+  + '</svg>';
+
+/** Тап по аватару — кліпнути одразу, не чекаючи свого часу. */
+function avatarHi(e) {
+  const el = e.currentTarget;
+  el.classList.remove('hi');
+  void el.offsetWidth;
+  el.classList.add('hi');
+  clearTimeout(el.hiTimer);
+  el.hiTimer = setTimeout(() => el.classList.remove('hi'), 600);
+}
+
+/** «Про застосунок» — як у Shooter’s Log: аватар автора, що кліпає, «На каву автору», як почати й де дані. */
 function aboutPanel() {
   const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
   return h('section', { class: 'panel about' },
     h('div', { class: 'about-head' },
-      h('img', { src: './icons/icon-192.png', alt: '', width: 48, height: 48, class: 'app-icon big' }),
+      h('button', { type: 'button', class: 'about-avatar', 'aria-label': t('Автор — тапніть, щоб кліпнув'), onclick: avatarHi },
+        h('img', { src: './icons/author.jpg', alt: '', width: 64, height: 64, loading: 'lazy' }),
+        Object.assign(h('span', { class: 'av-live' }), { innerHTML: AVATAR_SVG })),
       h('div', {}, h('h3', {}, 'Fishing Log'),
         h('p', { class: 'muted small' }, t('Версія {v} · збірка {b}', { v: self.APP_VERSION, b: self.APP_BUILD ?? '—' })))),
-    h('p', { class: 'muted small about-desc' }, t('Рибальські снасті: що є й де лежить. Працює без інтернету: усе зберігається на пристрої.')),
+    h('p', { class: 'muted small about-desc' }, t('Рибальські снасті: що є й де лежить, виїзди з погодою й уловом, що втратив і що докупити. Працює без інтернету: усе зберігається на пристрої.')),
     h('div', { class: 'btn-row' }, btn(t('Перевірити оновлення'), () => checkUpdate()), btn(t('Що нового'), () => allChanges().then(changesSheet))),
+    // Банка Монобанку — звичайне посилання, без сторонніх скриптів: CSP і обіцянка «дані нікуди не йдуть» лишаються
+    h('a', { class: 'donate-card', href: 'https://send.monobank.ua/jar/XJKDMyVfW', target: '_blank', rel: 'noopener' },
+      h('span', { class: 'donate-art' },
+        h('span', { class: 'donate-cat' }, h('img', { src: './icons/cat-portrait.png', alt: '', width: 50, height: 50 }),
+          Object.assign(h('span', { class: 'donate-cup' }), { innerHTML: CUP_SVG })),
+        h('span', { class: 'donate-plate', 'aria-hidden': 'true' }, 'mono')),
+      h('span', { class: 'donate-text' }, h('b', {}, t('На каву автору')), h('small', {}, t('Безкоштовно й без реклами — тримається на вашій підтримці'))),
+      h('span', { class: 'donate-go', 'aria-hidden': 'true' }, '→')),
+    more(t('Встановлення на телефон'), h('div', { class: 'muted small' },
+      h('p', {}, t('Chrome → меню ⋮ → «Додати на головний екран» / «Установити застосунок». Після встановлення працює без інтернету, а в «Поділитися» з’явиться Fishing Log — так зручно передавати фото снастей.')),
+      h('p', {}, t('iPhone: Safari → «Поділитися» → «На початковий екран». Відкривайте застосунок із цієї іконки, а не з вкладки Safari — інакше Safari може стерти дані сайту, якщо тиждень не заходити.')))),
+    more(t('Де мої дані'), h('div', { class: 'muted small' },
+      h('p', {}, t('Записи й фото лежать у браузері на цьому пристрої. Сервера застосунок не має, автор не отримує ні даних, ні статистики.')),
+      h('p', {}, t('Погоду дає Open-Meteo — він отримує лише координати водойми й дату. Google Диск під’єднується за бажанням: копія лягає у ваш Диск, застосунок бачить лише свої файли.')),
+      h('p', {}, t('Резервна копія — ⚙ → «Резервна копія». Вона ж переносить дані на інший пристрій через «Імпорт».')))),
+    more(t('З чого почати'), h('ol', { class: 'ex-rules' },
+      h('li', {}, t('«Місця» → «+»: гараж, шафа, ящик — вкладайте одне в одне.')),
+      h('li', {}, t('Відкрийте місце й додавайте речі кнопкою «+ Річ сюди» — місце підставиться саме. «Зберегти й ще» — наступна одразу.')),
+      h('li', {}, t('Приманкам і оснастці поставте поріг «мало» — що закінчується, з’явиться в «Покупки» → «Докупити».')),
+      h('li', {}, t('«Місця» → «Друк наклейок»: QR на ящик відкриває його вміст камерою телефона.')),
+      h('li', {}, t('На риболовлі — «Виїзди» → «+»: улов, «−1 Втратив…»; погода підтягнеться сама, якщо в водойми є координати.')),
+      h('li', {}, t('Хочете спершу подивитися — ⚙ → «Демодані». Перед своїми записами видаліть демо: ⚙ → «Видалити дані з пристрою».')))),
     h('nav', { class: 'about-links' },
       link('https://github.com/VitaliyLobko/fishing-log/issues/new', t('Повідомити про помилку')),
       link('https://github.com/VitaliyLobko/fishing-log', t('Код')),
