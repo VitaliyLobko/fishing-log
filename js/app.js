@@ -205,7 +205,7 @@ function joinChanges(...list) {
 
 // Група — розділ у фільтрі; приманки, оснастка й фідерне рахуються кількістю, решта — поштучно
 const GROUPS = [['rods', 'Вудилища'], ['reels', 'Котушки'], ['lines', 'Шнури й волосінь'], ['lures', 'Приманки'], ['tackle', 'Оснастка'],
-  ['feeder', 'Фідер'], ['boxes', 'Коробки й ящики'], ['clothes', 'Одяг'], ['other', 'Інше']];
+  ['feeder', 'Фідер'], ['boxes', 'Коробки й ящики'], ['camp', 'Табір і туризм'], ['clothes', 'Одяг'], ['other', 'Інше']];
 const QTY_GROUPS = ['lures', 'tackle', 'feeder'];
 const CATS = [
   ['rod', 'Вудилище', 'rods'], ['reel', 'Котушка', 'reels'], ['line', 'Шнур / волосінь', 'lines'],
@@ -215,7 +215,12 @@ const CATS = [
   // четвертий елемент — виняток із правила групи: род-под у «Фідері», але поштучно
   ['cage', 'Годівниця', 'feeder'], ['groundbait', 'Прикормка / каша', 'feeder'], ['additive', 'Ароматика й добавки', 'feeder'],
   ['hookbait', 'Насадка', 'feeder'], ['rodpod', 'Род-под / підставки', 'feeder', 'unit'],
-  ['box', 'Коробка / ящик', 'boxes'], ['clothes', 'Одяг', 'clothes'], ['sonar', 'Ехолот', 'other'], ['net', 'Підсак', 'other'], ['other', 'Інше', 'other'],
+  ['box', 'Коробка / ящик', 'boxes'],
+  // Табір — усе, що береться на риболовлю з ночівлею: поштучно, як ящики
+  ['tent', 'Намет', 'camp'], ['sleepbag', 'Спальник', 'camp'], ['mat', 'Каремат', 'camp'], ['chair', 'Крісло / стілець', 'camp'],
+  ['table', 'Стіл', 'camp'], ['stove', 'Пальник / таганок', 'camp'], ['cookware', 'Посуд', 'camp'], ['light', 'Ліхтар', 'camp'],
+  ['campgear', 'Інше спорядження', 'camp'],
+  ['clothes', 'Одяг', 'clothes'], ['sonar', 'Ехолот', 'other'], ['net', 'Підсак', 'other'], ['other', 'Інше', 'other'],
 ];
 const groupLabel = (g) => t(GROUPS.find(([k]) => k === g)?.[1] ?? 'Інше');
 /** Вбудовані категорії + свої (⚙ → Свої категорії). */
@@ -569,6 +574,7 @@ const GROUP_ICONS = {
   tackle: '<path d="M15 3v10.5a4 4 0 0 1-8 0V11"/><path d="M7 11l2.5 2"/><circle cx="15" cy="3" r=".8"/>',
   feeder: '<path d="M8 4h8v16H8zM8 8h8M8 12h8M8 16h8M12 4v16"/>',
   boxes: '<path d="M3 9h18v11H3zM8 9V5h8v4M3 14h18"/>',
+  camp: '<path d="M2.5 20L12 4l9.5 16z"/><path d="M12 4v16M8.5 20L12 14l3.5 6"/>',
   clothes: '<path d="M8 4L3 7l2 4 3-1v10h8V10l3 1 2-4-5-3c-1 2-2 2.8-4 2.8S9 6 8 4z"/>',
   other: '<circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/>',
   gone: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
