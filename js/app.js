@@ -433,6 +433,34 @@ function paintGear() {
     : h('p', { class: 'muted' }, query ? t('Нічого не знайдено') : t('У цьому розділі порожньо')));
 }
 
+// Значки розділів для чипів-фільтра (stroke, 24×24)
+const GROUP_ICONS = {
+  '': '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/>',
+  rods: '<path d="M4 20L20 4"/><circle cx="8" cy="16" r="2.3"/><path d="M20 4v6"/>',
+  reels: '<circle cx="11" cy="12" r="7"/><circle cx="11" cy="12" r="2"/><path d="M18 12h3.5M21.5 10v4"/>',
+  lines: '<path d="M6 4h12M6 20h12M8 4v16M16 4v16M8 9l8 2M8 13l8 2"/>',
+  lures: '<path d="M3 11c3.5-4 9-4.5 13.5-2.5L21 11l-4.5 2.5C12 15.5 6.5 15 3 11z"/><path d="M9 14.5v3a1.6 1.6 0 0 0 3.2 0"/><circle cx="6.5" cy="10.5" r=".6"/>',
+  tackle: '<path d="M15 3v10.5a4 4 0 0 1-8 0V11"/><path d="M7 11l2.5 2"/><circle cx="15" cy="3" r=".8"/>',
+  feeder: '<path d="M8 4h8v16H8zM8 8h8M8 12h8M8 16h8M12 4v16"/>',
+  boxes: '<path d="M3 9h18v11H3zM8 9V5h8v4M3 14h18"/>',
+  clothes: '<path d="M8 4L3 7l2 4 3-1v10h8V10l3 1 2-4-5-3c-1 2-2 2.8-4 2.8S9 6 8 4z"/>',
+  other: '<circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/>',
+  gone: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
+};
+
+/** Чипи зі значками: на вузькому екрані — лише значок (назва — в aria-label і title), у вибраного — значок і назва. */
+function withIcons(c, icons) {
+  c.classList.add('icon-chips');
+  c.querySelectorAll('button').forEach((b) => {
+    const name = b.textContent;
+    b.setAttribute('aria-label', name);
+    b.title = name;
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[b.dataset.value] ?? icons.other}</svg>`;
+    b.append(h('span', { class: 'chip-label' }, name));
+  });
+  return c;
+}
+
 function renderGear() {
   const all = state.gear.filter(active);
   $('subtitle').textContent = all.length ? t('позицій: {n} · місць: {m}', { n: all.length, m: state.places.length }) : '';
@@ -445,6 +473,7 @@ function renderGear() {
   if (groupFilter && !groups.some(([g]) => g === groupFilter) && !(groupFilter === 'gone' && gone)) groupFilter = '';
   const c = chips([['', t('Усі')], ...groups, ...(gone ? [['gone', t('Списані')]] : [])], groupFilter, (v) => { groupFilter = v; remember('fishing-log:group', v); paintGear(); });
   c.classList.add('cat-filter');
+  withIcons(c, GROUP_ICONS);
   const search = h('input', {
     type: 'search', class: 'gear-search', placeholder: t('Пошук: назва, бренд, колір, місце…'), 'aria-label': t('Пошук'), enterkeyhint: 'search', autocomplete: 'off',
     oninput: (e) => { query = e.target.value; paintGear(); },
@@ -655,7 +684,7 @@ async function setStatus(g, status, text, date = today()) {
 function statusSheet(g) {
   let status = 'lost';
   const c = chips(Object.entries(STATUS).filter(([k]) => k !== 'have').map(([k, l]) => [k, t(l)]), status, (v) => { status = v; });
-  c.classList.add('segmented');
+  // Чотири довгі слова («Подаровано») сегментом на 360 px не влазять — звичайні чипи з переносом
   const f = form([{ name: 'date', label: t('Дата'), type: 'dmy', value: today(), required: true }, { name: 'note', label: t('Примітка') }]);
   const close = sheet(t('Списати'), h('div', {}, c, f.el), {
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), () => {
@@ -1823,8 +1852,8 @@ function backdropRow() {
   const list = BACKDROPS[fam];
   if (!list) return null;
   const now = backdropPref(fam);
+  // «З акцентом», «Без малюнка» сегментом на 360 px обрізались — чипи з переносом
   const c = chips(list.map(([k, label]) => [k, t(label)]), now, (v) => { remember(BG_KEY[fam], v); applyTheme(); render(); });
-  c.classList.add('segmented');
   return setRow('backdrop', 'gallery', t('Фон'), t(list.find(([k]) => k === now)[1]), [c]);
 }
 
