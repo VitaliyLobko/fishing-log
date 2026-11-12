@@ -2,7 +2,7 @@
 // Інфраструктура (база, синхронізація, шторки, теми, «Що нового») — з fpv-log; фото речі — як у shooting-log.
 import * as db from './db.js';
 import * as sync from './sync.js';
-import { t, lang, setLang, LANGS, collate, applyStatic } from './i18n.js';
+import { t, lang, collate, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
 import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep } from './ui.js';
@@ -471,8 +471,17 @@ function paintGear() {
         if (!picking.size) { toast(t('Позначте хоча б одну річ')); return; }
         placePicker(t('Куди перенести'), (placeId) => moveGear([...picking].map(findGear).filter(Boolean), placeId));
       }, 'primary'))) : null;
-  gearList.replaceChildren(bar ?? '', list.length ? h('div', { class: 'rows' }, list.map(gearRow))
-    : h('p', { class: 'muted' }, query ? t('Нічого не знайдено') : t('У цьому розділі порожньо')));
+  // «Усі» без пошуку — розділи згорнуті з кількістю: видно головне; пошук, фільтр і «Вибрати» — плоский список
+  const grouped = !query && !groupFilter && !picking;
+  const body = !list.length ? h('p', { class: 'muted' }, query ? t('Нічого не знайдено') : t('У цьому розділі порожньо'))
+    : grouped ? h('div', { class: 'gear-groups' }, GROUPS.map(([gk, gl]) => {
+      const items = list.filter((g) => groupOf(g) === gk);
+      const low = items.filter(isLow).length;
+      return items.length ? fold(`gear-${gk}`, [t(gl), fmt.num(items.length), low ? t('мало: {n}', { n: low }) : null].filter(Boolean).join(' · '),
+        h('div', { class: 'rows' }, items.map(gearRow))) : null;
+    }))
+      : h('div', { class: 'rows' }, list.map(gearRow));
+  gearList.replaceChildren(bar ?? '', body);
 }
 
 // Значки розділів для чипів-фільтра (stroke, 24×24)
@@ -586,6 +595,13 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   };
   f.inputs.cat.addEventListener('change', fit);
   fit();
+  // Головне — назва, категорія, кількість, місце; решта згорнута (стан пам'ятається)
+  const moreBody = h('div', { class: 'form' });
+  const more = h('details', { class: 'ex-more form-more', open: recall('fishing-log:open:gear-form-more') === '1' },
+    h('summary', {}, t('Бренд, розміри, ціна, нотатка…')), moreBody);
+  more.addEventListener('toggle', () => remember('fishing-log:open:gear-form-more', more.open ? '1' : ''));
+  for (const n of ['brand', 'model', 'color', ...SPEC_FIELDS, 'price', 'buyDate', 'note', 'specs']) moreBody.append(f.inputs[n].closest('.field'));
+  f.el.append(more);
   const lookup = () => [f.inputs.brand.value, f.inputs.model.value, f.inputs.name.value, f.inputs.color.value].map((x) => x.trim()).filter(Boolean)
     .filter((x, i, a) => !a.slice(0, i).some((y) => y.toLowerCase().includes(x.toLowerCase()))).join(' ');
   const pick = photoPicker(findPhoto(g?.photoId), {
@@ -599,6 +615,9 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   }, 'mini')));
   let busy = false; // фото обробляється, форма ще відкрита — другий тап по «Зберегти» не запише вдруге
   const store = async (again) => {
+    // Помилка в згорнутому полі — розгорнути, інакше її не видно
+    const bad = f.invalid();
+    if (bad) f.inputs[bad.name].closest('details')?.setAttribute('open', '');
     if (invalidField(f)) return;
     const v = f.values();
     const c = catOf(v.cat);
@@ -664,26 +683,28 @@ function gearBody(g) {
   return h('div', {},
     photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) }, h('img', { class: 'item-photo', src: photo.thumb, alt: '' })) : null,
     kv([
-      [t('Категорія'), catOf(g.cat).name],
       [t('Де'), active(g) ? where : null],
       active(g) ? null : [t('Стан'), `${t(STATUS[g.status])}${g.statusDate ? ` · ${fmt.date(g.statusDate)}` : ''}`],
       qty ? [t('Кількість'), h('span', { class: isLow(g) ? 'warn-text' : '' }, `${qtyText(g)}${isLow(g) ? ` · ${t('докупити')}` : ''}`)] : null,
-      qty && num(g.low) ? [t('Поріг «мало»'), `${fmt.num(g.low)} ${unitLabel(g)}`] : null,
       lostCount(g) ? [t('Втрачено'), `${fmt.num(lostCount(g))} ${unitLabel(g)}`] : null,
       [t('Вага'), weightText(g)],
+      host && group === 'lines' && g.onDate ? [t('Намотано'), fmt.date(g.onDate)] : null,
+    ]),
+    h('div', { class: 'btn-row' }, actions.filter(Boolean)),
+    catchBox(g),
+    chain.length ? box(t('Стоїть'), h('div', { class: 'rows' }, chain.map((x) =>
+      row(gearTitle(x), [catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: gearThumb(x) })))) : null,
+    fold('gear-details', t('Деталі'), kv([
+      [t('Категорія'), catOf(g.cat).name],
+      qty && num(g.low) ? [t('Поріг «мало»'), `${fmt.num(g.low)} ${unitLabel(g)}`] : null,
       [t('Бренд'), g.brand], [t('Модель'), g.model], [t('Колір'), g.color],
       [t('Тип'), label(ROD_TYPES, g.rodType)], [t('Довжина'), g.length ? `${fmt.num(g.length)} ${t('м')}` : null], [t('Тест'), g.test ? `${g.test} ${t('г')}` : null],
       [t('Стрій'), label(ACTIONS, g.action)], [t('Колін'), g.pieces], [t('Розмір'), g.size], [t('Передавальне число'), g.ratio], [t('Запасних шпуль'), g.spools],
       [t('PE'), g.pe], [t('Діаметр'), g.mm ? `${fmt.num(g.mm)} ${t('мм')}` : null],
-      host && group === 'lines' && g.onDate ? [t('Намотано'), fmt.date(g.onDate)] : null,
       [t('Ціна'), g.price ? fmt.money(g.price) : null], [t('Куплено'), g.buyDate ? fmt.date(g.buyDate) : null],
       [t('Нотатка'), g.note ? h('span', { class: 'pre' }, g.note) : null],
       [t('Характеристики'), g.specs ? h('span', { class: 'pre' }, g.specs) : null],
-    ]),
-    catchBox(g),
-    chain.length ? box(t('Стоїть'), h('div', { class: 'rows' }, chain.map((x) =>
-      row(gearTitle(x), [catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: gearThumb(x) })))) : null,
-    h('div', { class: 'btn-row' }, actions.filter(Boolean)),
+    ])),
     g.history?.length ? fold('gear-history', t('Історія'), historyList(g.history)) : null);
 }
 
@@ -829,11 +850,33 @@ function removeGear(g) {
 
 // ---------- місця ----------
 
-function placeRows(parentId, depth) {
-  return state.places.filter((p) => (p.parentId ?? null) === parentId).sort((a, b) => collate(a.name, b.name)).flatMap((p) => [
-    (() => { const el = row(p.name, p.note || null, fmt.num(countIn(p.id)), () => placeDetail(p.id), { id: p.id, cls: 'tree-row' }); el.style.setProperty('--depth', depth); return el; })(),
-    ...(depth < 20 ? placeRows(p.id, depth + 1) : []),
-  ]);
+// Розгорнуті гілки дерева місць — на пристрої; за замовчуванням видно лише верхній рівень
+const OPEN_KEY = 'fishing-log:places-open';
+function openPlaces() {
+  try { return new Set(JSON.parse(recall(OPEN_KEY) || '[]')); } catch { return new Set(); }
+}
+function setOpenPlaces(set) {
+  remember(OPEN_KEY, JSON.stringify([...set]));
+  render();
+}
+const hasKids = (id) => state.places.some((x) => x.parentId === id);
+
+/** Рядки дерева: стрілка (згорнути/розгорнути) окремою кнопкою, тап по рядку — картка місця. */
+function placeRows(parentId, depth, open = openPlaces()) {
+  return state.places.filter((p) => (p.parentId ?? null) === parentId).sort((a, b) => collate(a.name, b.name)).flatMap((p) => {
+    const kids = hasKids(p.id);
+    const isOpen = kids && open.has(p.id);
+    const toggle = kids
+      ? h('button', {
+        type: 'button', class: 'tree-toggle', 'aria-expanded': String(isOpen),
+        'aria-label': t(isOpen ? 'Згорнути «{name}»' : 'Розгорнути «{name}»', { name: p.name }),
+        onclick: () => { if (!open.delete(p.id)) open.add(p.id); setOpenPlaces(open); },
+      }, h('span', { class: 'tree-chev', 'aria-hidden': 'true' }, '›'))
+      : h('span', { class: 'tree-toggle', 'aria-hidden': 'true' });
+    const item = h('div', { class: 'tree-item' }, toggle, row(p.name, p.note || null, fmt.num(countIn(p.id)), () => placeDetail(p.id), { id: p.id }));
+    item.style.setProperty('--depth', depth);
+    return [item, ...(isOpen && depth < 20 ? placeRows(p.id, depth + 1, open) : [])];
+  });
 }
 
 function renderPlaces() {
@@ -842,8 +885,12 @@ function renderPlaces() {
     return empty(t('Ще немає місць'), t('Місця — це де лежать снасті: «Гараж → Шафа → Ящик Plano №2». Вкладайте одне в одне скільки завгодно.'),
       [btn(t('Додати'), () => placeForm(), 'primary add'), importBtn()]);
   }
+  const parents = state.places.filter((p) => hasKids(p.id)).map((p) => p.id);
+  const open = openPlaces();
+  const allOpen = parents.length > 0 && parents.every((id) => open.has(id));
   return h('div', {},
-    h('div', { class: 'rows' }, placeRows(null, 0)),
+    parents.length ? h('div', { class: 'btn-row tree-tools' }, btn(allOpen ? t('Згорнути все') : t('Розгорнути все'), () => setOpenPlaces(new Set(allOpen ? [] : parents)), 'quiet')) : null,
+    h('div', { class: 'rows' }, placeRows(null, 0, open)),
     loose.length ? box(`${t('Без місця')} · ${loose.length}`, h('div', { class: 'rows' }, loose.sort(byGroup).map(gearRow))) : null,
     h('div', { class: 'btn-row' }, btn(t('Друк наклейок'), () => labelsSheet(state.places))));
 }
@@ -860,6 +907,12 @@ function placeForm(p = null, { parentId = null, onSaved = null } = {}) {
       const v = f.values();
       const rec = { ...(p ?? { id: db.uid(), created: Date.now() }), ...v, parentId: v.parentId || null };
       close();
+      // Нове вкладене місце має бути видно одразу — розгортаємо гілку з ним
+      if (rec.parentId) {
+        const open = openPlaces();
+        for (let x = findPlace(rec.parentId), i = 0; x && i < 20; x = findPlace(x.parentId), i += 1) open.add(x.id);
+        remember(OPEN_KEY, JSON.stringify([...open]));
+      }
       await save({ places: { put: [rec] } }, [rec.id]);
       onSaved?.(rec);
     }, 'primary')],
@@ -1008,7 +1061,7 @@ function renderTrips() {
     packBox(),
     list.length ? h('div', { class: 'rows' }, list.map(tripRow))
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]),
-    box(`${t('Водойми')} · ${spots.length}`, h('div', {},
+    fold('spots', `${t('Водойми')} · ${spots.length}`, h('div', {},
       spots.length ? h('div', { class: 'rows' }, spots.map((s) => row(s.name, [coordsText(s) || t('без координат'), s.note].filter(Boolean).join(' · '),
         fmt.num(state.trips.filter((x) => x.spotId === s.id).length), () => spotForm(s)))) : null,
       h('div', { class: 'btn-row' }, btn(t('+ Водойма'), () => spotForm())))));
@@ -1084,7 +1137,7 @@ function tripBody(tr) {
       [t('Вода'), tr.waterT !== null && tr.waterT !== undefined && tr.waterT !== '' ? `${fmt.num(tr.waterT)} °C` : null],
       [t('Нотатка'), tr.note ? h('span', { class: 'pre' }, tr.note) : null],
     ]),
-    box(t('Погода'), h('div', {},
+    fold('trip-weather', [t('Погода'), w ? shortWeather(w) : null].filter(Boolean).join(' · '), h('div', {},
       w ? kv([
         [t('Повітря'), `${fmt.num(Math.round(w.t))} °C`],
         [t('Тиск'), `${w.p} ${t('мм рт. ст.')} · ${t('за добу')} ${trend(w.dp)}`],
@@ -1686,13 +1739,6 @@ function applyTheme() {
 
 lightScheme.addEventListener('change', applyTheme);
 
-function switchLang(code) {
-  setLang(code);
-  applyStatic();
-  renderSyncChip(sync.status);
-  render();
-}
-
 // ---------- що нового ----------
 
 const SEEN_KEY = 'fishing-log:seen-version';
@@ -1878,12 +1924,6 @@ function wipeRow() {
     { danger: true });
 }
 
-function langRow() {
-  const c = chips(Object.entries(LANGS), lang(), switchLang);
-  c.classList.add('segmented');
-  return setRow('lang', 'globe', 'Мова · Язык', LANGS[lang()], c);
-}
-
 function themeRow() {
   const themeChips = (special) => {
     const c = chips(THEMES.filter(([k]) => SPECIAL_THEMES.includes(k) === special).map(([k, label]) => [k, t(label)]), themePref(),
@@ -1941,7 +1981,7 @@ function renderSettings() {
   return h('div', { class: 'settings' },
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [catsRow()]),
-    settingsGroup(t('Вигляд'), [langRow(), themeRow(), backdropRow()]),
+    settingsGroup(t('Вигляд'), [themeRow(), backdropRow()]),
     settingsGroup(t('Про застосунок'), [aboutPanel()]));
 }
 

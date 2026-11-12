@@ -21,7 +21,6 @@ const ASSETS = [
   './js/google-token.js',
   './js/ui.js',
   './js/i18n.js',
-  './js/ru.js',
   './js/photos.js',
   './js/changelog.js',
   './js/weather.js',
