@@ -398,6 +398,81 @@ let query = '';
 let groupFilter = recall('fishing-log:group') ?? '';
 let picking = null; // Set id — режим «Вибрати» для перенесення кількох речей
 
+// ---------- обслуговування ----------
+
+const monthsSince = (iso) => (Date.now() - Date.parse(`${iso}T12:00:00`)) / (30.44 * 864e5);
+/** Як часто: котушку — обслуговувати, шнур — міняти (місяці; ⚙ → «Обслуговування»). */
+const serviceMonths = () => ({ reel: num(prefs().serviceMonths?.reel) || 12, line: num(prefs().serviceMonths?.line) || 9 });
+const SERVICE_KINDS = [['lube', 'Змащення'], ['clean', 'Чистка'], ['bearing', 'Підшипник'], ['other', 'Інше']];
+
+/** Від якої дати рахувати: останнє обслуговування, інакше покупка. Без жодної дати — не нагадуємо (не знаємо). */
+function serviceSince(g) {
+  const last = (g.service ?? []).map((x) => x.date).filter(Boolean).sort().pop();
+  return last ?? g.firstBuy?.date ?? g.buyDate ?? (num(g.created) > 0 ? today(new Date(g.created)) : null);
+}
+
+/** Що з річчю пора зробити, або null. */
+function serviceDue(g) {
+  if (!active(g)) return null;
+  const m = serviceMonths();
+  if (groupOf(g) === 'reels') {
+    const since = serviceSince(g);
+    const age = since ? monthsSince(since) : 0;
+    return age >= m.reel ? t('не обслуговувалась {n} міс.', { n: Math.floor(age) }) : null;
+  }
+  if (groupOf(g) === 'lines' && g.onId && g.onDate) {
+    const age = monthsSince(g.onDate);
+    return age >= m.line ? t('намотано {n} міс. тому — час міняти', { n: Math.floor(age) }) : null;
+  }
+  return null;
+}
+
+function serviceSheet(g) {
+  let kind = 'lube';
+  const c = chips(SERVICE_KINDS.map(([k, l]) => [k, t(l)]), kind, (v) => { kind = v; });
+  const f = form([{ name: 'date', label: t('Дата'), type: 'dmy', value: today(), required: true }, { name: 'note', label: t('Примітка'), placeholder: t('напр. мастило Shimano, шпуля') }]);
+  const close = sheet(t('Обслужив'), h('div', {}, h('p', { class: 'muted small' }, gearTitle(g)), c, f.el), {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      const v = f.values();
+      close();
+      const rec = logged({ ...g, service: [...(g.service ?? []), { id: db.uid(), date: v.date, kind, note: v.note }] },
+        [t('Обслуговано'), t(label(SERVICE_KINDS, kind)), v.note].filter(Boolean).join(': '), v.date);
+      await save({ gear: { put: [rec] } }, [g.id]);
+    }, 'primary')],
+  });
+}
+
+/** Шнур перемотали чи поставили новий на ту саму котушку — відлік починається знову. */
+async function rewound(g) {
+  await save({ gear: { put: [logged({ ...g, onDate: today() }, t('Перемотано'))] } }, [g.id]);
+  toast(t('Відлік шнура почався знову'));
+}
+
+function serviceDueBox() {
+  const list = state.gear.map((g) => ({ g, why: serviceDue(g) })).filter((x) => x.why).sort((a, b) => byGroup(a.g, b.g));
+  if (!list.length) return null;
+  return fold('service-due', `${t('Потребує уваги')} · ${list.length}`,
+    h('div', { class: 'rows' }, list.map(({ g, why }) => row(gearTitle(g), why, '', () => gearDetail(g.id), { cls: 'low', thumb: gearThumb(g) }))));
+}
+
+function serviceRow() {
+  const m = serviceMonths();
+  const f = form([
+    { name: 'reel', label: t('Котушку — раз на, міс.'), type: 'number', value: m.reel, half: true },
+    { name: 'line', label: t('Шнур — міняти через, міс.'), type: 'number', value: m.line, half: true },
+  ]);
+  return setRow('service', 'wrench', t('Обслуговування'), t('{r} / {l} міс.', { r: m.reel, l: m.line }), [
+    h('p', { class: 'muted small' }, t('Котушка, яку давно не змащували, і шнур, що відходив своє, з’являться вгорі «Снастей» у «Потребує уваги».')),
+    f.el,
+    h('div', { class: 'btn-row' }, btn(t('Зберегти'), () => {
+      if (invalidField(f)) return;
+      const v = f.values();
+      if (!(v.reel > 0) || !(v.line > 0)) { toast(t('Більше нуля')); return; }
+      save({ prefs: { put: [{ ...prefs(), serviceMonths: { reel: v.reel, line: v.line } }] } });
+    }, 'primary'))]);
+}
+
 // ---------- уловистість ----------
 
 /** Улов на цю приманку чи насадку: [{ tr, c }] від нових виїздів до старих. */
@@ -535,7 +610,7 @@ function renderGear() {
   search.value = query;
   gearList = h('div');
   const tools = h('div', { class: 'btn-row' }, picking ? null : btn(t('Вибрати кілька'), () => { picking = new Set(); render(); }, 'quiet'));
-  const out = h('div', {}, search, c, tools, gearList);
+  const out = h('div', {}, serviceDueBox(), search, c, tools, gearList);
   queueMicrotask(paintGear);
   return out;
 }
@@ -677,6 +752,8 @@ function gearBody(g) {
     qty ? btn(t('Кількість'), () => qtySheet(g)) : null,
     btn(t('Перенести'), () => placePicker(t('Куди перенести'), (placeId) => moveGear([g], placeId))),
     group === 'reels' ? (host ? btn(t('Зняти з вудилища'), () => unmount(g)) : btn(t('На вудилище'), () => mountSheet(g, 'rods'))) : null,
+    ['reels', 'rods'].includes(group) && active(g) ? btn(t('Обслужив'), () => serviceSheet(g)) : null,
+    group === 'lines' && host ? btn(t('Перемотав'), () => rewound(g)) : null,
     group === 'lines' ? (host ? btn(t('Змотати з котушки'), () => unmount(g)) : btn(t('Намотати на котушку'), () => mountSheet(g, 'reels'))) : null,
     active(g) ? btn(t('Списати'), () => statusSheet(g)) : btn(t('Повернути в наявні'), () => setStatus(g, 'have', t('Повернуто в наявні'))),
   ];
@@ -688,7 +765,9 @@ function gearBody(g) {
       qty ? [t('Кількість'), h('span', { class: isLow(g) ? 'warn-text' : '' }, `${qtyText(g)}${isLow(g) ? ` · ${t('докупити')}` : ''}`)] : null,
       lostCount(g) ? [t('Втрачено'), `${fmt.num(lostCount(g))} ${unitLabel(g)}`] : null,
       [t('Вага'), weightText(g)],
-      host && group === 'lines' && g.onDate ? [t('Намотано'), fmt.date(g.onDate)] : null,
+      host && group === 'lines' && g.onDate ? [t('Намотано'), `${fmt.date(g.onDate)} · ${t('{n} міс. тому', { n: Math.floor(monthsSince(g.onDate)) })}`] : null,
+      group === 'reels' ? [t('Обслуговано'), (g.service ?? []).length ? fmt.date(serviceSince(g)) : t('ще ні')] : null,
+      serviceDue(g) ? [t('Увага'), h('span', { class: 'warn-text' }, serviceDue(g))] : null,
     ]),
     h('div', { class: 'btn-row' }, actions.filter(Boolean)),
     catchBox(g),
@@ -1059,6 +1138,8 @@ function renderTrips() {
   $('subtitle').textContent = season.length ? t('сезон {y}: виїздів {n}, риб {f}', { y: year, n: season.length, f: fmt.num(season.reduce((s, x) => s + tripCatch(x), 0)) }) : '';
   return h('div', {},
     packBox(),
+    seasonBox(),
+    recordsBox(),
     list.length ? h('div', { class: 'rows' }, list.map(tripRow))
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]),
     fold('spots', `${t('Водойми')} · ${spots.length}`, h('div', {},
@@ -1086,6 +1167,7 @@ function tripForm(tr = null, preset = {}) {
     { name: 'to', label: t('До'), type: 'time', value: tr?.to ?? '', half: true },
     { name: 'spotId', label: t('Водойма'), type: 'select', options: spotOpts(), value: tr?.spotId ?? last?.spotId ?? '' },
     { name: 'waterT', label: t('Вода, °C'), type: 'number', value: tr?.waterT, half: true },
+    { name: 'cost', label: t('Інші витрати, грн'), type: 'number', value: tr?.cost, half: true, placeholder: t('бензин, путівка') },
     { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 2, value: tr?.note },
   ]);
   f.inputs.spotId.closest('.field').after(h('div', { class: 'specs-find' }, btn(t('+ Водойма'), () => spotForm(null, {
@@ -1135,6 +1217,12 @@ function tripBody(tr) {
       [t('Як ловив'), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', ')],
       [t('Чим ловив'), (tr.gearIds ?? []).map(findGear).filter(Boolean).map(gearTitle).join(', ')],
       [t('Вода'), tr.waterT !== null && tr.waterT !== undefined && tr.waterT !== '' ? `${fmt.num(tr.waterT)} °C` : null],
+      (() => {
+        const c = tripCost(tr);
+        if (!c.total) return null;
+        const parts = [c.lost ? t('втрати {s}', { s: fmt.money(c.lost) }) : null, c.spent ? t('прикормка {s}', { s: fmt.money(c.spent) }) : null, c.other ? t('інше {s}', { s: fmt.money(c.other) }) : null].filter(Boolean);
+        return [t('Вартість'), `${fmt.money(c.total)}${parts.length > 1 ? ` (${parts.join(', ')})` : ''}`];
+      })(),
       [t('Нотатка'), tr.note ? h('span', { class: 'pre' }, tr.note) : null],
     ]),
     fold('trip-weather', [t('Погода'), w ? shortWeather(w) : null].filter(Boolean).join(' · '), h('div', {},
@@ -1218,12 +1306,16 @@ function catchForm(tr, c = null) {
       try { photo = await photoChanges(c, pick.value(), tr.id); } catch (err) { toast(err.message); return; }
       close();
       const rec = { ...(c ?? { id: db.uid() }), ...v, n: Math.max(1, num(v.n) || 1), baitId: v.baitId || null, bait: v.baitId ? '' : v.bait, released, photoId: photo.photoId };
+      const prev = catchRecords().get(v.species);
       const now = findTrip(tr.id);
       const catches = c ? (now.catches ?? []).map((x) => (x.id === c.id ? rec : x)) : [...(now.catches ?? []), rec];
       // Новий вид — у свій список, щоб наступного разу підказувався
       const own = prefs().species ?? [];
       const known = allSpecies().some((x) => x.toLowerCase() === v.species.toLowerCase());
       await save(joinChanges(photo.changes, { trips: { put: [{ ...now, catches }] } }, known ? {} : { prefs: { put: [{ ...prefs(), species: [...own, v.species] }] } }));
+      // Рекорд — лише якщо був попередній і цей його побив (перша рибина виду — ще не подія)
+      const nowBest = catchRecords().get(v.species);
+      if (prev && nowBest?.c.id === rec.id && prev.c.id !== rec.id) toast(t('Новий рекорд: {s} — {w}!', { s: v.species, w: fishSize(rec) }));
     }, 'primary')],
   });
 }
@@ -1355,6 +1447,68 @@ function pickGear(title, fits, onPick) {
   search.addEventListener('input', paint);
   paint();
   sheet(title, h('div', {}, search, rows));
+}
+
+// ---------- сезон: ціна риболовлі ----------
+
+/** Що коштував виїзд: втрачене й витрачене на ньому за ціною покупки + інші витрати (бензин, путівка). */
+function tripCost(tr) {
+  const lost = tripLosses(tr.id).reduce((s, x) => s + (num(x.n) || 1) * num(x.g.price), 0);
+  const spent = tripSpends(tr.id).reduce((s, x) => s + num(x.n) * num(x.g.price), 0);
+  const other = num(tr.cost);
+  return { lost, spent, other, total: Math.round((lost + spent + other) * 100) / 100 };
+}
+
+function seasonBox() {
+  const year = today().slice(0, 4);
+  const trips = state.trips.filter((x) => x.date.startsWith(year));
+  if (!trips.length) return null;
+  const fish = trips.reduce((s, x) => s + tripCatch(x), 0);
+  const kg = trips.reduce((s, x) => s + tripKg(x), 0);
+  const onTrips = trips.reduce((s, x) => s + tripCost(x).total, 0);
+  const gear = purchases().filter((x) => x.date.startsWith(year)).reduce((s, x) => s + x.amount, 0);
+  return fold('season', t('Сезон {y}: {n} виїздів · {f} риб', { y: year, n: trips.length, f: fmt.num(fish) }), h('div', {},
+    kv([
+      [t('Улов'), [fmt.num(fish), kg ? `${fmt.num(Math.round(kg * 10) / 10)} ${t('кг')}` : null].filter(Boolean).join(' · ')],
+      [t('На виїздах'), onTrips ? fmt.money(onTrips) : '—'],
+      [t('Покупки снастей'), gear ? fmt.money(gear) : '—'],
+      [t('Разом'), fmt.money(onTrips + gear)],
+      fish ? [t('Ціна однієї рибини'), h('b', {}, fmt.money((onTrips + gear) / fish))] : null,
+      fish && onTrips && gear ? [t('Без покупок'), fmt.money(onTrips / fish)] : null,
+    ]),
+    h('p', { class: 'muted small' }, t('На виїздах — втрачене й прикормка за ціною покупки плюс «Інші витрати» виїзду. Покупки — з карток снастей і «+ Купив».'))));
+}
+
+// ---------- рекорди ----------
+
+/** Найбільша рибина кожного виду: за вагою, а якщо ваги немає ні в кого — за довжиною. Лише поштучні записи. */
+function catchRecords() {
+  const best = new Map();
+  for (const tr of state.trips) {
+    for (const c of tr.catches ?? []) {
+      if ((num(c.n) || 1) !== 1 || !(num(c.weight) || num(c.length))) continue;
+      const cur = best.get(c.species);
+      const better = !cur || num(c.weight) > num(cur.c.weight) || (!num(c.weight) && !num(cur.c.weight) && num(c.length) > num(cur.c.length));
+      if (better) best.set(c.species, { c, tr });
+    }
+  }
+  return best;
+}
+
+const fishSize = (c) => [num(c.weight) ? `${fmt.num(c.weight)} ${t('кг')}` : null, num(c.length) ? `${fmt.num(c.length)} ${t('см')}` : null].filter(Boolean).join(' · ');
+
+function recordsBox() {
+  const best = [...catchRecords()].sort((a, b) => num(b[1].c.weight) - num(a[1].c.weight) || collate(a[0], b[0]));
+  const year = today().slice(0, 4);
+  const top = state.trips.filter((x) => x.date.startsWith(year) && tripCatch(x)).sort((a, b) => tripKg(b) - tripKg(a) || tripCatch(b) - tripCatch(a))[0];
+  if (!best.length && !top) return null;
+  return fold('records', `${t('Рекорди')} · ${best.length}`, h('div', {},
+    best.length ? h('div', { class: 'rows' }, best.map(([sp, { c, tr }]) => row(`${sp} — ${fishSize(c)}`,
+      [fmt.date(tr.date), tripTitle(tr), baitText(c)].filter(Boolean).join(' · '), '', () => tripDetail(tr.id)))) : null,
+    top ? [h('div', { class: 'field-label' }, t('Найкращий виїзд сезону')),
+      h('div', { class: 'rows' }, row(`${tripTitle(top)} · ${fmt.date(top.date)}`,
+        [t('риб: {n}', { n: fmt.num(tripCatch(top)) }), tripKg(top) ? `${fmt.num(Math.round(tripKg(top) * 10) / 10)} ${t('кг')}` : null].filter(Boolean).join(' · '),
+        '', () => tripDetail(top.id)))] : null));
 }
 
 // ---------- наклейки з QR ----------
@@ -2045,7 +2199,7 @@ function renderSettings() {
   return h('div', { class: 'settings' },
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
-    settingsGroup(t('Снасті'), [catsRow()]),
+    settingsGroup(t('Снасті'), [catsRow(), serviceRow()]),
     settingsGroup(t('Вигляд'), [themeRow(), backdropRow()]));
 }
 

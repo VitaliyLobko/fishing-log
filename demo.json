@@ -142,7 +142,16 @@
     "spools": 0,
     "price": 1900,
     "placeId": "demo-tubes",
-    "onId": "demo-rod1"
+    "onId": "demo-rod1",
+    "service": [
+     {
+      "id": "demo-sv1",
+      "date": "2025-05-10",
+      "kind": "lube",
+      "note": "мастило Shimano"
+     }
+    ],
+    "buyDate": "2024-04-02"
    },
    {
     "id": "demo-line1",
@@ -614,7 +623,8 @@
      }
     ],
     "created": 0,
-    "updated": 1
+    "updated": 1,
+    "cost": 350
    },
    {
     "id": "demo-t2",
@@ -690,7 +700,8 @@
      }
     ],
     "created": 0,
-    "updated": 1
+    "updated": 1,
+    "cost": 120
    }
   ],
   "packs": [
