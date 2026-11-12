@@ -264,7 +264,8 @@
      {
       "id": "demo-l-6vdc1i",
       "date": "2026-10-11",
-      "n": 3
+      "n": 3,
+      "tripId": "demo-t3"
      }
     ]
    },
@@ -376,7 +377,8 @@
       "id": "demo-l-xciugm",
       "date": "2026-09-21",
       "n": 2,
-      "reason": "break"
+      "reason": "break",
+      "tripId": "demo-t1"
      }
     ]
    },
@@ -403,7 +405,8 @@
       "id": "demo-l-oijjo7",
       "date": "2026-09-21",
       "n": 1,
-      "reason": "snag"
+      "reason": "snag",
+      "tripId": "demo-t1"
      }
     ]
    },
@@ -430,7 +433,8 @@
       "id": "demo-l-xp3z68",
       "date": "2026-10-05",
       "n": 2,
-      "reason": "break"
+      "reason": "break",
+      "tripId": "demo-t2"
      }
     ]
    },
@@ -452,7 +456,15 @@
     "qty": 2.5,
     "low": 1,
     "price": 180,
-    "placeId": "demo-feederbox"
+    "placeId": "demo-feederbox",
+    "spends": [
+     {
+      "id": "demo-sp1",
+      "date": "2026-09-21",
+      "n": 1.5,
+      "tripId": "demo-t1"
+     }
+    ]
    },
    {
     "id": "demo-gb2",
@@ -532,6 +544,151 @@
     "name": "Котушка Shimano Vanford 2500",
     "price": 9800,
     "link": "https://example.com",
+    "created": 0,
+    "updated": 1
+   }
+  ],
+  "spots": [
+   {
+    "id": "demo-s1",
+    "name": "Дніпро, Козачий острів",
+    "lat": 50.38512,
+    "lon": 30.57688,
+    "note": "Течія, кам’янистий схил — годівниці 80 г",
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-s2",
+    "name": "Ставок у Плютах",
+    "lat": 50.14211,
+    "lon": 30.71874,
+    "created": 0,
+    "updated": 1
+   }
+  ],
+  "trips": [
+   {
+    "id": "demo-t1",
+    "date": "2026-09-21",
+    "from": "06:00",
+    "to": "12:30",
+    "spotId": "demo-s1",
+    "kinds": [
+     "feeder"
+    ],
+    "gearIds": [
+     "demo-rod2"
+    ],
+    "waterT": 17,
+    "note": "Сильна течія, на 60 г зносило",
+    "weather": {
+     "t": 14.2,
+     "p": 752,
+     "dp": -3,
+     "w": 3.1,
+     "wd": 300,
+     "cc": 40,
+     "rain": 0,
+     "date": "2026-09-21",
+     "hour": 6,
+     "spotId": "demo-s1"
+    },
+    "photoIds": [],
+    "catches": [
+     {
+      "id": "demo-c1",
+      "species": "Лящ",
+      "n": 3,
+      "weight": 2.4,
+      "baitId": "demo-pellet",
+      "released": false
+     },
+     {
+      "id": "demo-c2",
+      "species": "Плітка",
+      "n": 14,
+      "weight": 1.6,
+      "bait": "опариш",
+      "released": true
+     }
+    ],
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-t2",
+    "date": "2026-10-05",
+    "from": "07:00",
+    "to": "11:00",
+    "spotId": "demo-s1",
+    "kinds": [
+     "feeder"
+    ],
+    "gearIds": [
+     "demo-rod2"
+    ],
+    "weather": {
+     "t": 9.8,
+     "p": 758,
+     "dp": 4,
+     "w": 2.2,
+     "wd": 45,
+     "cc": 90,
+     "rain": 1.2,
+     "date": "2026-10-05",
+     "hour": 7,
+     "spotId": "demo-s1"
+    },
+    "photoIds": [],
+    "catches": [],
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-t3",
+    "date": "2026-10-11",
+    "from": "08:00",
+    "to": "13:00",
+    "spotId": "demo-s2",
+    "kinds": [
+     "spin"
+    ],
+    "gearIds": [
+     "demo-rod1"
+    ],
+    "weather": {
+     "t": 11.5,
+     "p": 749,
+     "dp": -6,
+     "w": 4.4,
+     "wd": 200,
+     "cc": 75,
+     "rain": 0.4,
+     "date": "2026-10-11",
+     "hour": 8,
+     "spotId": "demo-s2"
+    },
+    "photoIds": [],
+    "catches": [
+     {
+      "id": "demo-c3",
+      "species": "Щука",
+      "n": 1,
+      "weight": 2.1,
+      "length": 61,
+      "baitId": "demo-wob1",
+      "released": true
+     },
+     {
+      "id": "demo-c4",
+      "species": "Окунь",
+      "n": 6,
+      "weight": 0.9,
+      "baitId": "demo-soft",
+      "released": true
+     }
+    ],
     "created": 0,
     "updated": 1
    }

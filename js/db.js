@@ -3,9 +3,9 @@
 // це потрібно, щоб синхронізація з Google Диском зливала зміни без втрат.
 // Файли фото лежать окремо в blobs: вони не входять у JSON синхронізації й резервної копії.
 const DB_NAME = 'fishing-log';
-// Нові сховища створює onupgradeneeded (підняти версію), наявні дані не чіпає
-const DB_VERSION = 1;
-export const STORES = ['places', 'gear', 'wishes', 'photos', 'prefs'];
+// Нові сховища створює onupgradeneeded (підняти версію), наявні дані не чіпає. 2 — водойми й виїзди (0.3.0)
+const DB_VERSION = 2;
+export const STORES = ['places', 'gear', 'spots', 'trips', 'wishes', 'photos', 'prefs'];
 // prefs — налаштування, спільні для всіх пристроїв (їде з Диском і копією), але не дані: порожня база з ними все одно порожня
 export const DATA_STORES = STORES.filter((s) => s !== 'prefs');
 const ALL = [...STORES, 'tombstones'];
