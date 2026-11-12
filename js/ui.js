@@ -685,8 +685,9 @@ export function swipeable(card, { onRight, onLeft, onTap, onSwipe, rightLabel, l
   // Тап відкриваємо на click, а не на pointerup: click приходить останнім,
   // тож після відкриття шторки вже нема «фантомного» кліку, який її закриє.
   let tapArmed = false;
-  card.addEventListener('click', () => {
-    if (!tapArmed) return;
+  card.addEventListener('click', (e) => {
+    // detail 0 — клік від клавіатури чи читача екрана (без вказівника): теж тап
+    if (!tapArmed && e.detail !== 0) return;
     tapArmed = false;
     onTap?.();
   });

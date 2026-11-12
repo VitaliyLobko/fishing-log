@@ -888,3 +888,14 @@ button.about-avatar { padding: 0; border: 0; }
 .gear-groups > .ex-more > summary { gap: 6px; }
 .dir-switch { margin: 0 0 12px; }
 .pick-bar { flex-wrap: wrap; } .pick-bar .btn-row { flex-wrap: wrap; justify-content: flex-end; }
+
+/* Свайп рядка речі: вправо — швидка дія (акцент), вліво — «Списати» (червоний); підкладка — під рядком */
+.gear-card { position: relative; overflow: hidden; border-radius: 18px; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+.gear-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gear-card .swipe-body { position: relative; z-index: 1; will-change: transform; cursor: pointer; }
+.gear-card .swipe-bg { position: absolute; inset: 0; display: none; align-items: center; padding: 0 20px; font-weight: 800; color: var(--on-accent); border-radius: 18px; }
+.gear-card .swipe-bg.right { background: var(--fill); justify-content: flex-start; }
+.gear-card .swipe-bg.left { background: var(--shoot); color: #fff; justify-content: flex-end; }
+.gear-card.dir-right .swipe-bg.right, .gear-card.dir-left .swipe-bg.left { display: flex; opacity: .55; }
+.gear-card.armed .swipe-bg.right, .gear-card.armed .swipe-bg.left { opacity: 1; }
+.box .gear-card .swipe-body { box-shadow: none; }

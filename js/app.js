@@ -5,7 +5,7 @@ import * as sync from './sync.js';
 import { t, lang, collate, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
-import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep } from './ui.js';
+import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
 let tab = 'gear';
@@ -537,7 +537,22 @@ function gearRow(g) {
       if (!picking.delete(g.id)) picking.add(g.id);
       paintGear();
     }, { id: g.id, cls: [picking?.has(g.id) ? 'picked' : '', active(g) ? '' : 'gone', isLow(g) ? 'low' : ''].join(' '), thumb: gearThumb(g) });
-  return el;
+  if (picking) return el;
+  // Свайп: вліво — «Списати» (відкриває вибір, нічого не робить сам), вправо — швидка дія; тап — картка
+  const body = h('div', { class: `${el.className} swipe-body`, role: 'button', dataset: { id: g.id } }, ...el.childNodes);
+  const quick = quickAction(g);
+  return swipeable(h('div', { class: 'gear-card', 'aria-label': gearTitle(g) }, body), {
+    onTap: () => gearDetail(g.id),
+    onRight: quick.fn, rightLabel: quick.label,
+    onLeft: active(g) ? () => statusSheet(g) : null, leftLabel: active(g) ? t('Списати') : '',
+  });
+}
+
+/** Швидка дія свайпом вправо: що найчастіше роблять із цією річчю. */
+function quickAction(g) {
+  if (!active(g)) return { label: t('Повернути'), fn: () => setStatus(g, 'have', t('Повернуто в наявні')) };
+  if (isQty(g)) return pieces(g) ? { label: t('−1 Втратив'), fn: () => lostOne(g) } : { label: t('Витратив'), fn: () => spendSheet(g) };
+  return { label: t('Перенести'), fn: () => placePicker(t('Куди перенести'), (placeId) => moveGear([g], placeId)) };
 }
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/[’ʼ`']/g, "'");
