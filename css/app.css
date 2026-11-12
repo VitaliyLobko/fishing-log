@@ -880,8 +880,8 @@ button.about-avatar { padding: 0; border: 0; }
 .search-row .gear-search { flex: 1; min-width: 0; margin: 0; }
 .search-row .btn.mini { flex: none; min-height: 44px; }
 .sec-head { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; }
-.sec-ico { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--surface-2); color: var(--accent-2); }
-.sec-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sec-ico { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); color: var(--accent-2); }
+.sec-ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .sec-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sec-low { flex: none; color: var(--warn); font-size: 13px; font-weight: 600; }
 .sec-count { flex: none; min-width: 28px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
