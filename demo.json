@@ -692,6 +692,48 @@
     "created": 0,
     "updated": 1
    }
+  ],
+  "packs": [
+   {
+    "id": "demo-p1",
+    "name": "Фідер на річці",
+    "created": 0,
+    "updated": 1,
+    "checked": [
+     "demo-rod2"
+    ],
+    "items": [
+     {
+      "gearId": "demo-rod2"
+     },
+     {
+      "gearId": "demo-rodpod"
+     },
+     {
+      "gearId": "demo-cage80"
+     },
+     {
+      "gearId": "demo-cage60"
+     },
+     {
+      "gearId": "demo-gb1"
+     },
+     {
+      "gearId": "demo-pellet"
+     },
+     {
+      "gearId": "demo-hook"
+     },
+     {
+      "id": "demo-pi1",
+      "text": "Термос"
+     },
+     {
+      "id": "demo-pi2",
+      "text": "Стілець"
+     }
+    ]
+   }
   ]
  }
 }

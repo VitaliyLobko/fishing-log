@@ -743,3 +743,7 @@ body:has(#layer .backdrop) .toast:not(.reminder) { bottom: auto; top: calc(env(s
 /* Фото виїзду — стрічкою, тап — на весь екран */
 .photo-strip { display: flex; gap: 8px; overflow-x: auto; margin: 0 0 12px; scrollbar-width: none; }
 .photo-strip img { flex: none; width: 120px; height: 90px; border-radius: 12px; object-fit: cover; cursor: zoom-in; }
+
+/* Збори: зібране — блідіше й закреслене */
+.pack-row.done .row-title { opacity: .55; text-decoration: line-through; }
+.pack-row .row-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }

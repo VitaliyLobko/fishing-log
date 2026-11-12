@@ -7,7 +7,7 @@ import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
 import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, goTab, confirmed, fieldError, setUndo, swipeStep } from './ui.js';
 
-let state = { places: [], gear: [], spots: [], trips: [], wishes: [], photos: [], prefs: [] };
+let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
 let tab = 'gear';
 
 const $ = (id) => document.getElementById(id);
@@ -925,6 +925,7 @@ function renderTrips() {
   const season = list.filter((x) => x.date.startsWith(year));
   $('subtitle').textContent = season.length ? t('сезон {y}: виїздів {n}, риб {f}', { y: year, n: season.length, f: fmt.num(season.reduce((s, x) => s + tripCatch(x), 0)) }) : '';
   return h('div', {},
+    packBox(),
     list.length ? h('div', { class: 'rows' }, list.map(tripRow))
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]),
     box(`${t('Водойми')} · ${spots.length}`, h('div', {},
@@ -942,7 +943,8 @@ function multiChips(options, selected = []) {
   return { el, value: () => options.map(([k]) => k).filter((k) => on.has(k)) };
 }
 
-function tripForm(tr = null) {
+/** preset — для нового виїзду, напр. вудилища зі збору. */
+function tripForm(tr = null, preset = {}) {
   const last = [...state.trips].sort((a, b) => collate(b.date, a.date))[0];
   const spotOpts = () => [['', '—'], ...[...state.spots].sort((a, b) => collate(a.name, b.name)).map((s) => [s.id, s.name])];
   const f = form([
@@ -956,9 +958,9 @@ function tripForm(tr = null) {
   f.inputs.spotId.closest('.field').after(h('div', { class: 'specs-find' }, btn(t('+ Водойма'), () => spotForm(null, {
     onSaved: (s) => { f.inputs.spotId.replaceChildren(...selectOptions(spotOpts(), s.id)); },
   }), 'mini')));
-  const kinds = multiChips(KINDS.map(([k, l]) => [k, t(l)]), tr?.kinds ?? last?.kinds ?? []);
+  const kinds = multiChips(KINDS.map(([k, l]) => [k, t(l)]), tr?.kinds ?? (preset.kinds?.length ? preset.kinds : null) ?? last?.kinds ?? []);
   const rods = state.gear.filter((g) => active(g) && ['rods'].includes(groupOf(g))).sort(byGroup);
-  const used = multiChips(rods.map((g) => [g.id, gearTitle(g)]), tr?.gearIds ?? []);
+  const used = multiChips(rods.map((g) => [g.id, gearTitle(g)]), tr?.gearIds ?? preset.gearIds ?? []);
   const close = sheet(tr ? t('Змінити') : t('Новий виїзд'), h('div', {},
     f.el, h('div', { class: 'field-label' }, t('Як ловив')), kinds.el,
     rods.length ? [h('div', { class: 'field-label' }, t('Чим ловив')), used.el] : null), {
@@ -1116,6 +1118,107 @@ function removeTrip(tr) {
     await save(joinChanges(dropPhotos(photos), { trips: { del: [tr.id] } }));
     toast(t('Видалено'));
   });
+}
+
+// ---------- збори ----------
+
+const findPack = (id) => (id ? state.packs.find((x) => x.id === id) : null);
+const packKey = (it) => it.gearId ?? it.id;
+
+/** Пункти збору по порядку обходу: за шляхом місця, де лежить річ; вільні пункти — наприкінці. */
+function packItems(p) {
+  return (p.items ?? []).map((it) => ({ it, g: findGear(it.gearId) }))
+    .filter((x) => !x.it.gearId || x.g)
+    .sort((a, b) => (a.g ? 0 : 1) - (b.g ? 0 : 1) || collate(a.g ? whereText(a.g) : '', b.g ? whereText(b.g) : '') || collate(a.g ? gearTitle(a.g) : a.it.text, b.g ? gearTitle(b.g) : b.it.text));
+}
+
+function packBox() {
+  const list = [...state.packs].sort((a, b) => collate(a.name, b.name));
+  return box(`${t('Збори')} · ${list.length}`, h('div', {},
+    list.length ? h('div', { class: 'rows' }, list.map((p) => {
+      const items = packItems(p);
+      const done = items.filter((x) => (p.checked ?? []).includes(packKey(x.it))).length;
+      const low = items.filter((x) => x.g && isLow(x.g)).length;
+      return row(p.name, [t('зібрано {d} з {n}', { d: done, n: items.length }), low ? t('мало: {n}', { n: low }) : null].filter(Boolean).join(' · '), '', () => packDetail(p.id), { cls: low ? 'low' : '' });
+    })) : h('p', { class: 'muted small' }, t('Шаблон «що беру»: «Фідер на річці», «Щука з човна». Галочки, де що лежить і чого мало.')),
+    h('div', { class: 'btn-row' }, btn(t('+ Збір'), () => packForm()))));
+}
+
+function packForm(p = null) {
+  const f = form([{ name: 'name', label: t('Назва'), value: p?.name, required: true, placeholder: t('напр. Фідер на річці') }]);
+  const close = sheet(p ? t('Змінити') : t('Новий збір'), f.el, {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      const rec = { ...(p ?? { id: db.uid(), created: Date.now(), items: [], checked: [] }), name: f.values().name };
+      close();
+      await save({ packs: { put: [rec] } }, [rec.id]);
+      if (!p) packDetail(rec.id);
+    }, 'primary')],
+  });
+}
+
+function packDetail(id) {
+  const build = () => { const p = findPack(id); return p ? packBody(p) : null; };
+  sheet(() => findPack(id)?.name, build(), {
+    live: build,
+    tools: [toolBtn('edit', t('Змінити'), () => packForm(findPack(id))),
+      toolBtn('delete', t('Видалити'), () => confirmSheet(t('Видалити «{name}»?', { name: findPack(id).name }), t('Речі нікуди не дінуться — зникне лише список.'), t('Видалити'), () => save({ packs: { del: [id] } })), 'danger')],
+  });
+}
+
+const savePack = (p, fields) => save({ packs: { put: [{ ...p, ...fields }] } }, [p.id]);
+
+function packBody(p) {
+  const items = packItems(p);
+  const checked = new Set(p.checked ?? []);
+  const toggle = (k) => { if (!checked.delete(k)) checked.add(k); savePack(p, { checked: [...checked] }); };
+  const drop = (k) => savePack(p, { items: (p.items ?? []).filter((it) => packKey(it) !== k), checked: [...checked].filter((x) => x !== k) });
+  const rods = items.filter((x) => x.g && groupOf(x.g) === 'rods').map((x) => x.g.id);
+  return h('div', {},
+    items.length ? h('p', { class: 'muted small' }, t('Зібрано {d} з {n} · по порядку місць, де лежить', { d: items.filter((x) => checked.has(packKey(x.it))).length, n: items.length })) : null,
+    items.length ? h('div', { class: 'rows' }, items.map(({ it, g }) => {
+      const k = packKey(it);
+      const on = checked.has(k);
+      return h('div', { class: `row slot pack-row${on ? ' done' : ''}${g && isLow(g) ? ' low' : ''}` },
+        h('span', { class: 'row-main', role: 'checkbox', 'aria-checked': String(on), tabindex: '0', onclick: () => toggle(k), onkeydown: (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(k); } } },
+          h('span', { class: 'row-title' }, `${on ? '☑' : '☐'} ${g ? gearTitle(g) : it.text}`),
+          g ? h('span', { class: 'muted small' }, [weightText(g), g.color, whereText(g), isQty(g) ? `${qtyText(g)}${isLow(g) ? ` — ${t('мало!')}` : ''}` : null].filter(Boolean).join(' · ')) : null),
+        btn('×', () => drop(k), 'quiet'));
+    })) : h('p', { class: 'muted' }, t('Порожньо. Додайте речі зі снастей і вільні пункти — термос, стілець, ліхтарик.')),
+    h('div', { class: 'btn-row' },
+      btn(t('+ Річ'), () => pickGear(t('Додати до збору'), (g) => !(findPack(p.id)?.items ?? []).some((it) => it.gearId === g.id), (g) => savePack(findPack(p.id), { items: [...(findPack(p.id).items ?? []), { gearId: g.id }] }))),
+      btn(t('+ Пункт'), () => textItemForm(p))),
+    h('div', { class: 'btn-row' },
+      checked.size ? btn(t('Скинути галочки'), () => savePack(p, { checked: [] })) : null,
+      // Вид ловлі — з типів вудилищ у зборі: фідерний збір — «Фідер», а не те, що було минулого разу
+      btn(t('Зібрав → виїзд'), () => tripForm(null, { gearIds: rods, kinds: [...new Set(rods.map((r) => findGear(r)?.rodType).filter((k) => KINDS.some(([x]) => x === k)))] }), 'primary')));
+}
+
+function textItemForm(p) {
+  const f = form([{ name: 'text', label: t('Що взяти'), required: true, placeholder: t('напр. термос') }]);
+  const close = sheet(t('+ Пункт'), f.el, {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Додати'), () => {
+      if (invalidField(f)) return;
+      close();
+      const now = findPack(p.id);
+      savePack(now, { items: [...(now.items ?? []), { id: db.uid(), text: f.values().text }] });
+    }, 'primary')],
+  });
+}
+
+/** Вибір будь-якої речі в наявності з пошуком; після вибору список лишається відкритим — додавати кілька поспіль. */
+function pickGear(title, fits, onPick) {
+  const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук: назва, бренд, колір, місце…'), autocomplete: 'off' });
+  const rows = h('div', { class: 'rows' });
+  const paint = () => {
+    const words = norm(search.value).split(/\s+/).filter(Boolean);
+    rows.replaceChildren(...state.gear.filter((g) => active(g) && fits(g)).filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); }).sort(byGroup)
+      .map((g) => row(gearTitle(g), [weightText(g), g.color, whereText(g)].filter(Boolean).join(' · '), isQty(g) ? qtyText(g) : '',
+        async () => { await onPick(g); paint(); }, { thumb: thumbImg(g.photoId, monogram(gearTitle(g))) })));
+  };
+  search.addEventListener('input', paint);
+  paint();
+  sheet(title, h('div', {}, search, rows));
 }
 
 // ---------- наклейки з QR ----------
@@ -1629,7 +1732,7 @@ function wipeRow() {
   return setRow('wipe', 'delete', t('Видалити дані з пристрою'), '',
     h('div', { class: 'btn-row' }, btn(t('Видалити дані з пристрою'), () => confirmSheet(t('Видалити дані з пристрою?'), sync.enabled()
       ? t('Дані буде видалено з цього пристрою. Копія на Google Диску залишиться й повернеться під час наступної синхронізації — щоб цього не сталося, спершу вимкніть синхронізацію.')
-      : t('Снасті, місця, виїзди, бажання й фото буде видалено з цього пристрою. Скасувати не можна.'), t('Видалити'), async () => {
+      : t('Снасті, місця, виїзди, збори, бажання й фото буде видалено з цього пристрою. Скасувати не можна.'), t('Видалити'), async () => {
       await db.clearAll(); await refresh(); toast(t('Дані видалено'));
     }), 'danger')),
     { danger: true });
