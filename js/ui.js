@@ -539,7 +539,8 @@ export function form(fields) {
       input = timeInput(f.value, f.label);
     } else {
       input = h('input', {
-        name: f.name, type: f.type ?? 'text', step: f.step, min: f.min, list: f.list,
+        // Число — текстом із цифровою клавіатурою: type=number на частині пристроїв не приймає кому («0,5 кг»)
+        name: f.name, type: f.type === 'number' ? 'text' : f.type ?? 'text', step: f.step, min: f.min, list: f.list,
         inputmode: f.type === 'number' ? 'decimal' : undefined,
         placeholder: f.placeholder, autocomplete: 'off',
       });
