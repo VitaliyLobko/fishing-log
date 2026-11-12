@@ -39,8 +39,8 @@ function box(title, content, tools = null) {
 }
 
 /** Група, що згортається; розгорнуту пам'ятає між запусками. */
-function fold(key, title, body) {
-  const el = h('details', { class: 'ex-more', open: recall(`fishing-log:open:${key}`) === '1' }, h('summary', {}, title), body);
+function fold(key, title, body, cls = '') {
+  const el = h('details', { class: `ex-more ${cls}`.trim(), open: recall(`fishing-log:open:${key}`) === '1' }, h('summary', {}, title), body);
   el.addEventListener('toggle', () => remember(`fishing-log:open:${key}`, el.open ? '1' : ''));
   return el;
 }
@@ -259,8 +259,17 @@ const ACTIONS = [['', '—'], ['xfast', 'Екстрашвидкий'], ['fast', 
 const ROD_TYPES = [['', '—'], ['spin', 'Спінінг'], ['feeder', 'Фідер'], ['float', 'Поплавок'], ['fly', 'Нахлист'], ['other', 'Інше']];
 const label = (list, k) => (k ? t(list.find(([x]) => x === k)?.[1] ?? '') : '');
 // Поля, що показуються лише для своєї групи
-const GROUP_FIELDS = { rods: ['length', 'test', 'action', 'pieces', 'rodType'], reels: ['size', 'ratio', 'spools'], lines: ['pe', 'mm', 'length'] };
-const SPEC_FIELDS = [...new Set(Object.values(GROUP_FIELDS).flat())];
+const GROUP_FIELDS = {
+  rods: ['length', 'test', 'action', 'pieces', 'rodType'], reels: ['size', 'ratio', 'spools'], lines: ['pe', 'mm', 'length'],
+  lures: ['lureSize', 'sizeUnit'],
+};
+// Поля лише окремої категорії: у воблера — плавучість і заглиблення
+const CAT_FIELDS = { wobbler: ['buoy', 'depth'] };
+const SPEC_FIELDS = [...new Set([...Object.values(GROUP_FIELDS).flat(), ...Object.values(CAT_FIELDS).flat()])];
+const SIZE_UNITS = [['mm', 'мм'], ['cm', 'см'], ['in', 'дюйми']];
+const BUOYS = [['', '—'], ['F', 'F — плаває'], ['SP', 'SP — суспендер'], ['S', 'S — тоне'], ['SS', 'SS — повільно тоне']];
+/** Розмір приманки: «95 мм», «3"». */
+const sizeText = (g) => (num(g.lureSize) ? (g.sizeUnit === 'in' ? `${fmt.num(g.lureSize)}"` : `${fmt.num(g.lureSize)} ${t(g.sizeUnit === 'cm' ? 'см' : 'мм')}`) : null);
 
 const active = (g) => (g.status ?? 'have') === 'have';
 
@@ -649,7 +658,7 @@ function catchBox(g) {
 function gearRow(g) {
   const qty = isQty(g);
   const fish = caughtCount(g);
-  const sub = [fish ? `🐟 ${fmt.num(fish)}` : null, weightText(g), [g.brand, g.model].filter(Boolean).join(' '), g.color, active(g) ? whereText(g) : t(STATUS[g.status])].filter(Boolean).join(' · ');
+  const sub = [fish ? `🐟 ${fmt.num(fish)}` : null, sizeText(g), weightText(g), [g.brand, g.model].filter(Boolean).join(' '), g.color, active(g) ? whereText(g) : t(STATUS[g.status])].filter(Boolean).join(' · ');
   const el = row(gearTitle(g), sub, qty ? qtyText(g) : '',
     () => {
       if (!picking) { gearDetail(g.id); return; }
@@ -675,7 +684,7 @@ function quickAction(g) {
 }
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/[’ʼ`']/g, "'");
-const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), whereText(g)].join(' '));
+const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), sizeText(g), g.buoy, whereText(g)].join(' '));
 const sectionIndex = (key) => { const i = sections().findIndex((x) => x.key === key); return i < 0 ? 999 : i; };
 const byGroup = (a, b) => sectionIndex(groupOf(a)) - sectionIndex(groupOf(b)) || collate(gearTitle(a), gearTitle(b));
 
@@ -725,11 +734,54 @@ function paintGear() {
         const items = list.filter((g) => groupOf(g) === x.key);
         // Порожній свій розділ теж видно — щоб змінити чи видалити, як порожні групи в Хобі-плані
         return items.length || !x.builtin ? fold(`gear-${x.key}`, sectionHead(x.icon, x.name, items.length, items.filter(isLow).length, () => sectionForm(x)),
-          items.length ? h('div', { class: 'rows' }, items.map(gearRow)) : h('p', { class: 'muted small' }, t('Порожній: категорію розділу вибирають у картці речі, олівець — змінити розділ.'))) : null;
+          items.length ? (x.key === 'lures' ? lureBody(items) : h('div', { class: 'rows' }, items.map(gearRow)))
+            : h('p', { class: 'muted small' }, t('Порожній: категорію розділу вибирають у картці речі, олівець — змінити розділ.'))) : null;
       }),
       gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), h('div', { class: 'rows' }, gone.map(gearRow))) : null,
       h('div', { class: 'btn-row' }, btn(t('+ Розділ'), () => sectionForm(null), 'quiet')));
-  gearList.replaceChildren(bar ?? '', body);
+  // «Потребує уваги» — лише в огляді: під час пошуку й вибору воно заважає
+  gearList.replaceChildren(bar ?? '', query || picking ? '' : serviceDueBox() ?? '', body);
+}
+
+// ---------- приманки: підгрупи й моделі ----------
+
+/** Одна модель — бренд, модель (чи назва) і розмір; кольори — різні речі однієї моделі. */
+const modelKey = (g) => norm([g.brand, g.model || g.name, num(g.lureSize) || '', g.sizeUnit || ''].join('|'));
+const lureSort = (a, b) => collate(norm([a.brand, a.model || a.name].join(' ')), norm([b.brand, b.model || b.name].join(' ')))
+  || num(a.lureSize) - num(b.lureSize) || collate(a.color ?? '', b.color ?? '');
+
+/** «Приманки»: згорнуті підгрупи за категорією (воблери, блешні, силікон…), у кожній — моделі з кольорами. */
+function lureBody(items) {
+  const used = new Set(items.map((g) => g.cat));
+  return h('div', { class: 'gear-groups sub-groups' }, allCats().filter((c) => used.has(c.id)).map((c) => {
+    const its = items.filter((g) => g.cat === c.id).sort(lureSort);
+    return fold(`lures-${c.id}`, sectionHead('lures', c.name, its.length, its.filter(isLow).length), h('div', { class: 'rows' }, modelRows(its)));
+  }));
+}
+
+/** Кілька кольорів однієї моделі — одним рядком, що розгортається; одинак — звичайний рядок. */
+function modelRows(its) {
+  const groups = new Map();
+  for (const g of its) groups.set(modelKey(g), [...(groups.get(modelKey(g)) ?? []), g]);
+  return [...groups.values()].map((gs) => (gs.length < 2 ? gearRow(gs[0])
+    : fold(`model-${modelKey(gs[0])}`, modelHead(gs), h('div', { class: 'rows model-rows' }, gs.map(gearRow)), 'model-fold')));
+}
+
+function modelHead(gs) {
+  const g = gs[0];
+  const total = gs.reduce((s, x) => s + num(x.qty), 0);
+  const low = gs.filter(isLow).length;
+  return h('span', { class: 'sec-head model-head' }, gearThumb(g),
+    h('span', { class: 'sec-name' }, [[g.brand, g.model].filter(Boolean).join(' ') || gearTitle(g), sizeText(g)].filter(Boolean).join(' · ')),
+    low ? h('span', { class: 'sec-low' }, t('мало: {n}', { n: low })) : null,
+    h('span', { class: 'sec-count' }, t('{c} кол. · {n} шт', { c: gs.length, n: fmt.num(total) })));
+}
+
+/** Тап по кольору в картці — усі речі цього кольору в «Снастях». */
+function searchFor(text) {
+  document.querySelectorAll('#layer .backdrop').forEach((b) => b.remove());
+  query = text;
+  if (location.hash !== '#gear') goTab('#gear'); else render();
 }
 
 // Значки розділів для чипів-фільтра (stroke, 24×24)
@@ -777,7 +829,7 @@ function renderGear() {
   // Хижак / мирна: універсальне видно в обох; вибір пам'ятається
   const dirs = chips([['', t('Усі')], ...DIRS.map(([k, l]) => [k, t(l)])], dirFilter, (v) => { dirFilter = v; remember('fishing-log:dir', v); paintGear(); });
   dirs.classList.add('segmented', 'dir-switch');
-  const out = h('div', {}, top, dirs, picking ? null : serviceDueBox(), gearList);
+  const out = h('div', {}, top, dirs, gearList);
   queueMicrotask(paintGear);
   return out;
 }
@@ -821,10 +873,14 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     { name: 'unit', label: t('Одиниця'), type: 'select', options: UNITS.map(([k, l]) => [k, t(l)]), value: src.unit ?? 'pcs', half: true },
     { name: 'low', label: t('Поріг «мало»'), type: 'number', value: src.low ?? 0, half: true, hint: t('Стільки й менше — у «Докупити»') },
     { name: 'weight', label: t('Вага, г'), type: 'number', value: src.weight, half: true },
+    { name: 'lureSize', label: t('Розмір'), type: 'number', value: src.lureSize, half: true, placeholder: '95' },
+    { name: 'sizeUnit', label: t('Одиниця розміру'), type: 'select', options: SIZE_UNITS.map(([k, l]) => [k, t(l)]), value: src.sizeUnit ?? 'mm', half: true },
     { name: 'placeId', label: t('Де лежить'), type: 'select', options: placeOptions(), value: src.placeId ?? (g ? '' : recall('fishing-log:last-place') || ''), half: true },
     { name: 'brand', label: t('Бренд'), value: src.brand, half: true },
     { name: 'model', label: t('Модель'), value: src.model, half: true },
-    { name: 'color', label: t('Колір'), value: src.color, half: true },
+    { name: 'color', label: t('Колір'), value: src.color, half: true, list: 'color-list' },
+    { name: 'buoy', label: t('Плавучість'), type: 'select', options: BUOYS, value: src.buoy ?? '', half: true },
+    { name: 'depth', label: t('Заглиблення, м'), value: src.depth, half: true, placeholder: '0.5–1.2' },
     { name: 'length', label: t('Довжина, м'), type: 'number', value: src.length, half: true },
     { name: 'test', label: t('Тест, г'), value: src.test, half: true, placeholder: '5–25' },
     { name: 'action', label: t('Стрій'), type: 'select', options: ACTIONS.map(([k, l]) => [k, k ? t(l) : l]), value: src.action ?? '', half: true },
@@ -843,7 +899,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   // Поля, що стосуються категорії: кількість — для приманок, оснастки й фідерного, свої — для вудилищ, котушок, шнурів
   const fit = () => {
     const c = catOf(f.inputs.cat.value);
-    const own = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(qtyCat(c) ? ['qty', 'unit', 'low'] : []), ...(hasWeight(c) ? ['weight'] : [])]);
+    const own = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(CAT_FIELDS[c.id] ?? []), ...(qtyCat(c) ? ['qty', 'unit', 'low'] : []), ...(hasWeight(c) ? ['weight'] : [])]);
     for (const n of [...SPEC_FIELDS, 'qty', 'unit', 'low', 'weight']) f.inputs[n].closest('.field').hidden = !own.has(n);
     f.inputs.dir.closest('.field').hidden = c.group === 'camp';
     f.inputs.price.closest('.field').querySelector('.field-label').textContent = qtyCat(c) ? t('Ціна за одиницю, грн') : t('Ціна, грн');
@@ -861,8 +917,9 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   const more = h('details', { class: 'ex-more form-more', open: recall('fishing-log:open:gear-form-more') === '1' },
     h('summary', {}, t('Бренд, розміри, ціна, нотатка…')), moreBody);
   more.addEventListener('toggle', () => remember('fishing-log:open:gear-form-more', more.open ? '1' : ''));
-  for (const n of ['brand', 'model', 'color', ...SPEC_FIELDS, 'price', 'buyDate', 'note', 'specs']) moreBody.append(f.inputs[n].closest('.field'));
-  f.el.append(more);
+  // Колір і розмір приманки — на виду; решта характеристик — у згорнутому
+  for (const n of ['brand', 'model', ...SPEC_FIELDS.filter((x) => !['lureSize', 'sizeUnit'].includes(x)), 'price', 'buyDate', 'note', 'specs']) moreBody.append(f.inputs[n].closest('.field'));
+  f.el.append(more, h('datalist', { id: 'color-list' }, [...new Set(state.gear.map((x) => x.color).filter(Boolean))].sort(collate).map((c) => h('option', { value: c }))));
   const lookup = () => [f.inputs.brand.value, f.inputs.model.value, f.inputs.name.value, f.inputs.color.value].map((x) => x.trim()).filter(Boolean)
     .filter((x, i, a) => !a.slice(0, i).some((y) => y.toLowerCase().includes(x.toLowerCase()))).join(' ');
   const pick = photoPicker(findPhoto(g?.photoId), {
@@ -882,7 +939,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     if (invalidField(f)) return;
     const v = f.values();
     const c = catOf(v.cat);
-    const keep = new Set(GROUP_FIELDS[c.group] ?? []);
+    const keep = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(CAT_FIELDS[c.id] ?? [])]);
     for (const n of SPEC_FIELDS) if (!keep.has(n)) delete v[n];
     if (!hasWeight(c)) delete v.weight;
     if (qtyCat(c)) { v.qty = Math.max(0, num(v.qty)); v.low = Math.max(0, num(v.low)); } else { v.qty = null; delete v.unit; delete v.low; }
@@ -951,7 +1008,10 @@ function gearBody(g) {
       active(g) ? null : [t('Стан'), `${t(STATUS[g.status])}${g.statusDate ? ` · ${fmt.date(g.statusDate)}` : ''}`],
       qty ? [t('Кількість'), h('span', { class: isLow(g) ? 'warn-text' : '' }, `${qtyText(g)}${isLow(g) ? ` · ${t('докупити')}` : ''}`)] : null,
       lostCount(g) ? [t('Втрачено'), `${fmt.num(lostCount(g))} ${unitLabel(g)}`] : null,
+      [t('Розмір'), sizeText(g)],
       [t('Вага'), weightText(g)],
+      [t('Колір'), g.color ? link(g.color, () => searchFor(g.color)) : null],
+      [t('Плавучість'), label(BUOYS, g.buoy)], [t('Заглиблення'), g.depth ? `${g.depth} ${t('м')}` : null],
       host && group === 'lines' && g.onDate ? [t('Намотано'), `${fmt.date(g.onDate)} · ${t('{n} міс. тому', { n: Math.floor(monthsSince(g.onDate)) })}`] : null,
       group === 'reels' ? [t('Обслуговано'), (g.service ?? []).length ? fmt.date(serviceSince(g)) : t('ще ні')] : null,
       serviceDue(g) ? [t('Увага'), h('span', { class: 'warn-text' }, serviceDue(g))] : null,
@@ -963,7 +1023,7 @@ function gearBody(g) {
     fold('gear-details', t('Деталі'), kv([
       [t('Категорія'), catOf(g.cat).name],
       qty && num(g.low) ? [t('Поріг «мало»'), `${fmt.num(g.low)} ${unitLabel(g)}`] : null,
-      [t('Бренд'), g.brand], [t('Модель'), g.model], [t('Колір'), g.color],
+      [t('Бренд'), g.brand], [t('Модель'), g.model],
       [t('Тип'), label(ROD_TYPES, g.rodType)], [t('Довжина'), g.length ? `${fmt.num(g.length)} ${t('м')}` : null], [t('Тест'), g.test ? `${g.test} ${t('г')}` : null],
       [t('Стрій'), label(ACTIONS, g.action)], [t('Колін'), g.pieces], [t('Розмір'), g.size], [t('Передавальне число'), g.ratio], [t('Запасних шпуль'), g.spools],
       [t('PE'), g.pe], [t('Діаметр'), g.mm ? `${fmt.num(g.mm)} ${t('мм')}` : null],

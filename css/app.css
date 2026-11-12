@@ -907,3 +907,30 @@ button.about-avatar { padding: 0; border: 0; }
 .icon-pick button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; }
 .icon-pick svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .icon-pick button.on::before { content: none; }
+
+/* «Приманки»: підгрупи за категорією й моделі з кольорами — на відступі, заголовки дрібніші */
+.sub-groups { margin: 0 0 4px 8px; }
+.sub-groups > .ex-more > summary { min-height: 44px; font-size: 14px; }
+.sub-groups .sec-ico { width: 32px; height: 32px; }
+.sub-groups .sec-ico svg { width: 20px; height: 20px; }
+.model-fold { margin: 0; border-top: 0; }
+.model-fold > summary { min-height: 56px; padding: 6px 10px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); color: var(--text); font-size: 14px; font-weight: 650; }
+.model-head .thumb { width: 40px; height: 40px; border-radius: 10px; }
+.model-head .sec-count { min-width: auto; }
+.model-rows { margin: 6px 0 4px 14px; }
+
+/* Читабельність: усе, де є текст, лежить на підкладці, а не просто на хвилях фону */
+.view .box, .view .settings-group { background: var(--surface); box-shadow: var(--shadow); }
+.view .box > legend { padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+/* Згортки просто на сторінці («Сезон», «Рекорди», «Водойми») — карткою, і відкрите теж на підкладці */
+.view > div > .ex-more { margin: 10px 0; padding: 0 12px; border-top: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); }
+.view > div > .ex-more > summary { color: var(--text); font-size: 15px; }
+.view > div > .ex-more > summary::before { color: var(--accent-2); }
+.view > div > .ex-more[open] { padding-bottom: 12px; }
+.empty { margin: 12px 0; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+/* «Тихі» кнопки просто на фоні — з підкладкою-пігулкою */
+.view .btn.quiet { background: color-mix(in srgb, var(--surface) 88%, transparent); border-color: var(--line-soft); }
+.view .box .btn.quiet, .view .row .btn.quiet { background: none; border-color: transparent; }
+.view > div > p.muted, .gear-groups + p.muted { padding: 10px 12px; border-radius: 12px; background: var(--surface); }
+/* Назва моделі приманки — переноситься, а не «…» */
+.model-head .sec-name { white-space: normal; overflow: visible; }
