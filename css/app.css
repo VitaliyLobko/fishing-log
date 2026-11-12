@@ -899,3 +899,11 @@ button.about-avatar { padding: 0; border: 0; }
 .gear-card.dir-right .swipe-bg.right, .gear-card.dir-left .swipe-bg.left { display: flex; opacity: .55; }
 .gear-card.armed .swipe-bg.right, .gear-card.armed .swipe-bg.left { opacity: 1; }
 .box .gear-card .swipe-body { box-shadow: none; }
+
+/* Розділи: олівець у заголовку й вибір значка — як групи в Хобі-плані */
+.sec-edit { display: grid; flex: none; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--muted); cursor: pointer; }
+.sec-edit:hover { color: var(--accent-2); }
+.sec-edit svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon-pick button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; }
+.icon-pick svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon-pick button.on::before { content: none; }

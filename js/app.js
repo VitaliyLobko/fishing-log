@@ -92,7 +92,7 @@ function dropPhotos(ids) {
 /** Мініатюра речі: фото, а без нього — значок її розділу (монограма «ГП» нічого не каже). */
 function gearThumb(g) {
   const el = h('span', { class: 'thumb-ico', 'aria-hidden': 'true' });
-  el.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[groupOf(g)] ?? GROUP_ICONS.other}</svg>`;
+  el.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[sectionOf(groupOf(g))?.icon] ?? GROUP_ICONS.other}</svg>`;
   return thumbImg(g.photoId, el);
 }
 
@@ -222,12 +222,26 @@ const CATS = [
   ['campgear', 'Інше спорядження', 'camp'],
   ['clothes', 'Одяг', 'clothes'], ['sonar', 'Ехолот', 'other'], ['net', 'Підсак', 'other'], ['other', 'Інше', 'other'],
 ];
-const groupLabel = (g) => t(GROUPS.find(([k]) => k === g)?.[1] ?? 'Інше');
-/** Вбудовані категорії + свої (⚙ → Свої категорії). */
-const allCats = () => [...CATS.map(([id, name, group, kind]) => ({ id, name: t(name), group, ...(kind ? { kind } : {}) })), ...(prefs().cats ?? [])];
+/**
+ * Розділи по порядку: вбудовані (GROUPS) і свої. prefs.sections — збережений список { key, name, icon, qty } у порядку показу;
+ * вбудований, якого там ще немає (з'явився в новій версії), додається в кінець. Як «Групи» в «Заняттях» Хобі-плану.
+ */
+function sections() {
+  const base = GROUPS.map(([key, name]) => ({ key, name: t(name), icon: key, builtin: true }));
+  const own = prefs().sections ?? [];
+  const seen = new Set(own.map((x) => x.key));
+  return [...own.map((x) => ({ ...(base.find((b) => b.key === x.key) ?? {}), ...x, builtin: base.some((b) => b.key === x.key) })),
+    ...base.filter((b) => !seen.has(b.key))];
+}
+const sectionOf = (key) => sections().find((x) => x.key === key) ?? sections().find((x) => x.key === 'other');
+const groupLabel = (g) => sectionOf(g)?.name ?? t('Інше');
+/** Вбудовані категорії (назву можна змінити — prefs.catNames) + свої. */
+const allCats = () => [...CATS.map(([id, name, group, kind]) => ({ id, name: prefs().catNames?.[id] || t(name), group, builtin: true, ...(kind ? { kind } : {}) })),
+  ...(prefs().cats ?? [])];
 const catOf = (id) => allCats().find((c) => c.id === id) ?? { id: 'other', name: t('Інше'), group: 'other' };
 const groupOf = (g) => catOf(g.cat).group;
-const qtyCat = (c) => (c.kind ? c.kind === 'qty' : QTY_GROUPS.includes(c.group));
+// Кількістю: вбудовані приманки, оснастка й фідерне; свій розділ — якщо так позначено
+const qtyCat = (c) => (c.kind ? c.kind === 'qty' : QTY_GROUPS.includes(c.group) || Boolean(sectionOf(c.group)?.qty));
 const isQty = (g) => qtyCat(catOf(g.cat));
 // Вага — у приманок, оснастки й годівниць: «Годівниця Method 30 г»
 const hasWeight = (c) => ['lures', 'tackle'].includes(c.group) || c.id === 'cage';
@@ -238,7 +252,7 @@ const qtyText = (g) => `${fmt.num(g.qty)} ${unitLabel(g)}`;
 const weightText = (g) => (g.weight ? `${fmt.num(g.weight)} ${t('г')}` : null);
 /** Закінчується: остаток не більший за поріг «мало» (без порога — коли 0). */
 const isLow = (g) => isQty(g) && active(g) && num(g.qty) <= num(g.low);
-const catOptions = () => GROUPS.map(([g, label]) => ({ group: t(label), options: allCats().filter((c) => c.group === g).map((c) => [c.id, c.name]) }));
+const catOptions = () => sections().map((x) => ({ group: x.name, options: allCats().filter((c) => c.group === x.key).map((c) => [c.id, c.name]) }));
 
 const STATUS = { have: 'В наявності', lost: 'Втрачено', broken: 'Зламано', sold: 'Продано', gift: 'Подаровано' };
 const ACTIONS = [['', '—'], ['xfast', 'Екстрашвидкий'], ['fast', 'Швидкий'], ['mod', 'Середній'], ['slow', 'Повільний']];
@@ -416,6 +430,102 @@ async function photoChanges(g, change, ownerId) {
 let query = '';
 let picking = null; // Set id — режим «Вибрати» для перенесення кількох речей
 
+// ---------- розділи: як групи в «Заняттях» Хобі-плану ----------
+
+const saveSections = (list) => save({ prefs: { put: [{ ...prefs(), sections: list.map(({ key, name, icon, qty }) => ({ key, name, icon, ...(qty ? { qty } : {}) })) }] } });
+
+/** Розділ: назва, значок, порядок, категорії (вбудовані — перейменувати, свої — ще й видалити), свій — видалити весь. */
+function sectionForm(x) {
+  const isNew = !x;
+  const d = x ? { ...x } : { key: `s-${db.uid()}`, name: '', icon: 'star', qty: false };
+  const f = form([
+    { name: 'name', label: t('Назва'), value: d.name, required: true, placeholder: t('напр. Човен і мотор') },
+    ...(d.builtin ? [] : [{ name: 'qty', label: t('Рахувати'), type: 'select', value: d.qty ? '1' : '', options: [['', t('Поштучно')], ['1', t('Кількістю')]] }]),
+  ]);
+  const icons = h('div', { class: 'chips icon-pick', role: 'group', 'aria-label': t('Значок') }, SECTION_ICONS.map((k) => {
+    const b = h('button', { type: 'button', class: k === d.icon ? 'on' : '', 'aria-pressed': String(k === d.icon), 'aria-label': k,
+      onclick: () => { d.icon = k; icons.querySelectorAll('button').forEach((x2) => { const on = x2 === b; x2.classList.toggle('on', on); x2.setAttribute('aria-pressed', String(on)); }); } });
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[k]}</svg>`;
+    return b;
+  }));
+  const list = sections();
+  const at = list.findIndex((y) => y.key === d.key);
+  const move = (dir) => async () => {
+    // Уже введену назву (і «рахувати») не губимо: переставляємо разом зі змінами
+    const v = f.values();
+    const next = list.map((y) => (y.key === d.key ? { ...y, name: v.name || y.name, ...(d.builtin ? {} : { qty: v.qty === '1' }) } : y));
+    const j = at + dir;
+    if (at < 0 || j < 0 || j >= next.length) return;
+    [next[at], next[j]] = [next[j], next[at]];
+    close();
+    await saveSections(next);
+    sectionForm(sections().find((y) => y.key === d.key));
+  };
+  const cats = allCats().filter((c) => c.group === d.key);
+  // Після зміни категорії — те саме вікно зі свіжим списком
+  const reopen = () => { close(); sectionForm(sections().find((y) => y.key === d.key)); };
+  const catRows = isNew ? null : box(t('Категорії'), h('div', {},
+    cats.length ? h('div', { class: 'rows' }, cats.map((c) => h('div', { class: 'row slot' },
+      h('span', { class: 'row-main' }, h('span', { class: 'row-title' }, c.name)),
+      btn(t('Назва'), () => catNameForm(c, null, reopen), 'quiet'),
+      c.builtin ? null : btn(t('Видалити'), () => dropCat(c, reopen), 'quiet')))) : h('p', { class: 'muted small' }, t('Ще немає категорій.')),
+    h('div', { class: 'btn-row' }, btn(t('+ Категорія'), () => catNameForm(null, d.key, reopen)))));
+  const close = sheet(isNew ? t('Новий розділ') : t('Розділ'), h('div', {},
+    f.el, h('div', { class: 'field-label' }, t('Значок')), icons,
+    isNew ? null : h('div', { class: 'btn-row' }, btn(t('↑ Вище'), move(-1)), btn(t('↓ Нижче'), move(1))),
+    catRows,
+    !isNew && !d.builtin ? h('div', { class: 'btn-row' }, btn(t('Видалити розділ'), () => removeSection(d), 'danger')) : null,
+    d.builtin ? h('p', { class: 'muted small' }, t('Вбудований розділ можна перейменувати й переставити, але не видалити: на ньому тримаються поля вудилищ, котушок і шнурів.')) : null), {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      const v = f.values();
+      const rec = { ...d, name: v.name, qty: d.builtin ? undefined : v.qty === '1' };
+      const next = isNew ? [...list, rec] : list.map((y) => (y.key === d.key ? rec : y));
+      close();
+      await saveSections(next);
+      // Новий розділ одразу з категорією тієї ж назви — інакше його не вибрати в картці речі
+      if (isNew) { const p = prefs(); await save({ prefs: { put: [{ ...p, cats: [...(p.cats ?? []), { id: `c-${db.uid()}`, name: v.name, group: d.key }] }] } }); }
+    }, 'primary')],
+  });
+}
+
+/** Назва категорії: своя — нова чи перейменувати, вбудована — лише перейменувати (prefs.catNames). */
+function catNameForm(c, group = null, onDone = null) {
+  const f = form([{ name: 'name', label: t('Назва'), value: c?.name, required: true, placeholder: t('напр. Мормишки') }]);
+  const close = sheet(c ? t('Категорія') : t('Нова категорія'), f.el, {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      const { name } = f.values();
+      const p = prefs();
+      close();
+      if (!c) await save({ prefs: { put: [{ ...p, cats: [...(p.cats ?? []), { id: `c-${db.uid()}`, name, group }] }] } });
+      else if (c.builtin) await save({ prefs: { put: [{ ...p, catNames: { ...(p.catNames ?? {}), [c.id]: name } }] } });
+      else await save({ prefs: { put: [{ ...p, cats: (p.cats ?? []).map((x) => (x.id === c.id ? { ...x, name } : x)) }] } });
+      onDone?.();
+    }, 'primary')],
+  });
+}
+
+async function dropCat(c, onDone = null) {
+  if (state.gear.some((g) => g.cat === c.id)) { toast(t('Категорією користуються речі — спершу змініть їм категорію')); return; }
+  const p = prefs();
+  await save({ prefs: { put: [{ ...p, cats: (p.cats ?? []).filter((x) => x.id !== c.id) }] } });
+  onDone?.();
+}
+
+/** Свій розділ видаляється, а його категорії переїжджають в «Інше» — речі нікуди не зникають. */
+function removeSection(x) {
+  const n = state.gear.filter((g) => groupOf(g) === x.key).length;
+  confirmSheet(t('Видалити розділ «{name}»?', { name: x.name }), t('Речей у ньому: {n}. Вони й категорії розділу переїдуть в «Інше».', { n }), t('Видалити'), async () => {
+    const p = prefs();
+    await save({ prefs: { put: [{ ...p,
+      sections: sections().filter((y) => y.key !== x.key).map(({ key, name, icon, qty }) => ({ key, name, icon, ...(qty ? { qty } : {}) })),
+      cats: (p.cats ?? []).map((c) => (c.group === x.key ? { ...c, group: 'other' } : c)) }] } });
+    document.querySelectorAll('#layer .backdrop').forEach((b) => b.remove());
+    toast(t('Розділ «{name}» видалено', { name: x.name }));
+  });
+}
+
 // ---------- обслуговування ----------
 
 const monthsSince = (iso) => (Date.now() - Date.parse(`${iso}T12:00:00`)) / (30.44 * 864e5);
@@ -557,7 +667,8 @@ function quickAction(g) {
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/[’ʼ`']/g, "'");
 const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), whereText(g)].join(' '));
-const byGroup = (a, b) => GROUPS.findIndex(([k]) => k === groupOf(a)) - GROUPS.findIndex(([k]) => k === groupOf(b)) || collate(gearTitle(a), gearTitle(b));
+const sectionIndex = (key) => { const i = sections().findIndex((x) => x.key === key); return i < 0 ? 999 : i; };
+const byGroup = (a, b) => sectionIndex(groupOf(a)) - sectionIndex(groupOf(b)) || collate(gearTitle(a), gearTitle(b));
 
 /** Пошук — по речах у наявності; списані видно в своєму розділі. */
 function shownGear() {
@@ -566,12 +677,17 @@ function shownGear() {
 }
 
 /** Заголовок розділу: значок, назва, праворуч — кількість і «мало». */
-function sectionHead(key, label, n, low = 0) {
+function sectionHead(iconKey, label, n, low = 0, onEdit = null) {
   const ico = h('span', { class: 'sec-ico', 'aria-hidden': 'true' });
-  ico.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[key] ?? GROUP_ICONS.other}</svg>`;
+  ico.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[iconKey] ?? GROUP_ICONS.other}</svg>`;
   return h('span', { class: 'sec-head' }, ico, h('span', { class: 'sec-name' }, label),
     low ? h('span', { class: 'sec-low' }, t('мало: {n}', { n: low })) : null,
-    h('span', { class: 'sec-count' }, fmt.num(n)));
+    h('span', { class: 'sec-count' }, fmt.num(n)),
+    // Олівець у заголовку — змінити розділ; розділ при цьому не згортається
+    onEdit ? Object.assign(h('button', {
+      type: 'button', class: 'icon-btn sec-edit', 'aria-label': t('Змінити розділ «{name}»', { name: label }),
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); onEdit(); },
+    }), { innerHTML: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>' }) : null);
 }
 
 let gearList = null;
@@ -596,11 +712,14 @@ function paintGear() {
   const body = query || picking
     ? (list.length ? h('div', { class: 'rows' }, list.map(gearRow)) : h('p', { class: 'muted' }, t('Нічого не знайдено')))
     : h('div', { class: 'gear-groups' },
-      GROUPS.map(([gk, gl]) => {
-        const items = list.filter((g) => groupOf(g) === gk);
-        return items.length ? fold(`gear-${gk}`, sectionHead(gk, t(gl), items.length, items.filter(isLow).length), h('div', { class: 'rows' }, items.map(gearRow))) : null;
+      sections().map((x) => {
+        const items = list.filter((g) => groupOf(g) === x.key);
+        // Порожній свій розділ теж видно — щоб змінити чи видалити, як порожні групи в Хобі-плані
+        return items.length || !x.builtin ? fold(`gear-${x.key}`, sectionHead(x.icon, x.name, items.length, items.filter(isLow).length, () => sectionForm(x)),
+          items.length ? h('div', { class: 'rows' }, items.map(gearRow)) : h('p', { class: 'muted small' }, t('Порожній: категорію розділу вибирають у картці речі, олівець — змінити розділ.'))) : null;
       }),
-      gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), h('div', { class: 'rows' }, gone.map(gearRow))) : null);
+      gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), h('div', { class: 'rows' }, gone.map(gearRow))) : null,
+      h('div', { class: 'btn-row' }, btn(t('+ Розділ'), () => sectionForm(null), 'quiet')));
   gearList.replaceChildren(bar ?? '', body);
 }
 
@@ -618,7 +737,15 @@ const GROUP_ICONS = {
   clothes: '<path d="M8 4L3 7l2 4 3-1v10h8V10l3 1 2-4-5-3c-1 2-2 2.8-4 2.8S9 6 8 4z"/>',
   other: '<circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/>',
   gone: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
+  // ще кілька — для своїх розділів
+  fish: '<path d="M3 12c3-4.5 9-5.5 14-2.5l4-2.5v10l-4-2.5C12 17.5 6 16.5 3 12z"/><circle cx="7.5" cy="11.2" r=".8"/>',
+  boat: '<path d="M3 15h18l-2.5 4.5H5.5zM12 15V4l6 8h-6M12 7L7 12h5"/>',
+  bag: '<path d="M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2"/>',
+  light: '<path d="M9 21h6M10 17h4v4h-4zM12 3a6 6 0 0 1 4 10.5c-.7.6-1 1.6-1 2.5H9c0-.9-.3-1.9-1-2.5A6 6 0 0 1 12 3z"/>',
+  tool: '<path d="M14.5 3.5a5 5 0 0 0-5.6 6.7L3.5 15.6v4.9h4.9l5.4-5.4a5 5 0 0 0 6.7-5.6l-3 3-3.5-.5-.5-3.5z"/>',
+  star: '<path d="M12 3l2.8 5.8 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 3 1.1-6.2L3 9.7l6.2-.9z"/>',
 };
+const SECTION_ICONS = Object.keys(GROUP_ICONS).filter((k) => k && k !== 'gone');
 
 function renderGear() {
   const all = state.gear.filter(active);
@@ -1333,7 +1460,7 @@ function catchForm(tr, c = null) {
     { name: 'length', label: t('Довжина, см'), type: 'number', value: c?.length, half: true },
     { name: 'time', label: t('Коли'), type: 'time', value: c?.time ?? '', half: true },
     { name: 'baitId', label: t('На що'), type: 'select', value: c?.baitId ?? '',
-      options: [['', t('— інше, впишу —')], ...GROUPS.map(([gk, gl]) => ({ group: t(gl), options: baits.filter((g) => groupOf(g) === gk).map((g) => [g.id, [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ')]) }))] },
+      options: [['', t('— інше, впишу —')], ...sections().map(({ key: gk, name: gl }) => ({ group: gl, options: baits.filter((g) => groupOf(g) === gk).map((g) => [g.id, [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ')]) }))] },
     { name: 'bait', label: t('Приманка чи насадка'), value: c?.bait, placeholder: t('напр. опариш + кукурудза') },
   ]);
   f.el.append(h('datalist', { id: 'species-list' }, allSpecies().map((x) => h('option', { value: x }))));
@@ -1715,7 +1842,7 @@ function catsRow() {
   const own = prefs().cats ?? [];
   const f = form([
     { name: 'name', label: t('Назва'), required: true, half: true, placeholder: t('напр. Мормишки') },
-    { name: 'group', label: t('Розділ'), type: 'select', half: true, options: GROUPS.map(([k, l]) => [k, t(l)]), value: 'lures' },
+    { name: 'group', label: t('Розділ'), type: 'select', half: true, options: sections().map((x) => [x.key, x.name]), value: 'lures' },
   ]);
   const drop = (c) => {
     if (state.gear.some((g) => g.cat === c.id)) { toast(t('Категорією користуються речі — спершу змініть їм категорію')); return; }
