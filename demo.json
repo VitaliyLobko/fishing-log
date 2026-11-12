@@ -1,0 +1,322 @@
+{
+ "app": "fishing-log",
+ "format": 1,
+ "exportedAt": "2026-11-12T00:00:00.000Z",
+ "data": {
+  "places": [
+   {
+    "id": "demo-garage",
+    "name": "Гараж",
+    "parentId": null,
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-shelf",
+    "name": "Стелаж",
+    "parentId": "demo-garage",
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-box1",
+    "name": "Ящик Plano №1",
+    "parentId": "demo-shelf",
+    "note": "Воблери й блешні",
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-box2",
+    "name": "Ящик Plano №2",
+    "parentId": "demo-shelf",
+    "note": "Джиг і силікон",
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-tubes",
+    "name": "Тубус",
+    "parentId": "demo-garage",
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-car",
+    "name": "Машина",
+    "parentId": null,
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-trunk",
+    "name": "Багажник",
+    "parentId": "demo-car",
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "demo-bag",
+    "name": "Сумка",
+    "parentId": "demo-trunk",
+    "note": "Береться на кожну риболовлю",
+    "created": 0,
+    "updated": 1
+   }
+  ],
+  "gear": [
+   {
+    "id": "demo-rod1",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "rod",
+    "name": "Спінінг Favorite X1",
+    "brand": "Favorite",
+    "model": "X1 702ML",
+    "length": 2.13,
+    "test": "5–21",
+    "action": "fast",
+    "pieces": 2,
+    "rodType": "spin",
+    "price": 3200,
+    "buyDate": "2025-04-10",
+    "placeId": "demo-tubes"
+   },
+   {
+    "id": "demo-rod2",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "rod",
+    "name": "Фідер Flagman Grantham",
+    "brand": "Flagman",
+    "model": "Grantham Medium Feeder 3.6",
+    "length": 3.6,
+    "test": "до 90",
+    "pieces": 3,
+    "rodType": "feeder",
+    "placeId": "demo-tubes"
+   },
+   {
+    "id": "demo-reel1",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     },
+     {
+      "date": "2026-03-02",
+      "text": "Поставлено на «Спінінг Favorite X1»"
+     }
+    ],
+    "cat": "reel",
+    "name": "Shimano Sienna 2500",
+    "brand": "Shimano",
+    "model": "Sienna 2500 FG",
+    "size": "2500",
+    "ratio": "5.0:1",
+    "spools": 0,
+    "price": 1900,
+    "placeId": "demo-tubes",
+    "onId": "demo-rod1"
+   },
+   {
+    "id": "demo-line1",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "line",
+    "name": "Шнур YGK X-Braid",
+    "brand": "YGK",
+    "model": "X-Braid Upgrade X8",
+    "pe": "0.8",
+    "mm": 0.148,
+    "length": 150,
+    "color": "зелений",
+    "onId": "demo-reel1",
+    "onDate": "2026-03-02"
+   },
+   {
+    "id": "demo-wob1",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "wobbler",
+    "name": "Jackall Squad Minnow 95",
+    "brand": "Jackall",
+    "model": "Squad Minnow 95 SP",
+    "color": "Ghost Wakasagi",
+    "qty": 2,
+    "price": 620,
+    "placeId": "demo-box1"
+   },
+   {
+    "id": "demo-wob2",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "wobbler",
+    "name": "Jackall Squad Minnow 95",
+    "brand": "Jackall",
+    "model": "Squad Minnow 95 SP",
+    "color": "HL Gold & Black",
+    "qty": 1,
+    "price": 620,
+    "placeId": "demo-box1"
+   },
+   {
+    "id": "demo-spoon",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "spoon",
+    "name": "Блешня Mepps Aglia 3",
+    "brand": "Mepps",
+    "model": "Aglia 3",
+    "color": "срібло",
+    "qty": 4,
+    "placeId": "demo-box1"
+   },
+   {
+    "id": "demo-soft",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "soft",
+    "name": "Keitech Easy Shiner 3\"",
+    "brand": "Keitech",
+    "model": "Easy Shiner 3\"",
+    "color": "Bluegill Flash",
+    "qty": 7,
+    "placeId": "demo-box2"
+   },
+   {
+    "id": "demo-jig",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "jighead",
+    "name": "Джиг-головки 10 г, гак №1",
+    "qty": 12,
+    "placeId": "demo-box2"
+   },
+   {
+    "id": "demo-hook",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     },
+     {
+      "date": "2026-06-14",
+      "text": "Втрачено 1 шт"
+     }
+    ],
+    "cat": "hook",
+    "name": "Гачки Owner фідерні №12",
+    "brand": "Owner",
+    "qty": 0,
+    "placeId": "demo-bag"
+   },
+   {
+    "id": "demo-net",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "net",
+    "name": "Підсак Salmo",
+    "brand": "Salmo",
+    "placeId": "demo-trunk"
+   },
+   {
+    "id": "demo-lost",
+    "status": "lost",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "wobbler",
+    "name": "Воблер Yo-Zuri L-Minnow 66",
+    "brand": "Yo-Zuri",
+    "qty": 1,
+    "statusDate": "2026-07-20",
+    "placeId": "demo-box1"
+   }
+  ],
+  "wishes": [
+   {
+    "id": "demo-w1",
+    "name": "Котушка Shimano Vanford 2500",
+    "price": 9800,
+    "link": "https://example.com",
+    "created": 0,
+    "updated": 1
+   }
+  ]
+ }
+}

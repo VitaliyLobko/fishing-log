@@ -1,0 +1,30 @@
+{
+ "app": "fishing-log",
+ "format": 1,
+ "exportedAt": "2026-11-12T00:00:00.000Z",
+ "data": {
+  "places": [
+   {
+    "id": "st-home",
+    "name": "Дім",
+    "parentId": null,
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "st-garage",
+    "name": "Гараж",
+    "parentId": null,
+    "created": 0,
+    "updated": 1
+   },
+   {
+    "id": "st-car",
+    "name": "Машина",
+    "parentId": null,
+    "created": 0,
+    "updated": 1
+   }
+  ]
+ }
+}
