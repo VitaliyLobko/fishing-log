@@ -568,6 +568,10 @@ function paintGear() {
     h('span', {}, t('Вибрано: {n}', { n: picking.size })),
     h('div', { class: 'btn-row' },
       btn(t('Скасувати'), () => { picking = null; render(); }),
+      btn(t('Напрямок'), () => {
+        if (!picking.size) { toast(t('Позначте хоча б одну річ')); return; }
+        dirSheet([...picking].map(findGear).filter(Boolean));
+      }),
       btn(t('Перенести'), () => {
         if (!picking.size) { toast(t('Позначте хоча б одну річ')); return; }
         placePicker(t('Куди перенести'), (placeId) => moveGear([...picking].map(findGear).filter(Boolean), placeId));
@@ -622,9 +626,20 @@ function renderGear() {
   // Хижак / мирна: універсальне видно в обох; вибір пам'ятається
   const dirs = chips([['', t('Усі')], ...DIRS.map(([k, l]) => [k, t(l)])], dirFilter, (v) => { dirFilter = v; remember('fishing-log:dir', v); paintGear(); });
   dirs.classList.add('segmented', 'dir-switch');
-  const out = h('div', {}, top, dirs, serviceDueBox(), gearList);
+  const out = h('div', {}, top, dirs, picking ? null : serviceDueBox(), gearList);
   queueMicrotask(paintGear);
   return out;
+}
+
+/** Напрямок кільком речам одразу: хижак, мирна чи універсальне. */
+function dirSheet(list) {
+  const close = sheet(t('Напрямок: {n}', { n: list.length }), h('div', { class: 'btn-col' },
+    [...DIRS, ['', 'Універсальне']].map(([k, l]) => btn(t(l), async () => {
+      close();
+      picking = null;
+      await save({ gear: { put: list.map((g) => ({ ...g, dir: k })) } }, list.map((g) => g.id));
+      toast(t('{l}: {n}', { l: t(l), n: list.length }));
+    }, k ? 'primary' : ''))));
 }
 
 /** Перенести речі в місце (null — без місця); змонтовані знімаються з вудилища чи котушки. */

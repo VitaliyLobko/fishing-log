@@ -887,3 +887,4 @@ button.about-avatar { padding: 0; border: 0; }
 .sec-count { flex: none; min-width: 28px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
 .gear-groups > .ex-more > summary { gap: 6px; }
 .dir-switch { margin: 0 0 12px; }
+.pick-bar { flex-wrap: wrap; } .pick-bar .btn-row { flex-wrap: wrap; justify-content: flex-end; }
