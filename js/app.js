@@ -437,7 +437,7 @@ function renderGear() {
   const all = state.gear.filter(active);
   $('subtitle').textContent = all.length ? t('позицій: {n} · місць: {m}', { n: all.length, m: state.places.length }) : '';
   if (!state.gear.length) {
-    return empty(t('Ще немає снастей'), t('Спершу заведіть місця (гараж, шафа, ящик), потім додавайте речі кнопкою «+». Або завантажте демодані в «Ще».'),
+    return empty(t('Ще немає снастей'), t('Спершу заведіть місця (гараж, шафа, ящик), потім додавайте речі кнопкою «+». Або завантажте демодані в ⚙.'),
       [btn(t('Додати'), () => gearForm(), 'primary add'), btn(t('Місця'), () => goTab('#places'))]);
   }
   const groups = GROUPS.filter(([g]) => all.some((x) => groupOf(x) === g)).map(([g, l]) => [g, t(l)]);
@@ -531,6 +531,8 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     for (const n of SPEC_FIELDS) if (!keep.has(n)) delete v[n];
     if (!hasWeight(c)) delete v.weight;
     if (qtyCat(c)) { v.qty = Math.max(0, num(v.qty)); v.low = Math.max(0, num(v.low)); } else { v.qty = null; delete v.unit; delete v.low; }
+    // Перша покупка — для експорту в Марнотрат; після «+ Купив» ціна в картці вже не перша, її не чіпаємо
+    if (!g?.buys?.length) v.firstBuy = v.price ? { date: v.buyDate || today(), n: g?.firstBuy?.n ?? (qtyCat(c) ? Math.max(1, num(v.qty)) : 1), price: v.price } : null;
     v.placeId = v.placeId || null;
     const id = g?.id ?? db.uid();
     // Фото — до закриття: не вдалося обробити, то форма лишається з усім введеним
@@ -614,7 +616,7 @@ function historyList(list) {
 
 /** Та сама річ іншого кольору: копія без фото, історії й кольору. */
 function copyGear(g) {
-  const { id, photoId, history, created, updated, status, statusDate, onId, onDate, color, losses, buys, spends, ...rest } = g;
+  const { id, photoId, history, created, updated, status, statusDate, onId, onDate, color, losses, buys, spends, firstBuy, ...rest } = g;
   gearForm(null, { preset: rest });
 }
 
@@ -1546,7 +1548,7 @@ function renderSyncChip(s) {
     chip.className = `sync-chip ${s.state}`;
     chip.title = s.message || t('Синхронізація з Google Диском');
   }
-  if (tab === 'more') render();
+  if (tab === 'settings') render();
 }
 
 function onSyncChip() {
@@ -1722,6 +1724,63 @@ function backupRow() {
     fileInput]);
 }
 
+// ---------- експорт у Марнотрат ----------
+
+const round2 = (n) => Math.round(num(n) * 100) / 100;
+
+/**
+ * Покупки: перша (з картки) і кожна «+ Купив» — { id, date, amount, n, g }. id сталі, тож повторний імпорт у Марнотрат не дублює.
+ * Речі, заведені до 0.5.0, без firstBuy: ціна × кількість на дату покупки з картки, якщо докупівель ще не було.
+ */
+function purchases() {
+  return state.gear.flatMap((g) => {
+    const first = g.firstBuy ?? (!g.buys?.length && g.price && g.buyDate ? { date: g.buyDate, n: isQty(g) ? Math.max(1, num(g.qty)) : 1, price: g.price } : null);
+    return [
+      ...(first ? [{ id: `${g.id}-0`, date: first.date, n: first.n, amount: round2(num(first.n) * num(first.price)), g }] : []),
+      ...(g.buys ?? []).map((b, i) => ({ id: `${g.id}-b${i}`, date: b.date, n: b.n, amount: round2(num(b.n) * num(b.price)), g })),
+    ].filter((x) => x.amount > 0 && x.date);
+  });
+}
+
+/**
+ * Копія у форматі Марнотрата для «Резервна копія → Додати до наявних»: { app: 'marnotrat', coins, ops }.
+ * Монети зливаються за видом і назвою (наявні «Готівка» й «Риболовля» беруться ті самі), операції з відомим id пропускаються.
+ */
+function marnotratFile(list, accName, catName) {
+  const coin = (id, kind, name, icon, order) => ({ id, kind, name, icon, currency: 'UAH', budget: 0, start: 0, order, archived: false });
+  const acc = coin('fishing-log-account', 'account', accName, 'wallet', 0);
+  const cat = coin('fishing-log-category', 'expense', catName, 'fish', 1);
+  const ops = list.map((x, i) => ({
+    id: `fishing-log-${x.id}`, from: acc.id, to: cat.id, amount: x.amount, date: x.date, tags: [],
+    comment: `${gearTitle(x.g)}${num(x.n) > 1 ? ` × ${fmt.num(x.n)}` : ''}`.slice(0, 200), created: Date.now() + i,
+  }));
+  return { app: 'marnotrat', version: `fishing-log ${self.APP_VERSION}`, exported: new Date().toISOString(), coins: [acc, cat], ops };
+}
+
+function marnotratRow() {
+  const f = form([
+    { name: 'from', label: t('Від'), type: 'dmy', value: `${today().slice(0, 4)}-01-01`, required: true, half: true },
+    { name: 'to', label: t('До'), type: 'dmy', value: today(), required: true, half: true },
+    { name: 'acc', label: t('Рахунок у Марнотраті'), value: recall('fishing-log:mn-acc') || 'Готівка', required: true, half: true },
+    { name: 'cat', label: t('Категорія'), value: recall('fishing-log:mn-cat') || 'Риболовля', required: true, half: true },
+  ]);
+  return setRow('marnotrat', 'share', t('Експорт у Марнотрат'), '', [
+    h('p', { class: 'muted small' }, t('Покупки за період — перша з картки речі й кожна «+ Купив» — витратами з рахунку в категорію. У Марнотраті: Резервна копія → файл → «Додати до наявних»; повторний імпорт не дублює.')),
+    f.el,
+    h('div', { class: 'btn-row' }, btn(t('Зберегти файл'), async () => {
+      if (invalidField(f)) return;
+      const v = f.values();
+      const list = purchases().filter((x) => x.date >= v.from && x.date <= v.to).sort((a, b) => collate(a.date, b.date));
+      if (!list.length) { toast(t('За цей період покупок немає')); return; }
+      remember('fishing-log:mn-acc', v.acc);
+      remember('fishing-log:mn-cat', v.cat);
+      const file = JSON.stringify(marnotratFile(list, v.acc, v.cat), null, 1);
+      if (await offerFile(`marnotrat-fishing-${v.from}-${v.to}.json`, file, 'application/json')) {
+        toast(t('Покупок: {n}, разом {sum}', { n: list.length, sum: fmt.money(list.reduce((s, x) => s + x.amount, 0)) }));
+      }
+    }, 'primary'))]);
+}
+
 function demoRow() {
   return setRow('demo', 'play', t('Демодані'), '', [
     h('p', { class: 'muted small' }, t('Вигадані гараж і машина з ящиками, спінінг із котушкою й шнуром, фідерне, воблери, джиг, водойми й виїзди з уловом і погодою.')),
@@ -1784,12 +1843,21 @@ function aboutPanel() {
       link('https://github.com/VitaliyLobko/fishing-log/blob/main/LICENSE', t('Ліцензія MIT'))));
 }
 
-function renderSettings() {
-  $('subtitle').textContent = t('версія {v}', { v: self.APP_VERSION });
+/** Покупки: що закінчується, що хочу, що втратив і скільки це коштує, експорт витрат. */
+function renderShop() {
+  const lost = lossBox();
+  const nothing = !state.gear.some(isLow) && !state.wishes.length && !lost;
   return h('div', { class: 'settings' },
     restockBox(),
     wishBox(),
-    lossBox(),
+    lost,
+    nothing ? h('p', { class: 'muted small' }, t('Тут з’явиться, що закінчується (поріг «мало» в картці речі) і що втрачено.')) : null,
+    settingsGroup(t('Витрати'), [marnotratRow()]));
+}
+
+function renderSettings() {
+  $('subtitle').textContent = t('версія {v}', { v: self.APP_VERSION });
+  return h('div', { class: 'settings' },
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [catsRow()]),
     settingsGroup(t('Вигляд'), [langRow(), themeRow(), backdropRow()]),
@@ -1802,7 +1870,8 @@ const VIEWS = {
   gear: { title: 'Снасті', render: renderGear, fab: () => gearForm() },
   trips: { title: 'Виїзди', render: renderTrips, fab: () => tripForm() },
   places: { title: 'Місця', render: renderPlaces, fab: () => placeForm() },
-  more: { title: 'Ще', render: renderSettings, fab: () => wishForm() },
+  shop: { title: 'Покупки', render: renderShop, fab: () => wishForm() },
+  settings: { title: 'Налаштування', render: renderSettings },
 };
 
 function render() {
