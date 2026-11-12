@@ -62,6 +62,14 @@
     "note": "Береться на кожну риболовлю",
     "created": 0,
     "updated": 1
+   },
+   {
+    "id": "demo-feederbox",
+    "name": "Фідерний ящик",
+    "parentId": "demo-garage",
+    "note": "Годівниці, прикормка, насадка",
+    "created": 0,
+    "updated": 1
    }
   ],
   "gear": [
@@ -215,7 +223,24 @@
     "model": "Aglia 3",
     "color": "срібло",
     "qty": 4,
-    "placeId": "demo-box1"
+    "placeId": "demo-box1",
+    "weight": 7,
+    "low": 2,
+    "price": 210,
+    "losses": [
+     {
+      "id": "demo-l-onl1e6",
+      "date": "2026-07-02",
+      "n": 1,
+      "reason": "snag"
+     },
+     {
+      "id": "demo-l-utw5vu",
+      "date": "2026-08-17",
+      "n": 1,
+      "reason": "break"
+     }
+    ]
    },
    {
     "id": "demo-soft",
@@ -234,7 +259,14 @@
     "model": "Easy Shiner 3\"",
     "color": "Bluegill Flash",
     "qty": 7,
-    "placeId": "demo-box2"
+    "placeId": "demo-box2",
+    "losses": [
+     {
+      "id": "demo-l-6vdc1i",
+      "date": "2026-10-11",
+      "n": 3
+     }
+    ]
    },
    {
     "id": "demo-jig",
@@ -250,7 +282,8 @@
     "cat": "jighead",
     "name": "Джиг-головки 10 г, гак №1",
     "qty": 12,
-    "placeId": "demo-box2"
+    "placeId": "demo-box2",
+    "weight": 10
    },
    {
     "id": "demo-hook",
@@ -306,6 +339,191 @@
     "qty": 1,
     "statusDate": "2026-07-20",
     "placeId": "demo-box1"
+   },
+   {
+    "id": "demo-cage30",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "cage",
+    "name": "Годівниця Method",
+    "brand": "Flagman",
+    "weight": 30,
+    "qty": 4,
+    "low": 3,
+    "price": 85,
+    "placeId": "demo-feederbox",
+    "losses": [
+     {
+      "id": "demo-l-lil2og",
+      "date": "2026-06-14",
+      "n": 1,
+      "reason": "break"
+     },
+     {
+      "id": "demo-l-er1nm3",
+      "date": "2026-08-03",
+      "n": 1,
+      "reason": "snag"
+     },
+     {
+      "id": "demo-l-xciugm",
+      "date": "2026-09-21",
+      "n": 2,
+      "reason": "break"
+     }
+    ]
+   },
+   {
+    "id": "demo-cage60",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "cage",
+    "name": "Годівниця пружина",
+    "weight": 60,
+    "qty": 6,
+    "low": 3,
+    "price": 45,
+    "placeId": "demo-feederbox",
+    "losses": [
+     {
+      "id": "demo-l-oijjo7",
+      "date": "2026-09-21",
+      "n": 1,
+      "reason": "snag"
+     }
+    ]
+   },
+   {
+    "id": "demo-cage80",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "cage",
+    "name": "Годівниця сітка (річка)",
+    "weight": 80,
+    "qty": 2,
+    "low": 3,
+    "price": 60,
+    "placeId": "demo-feederbox",
+    "losses": [
+     {
+      "id": "demo-l-xp3z68",
+      "date": "2026-10-05",
+      "n": 2,
+      "reason": "break"
+     }
+    ]
+   },
+   {
+    "id": "demo-gb1",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "groundbait",
+    "name": "Прикормка Sensas 3000 Feeder River",
+    "brand": "Sensas",
+    "unit": "kg",
+    "qty": 2.5,
+    "low": 1,
+    "price": 180,
+    "placeId": "demo-feederbox"
+   },
+   {
+    "id": "demo-gb2",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "groundbait",
+    "name": "Каша пшенична",
+    "unit": "pack",
+    "qty": 1,
+    "low": 2,
+    "price": 60,
+    "placeId": "demo-feederbox"
+   },
+   {
+    "id": "demo-add",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "additive",
+    "name": "Ароматика «Ваніль»",
+    "unit": "l",
+    "qty": 0.25,
+    "price": 150,
+    "placeId": "demo-feederbox"
+   },
+   {
+    "id": "demo-pellet",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "hookbait",
+    "name": "Пелетс 6 мм",
+    "unit": "kg",
+    "qty": 0.8,
+    "low": 0.5,
+    "placeId": "demo-feederbox"
+   },
+   {
+    "id": "demo-rodpod",
+    "status": "have",
+    "created": 0,
+    "updated": 1,
+    "history": [
+     {
+      "date": "2026-03-01",
+      "text": "Додано"
+     }
+    ],
+    "cat": "rodpod",
+    "name": "Род-под Flagman",
+    "brand": "Flagman",
+    "placeId": "demo-trunk"
    }
   ],
   "wishes": [

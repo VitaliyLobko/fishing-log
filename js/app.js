@@ -196,23 +196,36 @@ function joinChanges(...list) {
 
 // ---------- категорії ----------
 
-// Група — розділ у фільтрі; приманки й оснастка рахуються кількістю, решта — поштучно
+// Група — розділ у фільтрі; приманки, оснастка й фідерне рахуються кількістю, решта — поштучно
 const GROUPS = [['rods', 'Вудилища'], ['reels', 'Котушки'], ['lines', 'Шнури й волосінь'], ['lures', 'Приманки'], ['tackle', 'Оснастка'],
-  ['boxes', 'Коробки й ящики'], ['clothes', 'Одяг'], ['other', 'Інше']];
-const QTY_GROUPS = ['lures', 'tackle'];
+  ['feeder', 'Фідер'], ['boxes', 'Коробки й ящики'], ['clothes', 'Одяг'], ['other', 'Інше']];
+const QTY_GROUPS = ['lures', 'tackle', 'feeder'];
 const CATS = [
   ['rod', 'Вудилище', 'rods'], ['reel', 'Котушка', 'reels'], ['line', 'Шнур / волосінь', 'lines'],
   ['wobbler', 'Воблер', 'lures'], ['spoon', 'Блешня', 'lures'], ['soft', 'Силікон', 'lures'], ['fly', 'Мушка', 'lures'], ['lure', 'Інша приманка', 'lures'],
   ['hook', 'Гачки', 'tackle'], ['jighead', 'Джиг-головки', 'tackle'], ['sinker', 'Грузила', 'tackle'], ['swivel', 'Вертлюжки й застібки', 'tackle'],
   ['leader', 'Повідці', 'tackle'], ['tackle', 'Інша оснастка', 'tackle'],
+  // четвертий елемент — виняток із правила групи: род-под у «Фідері», але поштучно
+  ['cage', 'Годівниця', 'feeder'], ['groundbait', 'Прикормка / каша', 'feeder'], ['additive', 'Ароматика й добавки', 'feeder'],
+  ['hookbait', 'Насадка', 'feeder'], ['rodpod', 'Род-под / підставки', 'feeder', 'unit'],
   ['box', 'Коробка / ящик', 'boxes'], ['clothes', 'Одяг', 'clothes'], ['sonar', 'Ехолот', 'other'], ['net', 'Підсак', 'other'], ['other', 'Інше', 'other'],
 ];
 const groupLabel = (g) => t(GROUPS.find(([k]) => k === g)?.[1] ?? 'Інше');
 /** Вбудовані категорії + свої (⚙ → Свої категорії). */
-const allCats = () => [...CATS.map(([id, name, group]) => ({ id, name: t(name), group })), ...(prefs().cats ?? [])];
+const allCats = () => [...CATS.map(([id, name, group, kind]) => ({ id, name: t(name), group, ...(kind ? { kind } : {}) })), ...(prefs().cats ?? [])];
 const catOf = (id) => allCats().find((c) => c.id === id) ?? { id: 'other', name: t('Інше'), group: 'other' };
 const groupOf = (g) => catOf(g.cat).group;
-const isQty = (g) => QTY_GROUPS.includes(groupOf(g));
+const qtyCat = (c) => (c.kind ? c.kind === 'qty' : QTY_GROUPS.includes(c.group));
+const isQty = (g) => qtyCat(catOf(g.cat));
+// Вага — у приманок, оснастки й годівниць: «Годівниця Method 30 г»
+const hasWeight = (c) => ['lures', 'tackle'].includes(c.group) || c.id === 'cage';
+const UNITS = [['pcs', 'шт'], ['kg', 'кг'], ['pack', 'уп'], ['l', 'л']];
+const unitLabel = (g) => t(UNITS.find(([k]) => k === (g.unit || 'pcs'))?.[1] ?? 'шт');
+const pieces = (g) => (g.unit || 'pcs') === 'pcs';
+const qtyText = (g) => `${fmt.num(g.qty)} ${unitLabel(g)}`;
+const weightText = (g) => (g.weight ? `${fmt.num(g.weight)} ${t('г')}` : null);
+/** Закінчується: остаток не більший за поріг «мало» (без порога — коли 0). */
+const isLow = (g) => isQty(g) && active(g) && num(g.qty) <= num(g.low);
 const catOptions = () => GROUPS.map(([g, label]) => ({ group: t(label), options: allCats().filter((c) => c.group === g).map((c) => [c.id, c.name]) }));
 
 const STATUS = { have: 'В наявності', lost: 'Втрачено', broken: 'Зламано', sold: 'Продано', gift: 'Подаровано' };
@@ -380,18 +393,18 @@ let picking = null; // Set id — режим «Вибрати» для пере�
 
 function gearRow(g) {
   const qty = isQty(g);
-  const sub = [[g.brand, g.model].filter(Boolean).join(' '), g.color, active(g) ? whereText(g) : t(STATUS[g.status])].filter(Boolean).join(' · ');
-  const el = row(gearTitle(g), sub, qty ? `${fmt.num(g.qty)} ${t('шт')}` : '',
+  const sub = [weightText(g), [g.brand, g.model].filter(Boolean).join(' '), g.color, active(g) ? whereText(g) : t(STATUS[g.status])].filter(Boolean).join(' · ');
+  const el = row(gearTitle(g), sub, qty ? qtyText(g) : '',
     () => {
       if (!picking) { gearDetail(g.id); return; }
       if (!picking.delete(g.id)) picking.add(g.id);
       paintGear();
-    }, { id: g.id, cls: [picking?.has(g.id) ? 'picked' : '', active(g) ? '' : 'gone', qty && !num(g.qty) ? 'low' : ''].join(' '), thumb: thumbImg(g.photoId, monogram(gearTitle(g))) });
+    }, { id: g.id, cls: [picking?.has(g.id) ? 'picked' : '', active(g) ? '' : 'gone', isLow(g) ? 'low' : ''].join(' '), thumb: thumbImg(g.photoId, monogram(gearTitle(g))) });
   return el;
 }
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/[’ʼ`']/g, "'");
-const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, whereText(g)].join(' '));
+const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), whereText(g)].join(' '));
 const byGroup = (a, b) => GROUPS.findIndex(([k]) => k === groupOf(a)) - GROUPS.findIndex(([k]) => k === groupOf(b)) || collate(gearTitle(a), gearTitle(b));
 
 function shownGear() {
@@ -467,6 +480,9 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     { name: 'name', label: t('Назва'), value: src.name, required: true, placeholder: t('напр. Воблер Jackall Squad Minnow 95') },
     { name: 'cat', label: t('Категорія'), type: 'select', options: catOptions(), value: src.cat ?? 'other' },
     { name: 'qty', label: t('Кількість'), type: 'number', value: src.qty ?? 1, half: true },
+    { name: 'unit', label: t('Одиниця'), type: 'select', options: UNITS.map(([k, l]) => [k, t(l)]), value: src.unit ?? 'pcs', half: true },
+    { name: 'low', label: t('Поріг «мало»'), type: 'number', value: src.low ?? 0, half: true, hint: t('Стільки й менше — у «Докупити»') },
+    { name: 'weight', label: t('Вага, г'), type: 'number', value: src.weight, half: true },
     { name: 'placeId', label: t('Де лежить'), type: 'select', options: placeOptions(), value: src.placeId ?? '', half: true },
     { name: 'brand', label: t('Бренд'), value: src.brand, half: true },
     { name: 'model', label: t('Модель'), value: src.model, half: true },
@@ -481,16 +497,16 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     { name: 'spools', label: t('Запасних шпуль'), type: 'number', value: src.spools, half: true },
     { name: 'pe', label: t('PE'), value: src.pe, half: true, placeholder: '0.8' },
     { name: 'mm', label: t('Діаметр, мм'), type: 'number', value: src.mm, half: true },
-    { name: 'price', label: t('Ціна, грн'), type: 'number', value: src.price, half: true },
+    { name: 'price', label: t('Ціна, грн'), type: 'number', value: src.price, half: true, hint: t('Для кількісних — за одиницю') },
     { name: 'buyDate', label: t('Куплено'), type: 'dmy', value: src.buyDate, half: true },
     { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 2, value: src.note },
     { name: 'specs', label: t('Характеристики'), type: 'textarea', rows: 3, value: src.specs, placeholder: t('Скопіюйте з сайту виробника чи магазину') },
   ]);
-  // Поля, що стосуються категорії: кількість — для приманок і оснастки, свої — для вудилищ, котушок, шнурів
+  // Поля, що стосуються категорії: кількість — для приманок, оснастки й фідерного, свої — для вудилищ, котушок, шнурів
   const fit = () => {
-    const group = catOf(f.inputs.cat.value).group;
-    const own = new Set([...(GROUP_FIELDS[group] ?? []), ...(QTY_GROUPS.includes(group) ? ['qty'] : [])]);
-    for (const n of [...SPEC_FIELDS, 'qty']) f.inputs[n].closest('.field').hidden = !own.has(n);
+    const c = catOf(f.inputs.cat.value);
+    const own = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(qtyCat(c) ? ['qty', 'unit', 'low'] : []), ...(hasWeight(c) ? ['weight'] : [])]);
+    for (const n of [...SPEC_FIELDS, 'qty', 'unit', 'low', 'weight']) f.inputs[n].closest('.field').hidden = !own.has(n);
   };
   f.inputs.cat.addEventListener('change', fit);
   fit();
@@ -509,10 +525,11 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   const store = async (again) => {
     if (invalidField(f)) return;
     const v = f.values();
-    const group = catOf(v.cat).group;
-    const keep = new Set(GROUP_FIELDS[group] ?? []);
+    const c = catOf(v.cat);
+    const keep = new Set(GROUP_FIELDS[c.group] ?? []);
     for (const n of SPEC_FIELDS) if (!keep.has(n)) delete v[n];
-    v.qty = QTY_GROUPS.includes(group) ? Math.max(0, num(v.qty)) : null;
+    if (!hasWeight(c)) delete v.weight;
+    if (qtyCat(c)) { v.qty = Math.max(0, num(v.qty)); v.low = Math.max(0, num(v.low)); } else { v.qty = null; delete v.unit; delete v.low; }
     v.placeId = v.placeId || null;
     const id = g?.id ?? db.uid();
     // Фото — до закриття: не вдалося обробити, то форма лишається з усім введеним
@@ -556,7 +573,9 @@ function gearBody(g) {
   // Що стоїть на вудилищі чи котушці: котушка й шнур на ній
   const chain = mountedOn(g).flatMap((x) => [x, ...mountedOn(x)]);
   const actions = [
-    qty ? btn(t('−1 Втратив'), () => lostOne(g)) : null,
+    qty && pieces(g) ? btn(t('−1 Втратив'), () => lostOne(g), 'primary') : null,
+    qty && !pieces(g) ? btn(t('Витратив'), () => spendSheet(g), 'primary') : null,
+    qty ? btn(t('+ Купив'), () => buySheet(g)) : null,
     qty ? btn(t('Кількість'), () => qtySheet(g)) : null,
     btn(t('Перенести'), () => placePicker(t('Куди перенести'), (placeId) => moveGear([g], placeId))),
     group === 'reels' ? (host ? btn(t('Зняти з вудилища'), () => unmount(g)) : btn(t('На вудилище'), () => mountSheet(g, 'rods'))) : null,
@@ -569,7 +588,10 @@ function gearBody(g) {
       [t('Категорія'), catOf(g.cat).name],
       [t('Де'), active(g) ? where : null],
       active(g) ? null : [t('Стан'), `${t(STATUS[g.status])}${g.statusDate ? ` · ${fmt.date(g.statusDate)}` : ''}`],
-      qty ? [t('Кількість'), h('span', { class: num(g.qty) ? '' : 'warn-text' }, `${fmt.num(g.qty)} ${t('шт')}`)] : null,
+      qty ? [t('Кількість'), h('span', { class: isLow(g) ? 'warn-text' : '' }, `${qtyText(g)}${isLow(g) ? ` · ${t('докупити')}` : ''}`)] : null,
+      qty && num(g.low) ? [t('Поріг «мало»'), `${fmt.num(g.low)} ${unitLabel(g)}`] : null,
+      lostCount(g) ? [t('Втрачено'), `${fmt.num(lostCount(g))} ${unitLabel(g)}`] : null,
+      [t('Вага'), weightText(g)],
       [t('Бренд'), g.brand], [t('Модель'), g.model], [t('Колір'), g.color],
       [t('Тип'), label(ROD_TYPES, g.rodType)], [t('Довжина'), g.length ? `${fmt.num(g.length)} ${t('м')}` : null], [t('Тест'), g.test ? `${g.test} ${t('г')}` : null],
       [t('Стрій'), label(ACTIONS, g.action)], [t('Колін'), g.pieces], [t('Розмір'), g.size], [t('Передавальне число'), g.ratio], [t('Запасних шпуль'), g.spools],
@@ -591,7 +613,7 @@ function historyList(list) {
 
 /** Та сама річ іншого кольору: копія без фото, історії й кольору. */
 function copyGear(g) {
-  const { id, photoId, history, created, updated, status, statusDate, onId, onDate, color, ...rest } = g;
+  const { id, photoId, history, created, updated, status, statusDate, onId, onDate, color, losses, buys, ...rest } = g;
   gearForm(null, { preset: rest });
 }
 
@@ -642,10 +664,65 @@ function statusSheet(g) {
   });
 }
 
+const REASONS = [['break', 'Обрив'], ['snag', 'Зачеп'], ['gave', 'Віддав'], ['broke', 'Зламав']];
+/** Скільки втрачено: «−1 Втратив» + списане цілим як «Втрачено». */
+const lostCount = (g) => (g.losses ?? []).reduce((n, x) => n + (num(x.n) || 1), 0);
+
+/** «−1 Втратив»: одразу, без питань; причину можна дописати з тосту. */
 async function lostOne(g) {
-  if (!(num(g.qty) > 0)) { toast(t('Уже 0 шт')); return; }
-  await save({ gear: { put: [logged({ ...g, qty: num(g.qty) - 1 }, t('Втрачено 1 шт'))] } }, [g.id]);
-  setUndo(t('Втрачено 1 шт'), () => save({ gear: { put: [{ ...findGear(g.id), qty: num(g.qty), history: g.history }] } }, [g.id]));
+  if (!(num(g.qty) > 0)) { toast(t('Уже 0 — нічого втрачати')); return; }
+  const entry = { id: db.uid(), date: today(), n: 1 };
+  await save({ gear: { put: [logged({ ...g, qty: num(g.qty) - 1, losses: [...(g.losses ?? []), entry] }, t('Втрачено 1 шт'))] } }, [g.id]);
+  setUndo(t('Втрачено 1 шт'), () => save({ gear: { put: [{ ...findGear(g.id), qty: num(g.qty), losses: g.losses ?? [], history: g.history }] } }, [g.id]));
+  const now = findGear(g.id);
+  toast(t('Втрачено 1 · лишилось {n}', { n: qtyText(now) }), { action: t('Причина'), onAction: () => reasonSheet(g.id, entry.id) });
+}
+
+function reasonSheet(gearId, entryId) {
+  const close = sheet(t('Причина'), chips(REASONS.map(([k, l]) => [k, t(l)]), '', async (reason) => {
+    close();
+    const g = findGear(gearId);
+    if (!g) return;
+    await save({ gear: { put: [{ ...g, losses: (g.losses ?? []).map((x) => (x.id === entryId ? { ...x, reason } : x)) }] } }, [g.id]);
+  }));
+}
+
+/** Прикормка, насадка в кг, уп, л: витрачене — не втрата, просто менше лишилось. */
+function spendSheet(g) {
+  const f = form([{ name: 'n', label: t('Скільки, {unit}', { unit: unitLabel(g) }), type: 'number', required: true }]);
+  const close = sheet(t('Витратив'), f.el, {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      const { n } = f.values();
+      if (!(n > 0)) { fieldError(f.inputs.n, t('Більше нуля')); return; }
+      close();
+      await save({ gear: { put: [logged({ ...g, qty: Math.max(0, Math.round((num(g.qty) - n) * 1000) / 1000) }, t('Витрачено {n} {unit}', { n: fmt.num(n), unit: unitLabel(g) }))] } }, [g.id]);
+    }, 'primary')],
+  });
+}
+
+/** «+ Купив» ще таких самих: кількість росте, ціна й дата — останньої покупки, усе — в історію. */
+function buySheet(g, { onSaved = null } = {}) {
+  const f = form([
+    { name: 'n', label: t('Скільки, {unit}', { unit: unitLabel(g) }), type: 'number', value: 1, required: true, half: true },
+    { name: 'price', label: t('Ціна за одиницю, грн'), type: 'number', value: g.price, half: true },
+    { name: 'date', label: t('Дата'), type: 'dmy', value: today(), required: true },
+  ]);
+  const close = sheet(t('+ Купив'), h('div', {}, h('p', { class: 'muted small' }, gearTitle(g)), f.el), {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      const v = f.values();
+      if (!(v.n > 0)) { fieldError(f.inputs.n, t('Більше нуля')); return; }
+      close();
+      const price = v.price ?? g.price ?? null;
+      const rec = logged({
+        ...g, status: 'have', statusDate: null, qty: num(g.qty) + v.n, price, buyDate: v.date,
+        buys: [...(g.buys ?? []), { date: v.date, n: v.n, price }],
+      }, t('Куплено {n} {unit}', { n: fmt.num(v.n), unit: unitLabel(g) }) + (price ? ` · ${fmt.money(price)}` : ''), v.date);
+      await save({ gear: { put: [rec] } }, [g.id]);
+      onSaved?.();
+    }, 'primary')],
+  });
 }
 
 function qtySheet(g) {
@@ -796,10 +873,10 @@ function wishRow(w) {
     h('span', { class: 'row-main', onclick: () => wishForm(w) },
       h('span', { class: 'row-title' }, w.name),
       h('span', { class: 'muted small' }, [w.price ? fmt.money(w.price) : null, w.note].filter(Boolean).join(' · '))),
-    btn(t('Купив'), () => gearForm(null, {
+    btn(t('Купив'), () => (findGear(w.gearId) ? buySheet(findGear(w.gearId), { onSaved: () => save({ wishes: { del: [w.id] } }) }) : gearForm(null, {
       preset: { name: w.name, price: w.price, buyDate: today(), note: [w.link, w.note].filter(Boolean).join('\n') },
       onSaved: () => save({ wishes: { del: [w.id] } }),
-    }), 'quiet'));
+    })), 'quiet'));
 }
 
 function wishForm(w = null) {
@@ -827,9 +904,63 @@ function wishBox() {
   const list = [...state.wishes].sort((a, b) => collate(a.name, b.name));
   const sum = list.reduce((s, w) => s + num(w.price), 0);
   return box([t('Хочу купити'), list.length || null, sum ? fmt.money(sum) : null].filter(Boolean).join(' · '),
-    list.length ? h('div', { class: 'rows' }, list.map(wishRow))
+    h('div', {}, list.length ? h('div', { class: 'rows' }, list.map(wishRow))
       : h('p', { class: 'muted small' }, t('Що придивилися: назва, посилання, ціна. «Купив» — одразу в снасті.')),
-    h('div', { class: 'btn-row' }, btn(t('+ Бажання'), () => wishForm())));
+    h('div', { class: 'btn-row' }, btn(t('+ Бажання'), () => wishForm()))));
+}
+
+// ---------- докупити ----------
+
+function restockBox() {
+  const list = state.gear.filter(isLow).sort(byGroup);
+  if (!list.length) return null;
+  return box(`${t('Докупити')} · ${list.length}`, h('div', { class: 'rows' }, list.map((g) => {
+    const wished = state.wishes.some((w) => w.gearId === g.id);
+    return h('div', { class: 'row slot low', dataset: { id: g.id } },
+      h('span', { class: 'row-main', onclick: () => gearDetail(g.id) },
+        h('span', { class: 'row-title' }, gearTitle(g)),
+        h('span', { class: 'muted small' }, [weightText(g), g.color, t('лишилось {n}', { n: qtyText(g) })].filter(Boolean).join(' · '))),
+      wished ? h('span', { class: 'muted small' }, t('у «Хочу»')) : btn(t('У «Хочу»'), () => save({
+        wishes: { put: [{ id: db.uid(), created: Date.now(), gearId: g.id, price: g.price ?? null, name: [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ') }] },
+      }), 'quiet'));
+  })));
+}
+
+// ---------- втрати ----------
+
+const PERIODS = [['month', 'Місяць'], ['season', 'Сезон'], ['all', 'Усе']];
+let lossPeriod = PERIODS.some(([k]) => k === recall('fishing-log:loss-period')) ? recall('fishing-log:loss-period') : 'season';
+
+/** Кожна втрата: «−1 Втратив» з карток і речі, списані цілими як «Втрачено». */
+const lossEntries = () => state.gear.flatMap((g) => [
+  ...(g.losses ?? []).map((x) => ({ g, date: x.date, n: num(x.n) || 1, reason: x.reason })),
+  ...(g.status === 'lost' ? [{ g, date: g.statusDate, n: isQty(g) ? Math.max(1, num(g.qty)) : 1, whole: true }] : []),
+]);
+
+function lossBox() {
+  const all = lossEntries();
+  if (!all.length) return null;
+  const from = lossPeriod === 'month' ? `${today().slice(0, 7)}-01` : lossPeriod === 'season' ? `${today().slice(0, 4)}-01-01` : '';
+  const list = all.filter((x) => (x.date ?? '') >= from).sort((a, b) => collate(b.date, a.date));
+  const c = chips(PERIODS.map(([k, l]) => [k, t(l)]), lossPeriod, (v) => { lossPeriod = v; remember('fishing-log:loss-period', v); render(); });
+  c.classList.add('segmented');
+  const byCat = new Map();
+  for (const x of list) {
+    const k = catOf(x.g.cat).name;
+    const s = byCat.get(k) ?? { n: 0, sum: 0, unit: unitLabel(x.g) };
+    s.n += x.n;
+    s.sum += x.n * num(x.g.price);
+    byCat.set(k, s);
+  }
+  const total = list.reduce((s, x) => s + x.n * num(x.g.price), 0);
+  return box([t('Втрати'), total ? fmt.money(total) : null].filter(Boolean).join(' · '), h('div', {}, c,
+    list.length ? [
+      kv([...byCat].sort((a, b) => b[1].n - a[1].n).map(([k, s]) => [k, `${fmt.num(s.n)} ${s.unit}${s.sum ? ` · ${fmt.money(s.sum)}` : ''}`])),
+      fold('loss-list', t('Що саме'), h('div', { class: 'rows' }, list.map((x) => row(gearTitle(x.g),
+        [fmt.date(x.date), weightText(x.g), x.g.color, label(REASONS, x.reason), x.whole ? t('списано цілим') : null].filter(Boolean).join(' · '),
+        `−${fmt.num(x.n)}`, () => gearDetail(x.g.id))))),
+    ] : h('p', { class: 'muted small' }, t('За цей період втрат немає')),
+    h('p', { class: 'muted small' }, t('Сума — за ціною покупки. Витрачена прикормка сюди не входить.'))));
 }
 
 // ---------- свої категорії ----------
@@ -1250,11 +1381,13 @@ function aboutPanel() {
 function renderSettings() {
   $('subtitle').textContent = t('версія {v}', { v: self.APP_VERSION });
   return h('div', { class: 'settings' },
-    settingsGroup(t('Про застосунок'), [aboutPanel()]),
+    restockBox(),
     wishBox(),
+    lossBox(),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [catsRow()]),
-    settingsGroup(t('Вигляд'), [langRow(), themeRow(), backdropRow()]));
+    settingsGroup(t('Вигляд'), [langRow(), themeRow(), backdropRow()]),
+    settingsGroup(t('Про застосунок'), [aboutPanel()]));
 }
 
 // ---------- навігація ----------
