@@ -25,6 +25,8 @@ const ASSETS = [
   './js/changelog.js',
   './js/weather.js',
   './js/scenes.js',
+  './js/bot.js',
+  './js/bot-key.js',
   './js/vendor/qrcode.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -56,8 +58,15 @@ self.addEventListener('message', (event) => {
 // «Поділитися» → Fishing Log (share_target у manifest): картинку — у кеш, застосунок забере її за ?go=shared
 async function receiveShare(request) {
   try {
-    const file = (await request.formData()).get('image');
-    if (file) await (await caches.open('shared-image-fishing-log')).put('shared', new Response(file, { headers: { 'Content-Type': file.type || 'image/jpeg' } }));
+    const data = await request.formData();
+    const file = data.get('image');
+    const cache = await caches.open('shared-image-fishing-log');
+    if (file && file.size) await cache.put('shared', new Response(file, { headers: { 'Content-Type': file.type || 'image/jpeg' } }));
+    else {
+      // Поділились сторінкою: браузер дає адресу в url або в text разом із назвою
+      const link = [data.get('url'), data.get('text'), data.get('title')].filter(Boolean).join(' ').trim();
+      if (link) await cache.put('shared-link', new Response(link, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }));
+    }
   } catch { /* не вийшло — застосунок просто відкриється */ }
   return Response.redirect(new URL('?go=shared', self.registration.scope).href, 303);
 }

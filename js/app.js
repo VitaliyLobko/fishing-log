@@ -2,6 +2,7 @@
 // Інфраструктура (база, синхронізація, шторки, теми, «Що нового») — з fpv-log; фото речі — як у shooting-log.
 import * as db from './db.js';
 import * as sync from './sync.js';
+import * as bot from './bot.js';
 import { t, lang, collate, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
@@ -489,6 +490,13 @@ const PHOTO_FOR = 'fishing-log:photo-for';
 /** Картинка, якою поділились у застосунок: service worker кладе її в кеш, тут — відкрити ту саму форму. */
 async function takeSharedImage() {
   const cache = await caches.open('shared-image-fishing-log');
+  // Поділились посиланням (сторінка магазину) — нова річ, одразу заповнюється з нього
+  const shared = await cache.match('shared-link');
+  if (shared) {
+    await cache.delete('shared-link');
+    const url = linkIn(await shared.text());
+    if (url) { gearForm(null, { link: url, autoFill: true }); return; }
+  }
   const res = await cache.match('shared');
   if (!res) return;
   await cache.delete('shared');
@@ -953,7 +961,7 @@ function placePicker(title, onPick) {
   });
 }
 
-function gearForm(g = null, { preset = null, file = null, onSaved = null } = {}) {
+function gearForm(g = null, { preset = null, file = null, onSaved = null, link = '', filled = null, autoFill = false } = {}) {
   const src = g ?? preset ?? {};
   const f = form([
     { name: 'name', label: t('Назва'), value: src.name, required: true, placeholder: t('напр. Воблер Jackall Squad Minnow 95') },
@@ -1004,9 +1012,10 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
   fit();
   // Головне — назва, категорія, кількість, місце; решта згорнута (стан пам'ятається)
   const moreBody = h('div', { class: 'form' });
-  const more = h('details', { class: 'ex-more form-more', open: recall('fishing-log:open:gear-form-more') === '1' },
+  // Заповнене ШІ — розгорнуто, щоб людина бачила й перевірила всі поля
+  const more = h('details', { class: 'ex-more form-more', open: Boolean(filled) || recall('fishing-log:open:gear-form-more') === '1' },
     h('summary', {}, t('Бренд, розміри, ціна, нотатка…')), moreBody);
-  more.addEventListener('toggle', () => remember('fishing-log:open:gear-form-more', more.open ? '1' : ''));
+  more.addEventListener('toggle', () => { if (!filled) remember('fishing-log:open:gear-form-more', more.open ? '1' : ''); });
   // Колір і розмір приманки — на виду; решта характеристик — у згорнутому
   for (const n of ['brand', 'model', ...SPEC_FIELDS.filter((x) => !['lureSize', 'sizeUnit'].includes(x)), 'price', 'buyDate', 'note', 'specs']) moreBody.append(f.inputs[n].closest('.field'));
   f.el.append(more, h('datalist', { id: 'color-list' }, [...new Set(state.gear.map((x) => x.color).filter(Boolean))].sort(collate).map((c) => h('option', { value: c }))));
@@ -1052,9 +1061,121 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null } = {})
     onSaved?.(rec);
     if (again) gearForm(null, { preset: { cat: rec.cat, placeId: rec.placeId, brand: rec.brand } });
   };
-  const close = sheet(g ? t('Змінити') : t('Нова річ'), h('div', {}, pick.el, f.el), {
+  // Нова річ — з посилання на магазин: форма відкривається заново вже заповнена; місце, кількість і поріг лишаються вибрані
+  const linkEl = g ? null : linkFill({
+    link, autoFill,
+    reopen: (item, shopFile, info) => {
+      const cur = f.values();
+      const keep = Object.fromEntries(['placeId', 'qty', 'unit', 'low', 'buyDate', 'note'].filter((k) => cur[k] !== '' && cur[k] != null).map((k) => [k, cur[k]]));
+      close();
+      gearForm(null, { preset: { ...keep, ...item }, file: shopFile ?? pick.value().file ?? null, onSaved, link: info.link, filled: info });
+    },
+  });
+  const filledNote = filled ? h('p', { class: 'filled-note' }, icon('spark'),
+    h('span', {}, t('Заповнено зі сторінки магазину — перевірте поля перед збереженням.'), filled.note ? ` ${filled.note}` : '')) : null;
+  const close = sheet(g ? t('Змінити') : t('Нова річ'), h('div', {}, linkEl, filledNote, pick.el, f.el), {
     actions: [btn(t('Скасувати'), () => close()), g ? null : btn(t('Зберегти й ще'), () => store(true)), btn(t('Зберегти'), () => store(false), 'primary')].filter(Boolean),
   });
+}
+
+// ---------- ШІ-помічник: річ з посилання на магазин ----------
+
+/** Перше посилання з тексту («Поділитися» дає назву й адресу разом); без схеми — https. */
+function linkIn(s) {
+  const text = String(s ?? '').trim();
+  const m = /https?:\/\/[^\s<>"']+/i.exec(text);
+  if (m) return m[0];
+  return /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(text) ? `https://${text}` : '';
+}
+
+const BOT_ERRORS = {
+  offline: 'Немає зв’язку — спробуйте, коли з’явиться інтернет',
+  network: 'Бот не відповідає — перевірте інтернет і спробуйте ще раз',
+  unauthorized: 'Бот не прийняв ключ — візьміть новий командою /key у боті',
+  'old-bot': 'Бот ще не вміє читати сторінки — його треба оновити',
+  limit: 'На сьогодні ліміт ШІ вичерпано — завтра знову',
+};
+
+/**
+ * Посилання на товар + «Заповнити»: бот бере сторінку, ШІ розкладає характеристики по полях, reopen(item, file, info)
+ * відкриває форму заново вже заповнену. Магазин не віддав сторінку боту — просимо вставити її текст.
+ */
+function linkFill({ link = '', autoFill = false, reopen }) {
+  const input = h('input', { type: 'url', inputmode: 'url', placeholder: t('Посилання на товар у магазині'), autocomplete: 'off', enterkeyhint: 'go', 'aria-label': t('Посилання на товар') });
+  input.value = link;
+  const paste = h('textarea', { rows: 5, hidden: true, placeholder: t('Назва, опис і характеристики зі сторінки'), 'aria-label': t('Текст сторінки') });
+  const status = h('p', { class: 'muted small link-status', 'aria-live': 'polite' });
+  let busy = false;
+  const run = async () => {
+    if (busy) return;
+    const url = linkIn(input.value);
+    const text = paste.hidden ? '' : paste.value.trim();
+    if (!url && !text) { toast(t('Вставте посилання на товар')); input.focus(); return; }
+    if (!bot.botConfig()) { botSheet(run); return; }
+    busy = true;
+    go.disabled = true;
+    status.textContent = text ? t('ШІ читає текст…') : t('Бот читає сторінку…');
+    try {
+      const res = await bot.gearFromPage({ ...(url ? { url } : {}), ...(text ? { text } : {}), cats: allCats().map(({ id, name, group }) => ({ id, name, group })) });
+      if (!res.item?.name && !res.item?.brand) { status.textContent = res.note || t('На сторінці не знайшлося товару'); return; }
+      status.textContent = res.image ? t('Беру фото…') : '';
+      const shopFile = res.image ? await bot.gearImage(res.image) : null;
+      const specs = [res.item.specs, url ? `${t('Джерело')}: ${url}` : ''].filter(Boolean).join('\n');
+      reopen({ ...res.item, ...(specs ? { specs } : {}) }, shopFile, { link: url, note: res.note, source: res.source });
+    } catch (err) {
+      const code = err.message;
+      if (code === 'fetch' || code === 'empty') {
+        paste.hidden = false;
+        status.textContent = code === 'fetch'
+          ? t('Магазин не віддав сторінку боту. Відкрийте її, скопіюйте назву й характеристики і вставте сюди.')
+          : t('Ця сторінка збирається в браузері — боту нічого не видно. Скопіюйте з неї назву й характеристики і вставте сюди.');
+        paste.focus();
+      } else {
+        status.textContent = t(BOT_ERRORS[code] ?? 'ШІ не впорався — спробуйте ще раз');
+        if (code === 'unauthorized') botSheet(run);
+      }
+    } finally {
+      busy = false;
+      go.disabled = false;
+    }
+  };
+  const go = btn([icon('spark'), t('Заповнити')], run, 'mini primary');
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+  if (autoFill && link) queueMicrotask(run);
+  return h('div', { class: 'link-fill' },
+    h('div', { class: 'link-row' }, icon('link'), input, go),
+    paste, status);
+}
+
+/** Адреса й ключ бота: ті самі, що в Хобі-плані, «Вазі» чи Марнотраті (на цьому пристрої підхоплюються самі). */
+function botSheet(onDone = null) {
+  const cur = bot.botConfig();
+  const f = form([
+    { name: 'url', label: t('Адреса бота'), value: cur?.url ?? '', required: true, placeholder: 'https://….workers.dev' },
+    { name: 'key', label: t('Ключ'), value: cur?.key ?? '', required: true, placeholder: t('з команди /key у боті') },
+  ]);
+  const close = sheet(t('ШІ-помічник'), h('div', {},
+    h('p', { class: 'muted small' }, t('Сторінки магазинів читає ваш Telegram-бот Хобі-плану, а заповнює поля ШІ. Адреса й ключ — ті самі, що в Хобі-плані, «Вазі» чи Марнотраті; ключ дає команда /key у боті.')),
+    f.el), {
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), () => {
+      if (invalidField(f)) return;
+      const v = f.values();
+      if (!/^https:\/\/\S+$/.test(v.url.trim())) { fieldError(f.inputs.url, t('Адреса починається з https://')); return; }
+      bot.setBot(v.url, v.key);
+      close();
+      toast(t('Бота підключено'));
+      render();
+      onDone?.();
+    }, 'primary')],
+  });
+}
+
+function aiRow() {
+  const on = Boolean(bot.botConfig());
+  const value = on ? t('Підключено') : bot.keyProblem() ? t('Ключ не прийнято') : t('Не підключено');
+  return setRow('ai', 'spark', t('ШІ-помічник'), value, [
+    h('p', { class: 'muted small' }, t('У новій речі вставте посилання на товар у магазині й натисніть «Заповнити»: бот прочитає сторінку, ШІ заповнить назву, категорію, характеристики, ціну й фото. Перевірте й збережіть. Посиланням можна й поділитися в Fishing Log з браузера.')),
+    h('div', { class: 'btn-row' }, btn(on ? t('Змінити адресу чи ключ') : t('Підключити бота'), () => botSheet(), on ? '' : 'primary'))]);
 }
 
 function gearDetail(id) {
@@ -3028,7 +3149,7 @@ function renderSettings() {
   return h('div', { class: 'settings' },
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
-    settingsGroup(t('Снасті'), [placesRow(), catsRow(), serviceRow()]),
+    settingsGroup(t('Снасті'), [placesRow(), catsRow(), serviceRow(), aiRow()]),
     settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow(), scenesRow()].filter(Boolean)));
 }
 
