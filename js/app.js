@@ -822,10 +822,13 @@ function paintGear() {
       }, 'primary'))) : null;
   // Без пошуку — розділи-картки (згорнуті, стан пам'ятається) і «Списані» наприкінці; пошук і «Вибрати» — плоский список
   const gone = state.gear.filter((g) => !active(g) && inDir(g)).sort(byGroup);
+  // Напрямок звузив усе до одного розділу (у «Таборі» — лише «Табір і туризм»): картка розділу зайва, речі — одразу списком
+  const used = new Set(list.map(groupOf));
+  const only = dirFilter && used.size === 1 ? sectionOf([...used][0]) : null;
   const body = query || picking
     ? (list.length ? h('div', { class: 'rows' }, list.map(gearRow)) : h('p', { class: 'muted' }, t('Нічого не знайдено')))
     : h('div', { class: 'gear-groups' },
-      sections().map((x) => {
+      only ? (only.key === 'lures' ? lureBody(list) : h('div', { class: 'rows' }, list.map(gearRow))) : sections().map((x) => {
         const items = list.filter((g) => groupOf(g) === x.key);
         // Порожній свій розділ теж видно — щоб змінити чи видалити, як порожні групи в Хобі-плані
         return items.length || !x.builtin ? fold(`gear-${x.key}`, sectionHead(x.icon, x.name, items.length, items.filter(isLow).length, () => sectionForm(x)),
