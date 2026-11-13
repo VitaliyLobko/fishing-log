@@ -2128,6 +2128,13 @@ function lossBox() {
 
 // ---------- свої категорії ----------
 
+/** Місця зберігання — окрема сторінка (дерево, QR-наклейки); у налаштуваннях — рядок-посилання з кількістю. */
+function placesRow() {
+  return h('a', { class: 'set-row set-link', href: '#places', dataset: { key: 'places' } },
+    h('span', { class: 'set-head' }, toolIcon('pin'), h('span', { class: 'set-title' }, t('Місця зберігання')),
+      h('span', { class: 'set-val' }, state.places.length ? fmt.num(state.places.length) : ''), h('span', { class: 'set-chev', 'aria-hidden': 'true' }, '›')));
+}
+
 function catsRow() {
   const own = prefs().cats ?? [];
   const f = form([
@@ -2682,7 +2689,7 @@ function renderSettings() {
   return h('div', { class: 'settings' },
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
-    settingsGroup(t('Снасті'), [catsRow(), serviceRow()]),
+    settingsGroup(t('Снасті'), [placesRow(), catsRow(), serviceRow()]),
     settingsGroup(t('Вигляд'), [themeRow(), backdropRow()]));
 }
 
@@ -2691,7 +2698,7 @@ function renderSettings() {
 const VIEWS = {
   gear: { title: 'Снасті', render: renderGear, fab: () => gearForm() },
   trips: { title: 'Виїзди', render: renderTrips, fab: () => tripForm() },
-  places: { title: 'Місця', render: renderPlaces, fab: () => placeForm() },
+  places: { title: 'Місця зберігання', render: renderPlaces, fab: () => placeForm() },
   shop: { title: 'Покупки', render: renderShop, fab: () => wishForm() },
   settings: { title: 'Налаштування', render: renderSettings },
 };
@@ -2707,11 +2714,12 @@ function render() {
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
   // Налаштування — не в нижньому меню, а шестернею вгорі (як у Shooter's Log); у них — «Назад» туди, звідки прийшли
   const gearBtn = $('settings-btn');
-  gearBtn.classList.toggle('active', tab === 'settings');
+  gearBtn.classList.toggle('active', tab === 'settings' || tab === 'places');
   if (tab === 'settings' && !gearBtn.dataset.on) { gearBtn.classList.remove('play'); void gearBtn.offsetWidth; gearBtn.classList.add('play'); }
   gearBtn.dataset.on = tab === 'settings' ? '1' : '';
-  $('back-btn').hidden = tab !== 'settings';
-  $('back-btn').href = `#${backTab}`;
+  // Місця зберігання — сторінка всередині налаштувань: «Назад» веде в налаштування
+  $('back-btn').hidden = tab !== 'settings' && tab !== 'places';
+  $('back-btn').href = `#${tab === 'places' ? 'settings' : backTab}`;
 }
 
 function route() {
@@ -2727,7 +2735,7 @@ function route() {
   }
   const next = location.hash.slice(1);
   const to = VIEWS[next] ? next : 'gear';
-  if (to === 'settings' && tab !== 'settings' && VIEWS[tab]) backTab = tab;
+  if (to === 'settings' && !['settings', 'places'].includes(tab) && VIEWS[tab]) backTab = tab;
   tab = to;
   render();
   window.scrollTo(0, 0);
