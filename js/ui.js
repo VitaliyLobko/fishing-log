@@ -209,7 +209,8 @@ export function sheet(title, body, { actions = [], onClose, live, tools = [], le
   const left = [danger, lead].flat(Infinity).filter(Boolean);
   const panel = h('section', { class: full ? 'sheet full' : 'sheet', role: 'dialog', 'aria-label': titleOf() },
     h('div', { class: 'sheet-grip' }),
-    h('header', { class: 'sheet-head' },
+    // Три й більше кнопок у шапці (кошик, копія, олівець, ✕) стискали назву до «Chubby 38…» — тоді назва окремим рядком на всю ширину
+    h('header', { class: `sheet-head${left.length + rest.length >= 2 ? ' stacked' : ''}` },
       left.length ? h('div', { class: 'sheet-lead' }, left) : null,
       h('h2', {}, titleOf()),
       h('div', { class: 'sheet-tools' }, rest,
@@ -823,6 +824,9 @@ const TOOL_ICON = {
   stock: '<path d="M3 21V8.5L12 3l9 5.5V21"/><path d="M7 21v-9h10v9M7 15h10M7 18h10"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>',
   pin: '<path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+  fish: '<path d="M3 12c2.5-4 6-5.5 9.5-5.5 3 0 5.2 1.6 6.5 3.5l2-2v8l-2-2c-1.3 1.9-3.5 3.5-6.5 3.5C9 17.5 5.5 16 3 12z"/><circle cx="8" cy="11" r=".8"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.4"/>',
+  drop: '<path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11z"/>',
   paste: '<path d="M9 3.5h6v3H9z"/><path d="M9 5H5.5v15.5h13V5H15"/><path d="M9 12h6M9 16h4"/>',
   qr: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M14 14h2v2h-2zM18 14h2M14 18h2v2M18 18h2v2h-2"/>',
   move: '<path d="M5 12h14M15 8l4 4-4 4"/><path d="M9 5H5v14h4"/>',

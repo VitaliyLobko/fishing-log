@@ -715,7 +715,7 @@ function catchBox(g) {
   const total = [...bySpecies.values()].reduce((s, n) => s + n, 0);
   // Найбільша — лише з поштучних записів: вага «разом» за кількох риб не про одну рибину
   const best = list.filter(({ c }) => (num(c.n) || 1) === 1 && num(c.weight)).sort((a, b) => num(b.c.weight) - num(a.c.weight))[0];
-  return box(`${t('Уловистість')} · 🐟 ${fmt.num(total)}`, h('div', {},
+  return box([t('Уловистість'), h('span', { class: 'fish-count' }, icon('fish'), fmt.num(total))], h('div', {},
     kv([...[...bySpecies].sort((a, b) => b[1] - a[1]).map(([s, n]) => [s, fmt.num(n)]),
       best ? [t('Найбільша'), `${best.c.species} ${fmt.num(best.c.weight)} ${t('кг')} · ${fmt.date(best.tr.date)}`] : null]),
     h('div', { class: 'rows' }, list.slice(0, 5).map(({ tr, c }) => row(
@@ -728,8 +728,15 @@ function catchBox(g) {
 function gearRow(g) {
   const qty = isQty(g);
   const fish = caughtCount(g);
-  const sub = [fish ? `🐟 ${fmt.num(fish)}` : null, sizeText(g), weightText(g), [g.brand, g.model].filter(Boolean).join(' '), g.color, active(g) ? whereText(g) : t(STATUS[g.status])].filter(Boolean).join(' · ');
-  const el = row(gearTitle(g), sub, qty ? qtyText(g) : '',
+  const title = gearTitle(g);
+  // Два рядки замість суцільного «· · ·» на 3–4 рядки: характеристики, потім де лежить; бренд і модель — лише коли їх немає в назві
+  const bm = [g.brand, g.model].filter(Boolean).join(' ');
+  const specs = [sizeText(g), weightText(g), bm && !norm(title).includes(norm(g.model || g.brand)) ? bm : null, g.color].filter(Boolean).join(' · ');
+  const sub = [specs ? h('span', { class: 'row-line' }, specs) : null,
+    h('span', { class: 'row-line row-place' }, active(g) ? icon('pin') : null, h('span', {}, active(g) ? whereText(g) : t(STATUS[g.status])))];
+  const side = qty || fish ? h('span', { class: 'row-side' }, qty ? h('b', {}, qtyText(g)) : null,
+    fish ? h('span', { class: 'fish-count', title: t('Упіймано на неї') }, icon('fish'), fmt.num(fish)) : null) : '';
+  const el = row(title, sub, side,
     () => {
       if (!picking) { gearDetail(g.id); return; }
       if (!picking.delete(g.id)) picking.add(g.id);
@@ -1085,9 +1092,45 @@ function specTiles(g) {
     tile(t('PE'), g.pe),
     tile(t('Діаметр'), num(g.mm) ? `${fmt.num(g.mm)} ${t('мм')}` : null),
     tile(t('Довжина'), num(g.length) ? `${fmt.num(g.length)} ${t('м')}` : null),
-  ] : [];
+  ] : [
+    // Приманки, оснастка, фідерне: розмір, вага, у воблера — плавучість кодом (F, SP…) і словами
+    tile(t('Розмір'), sizeText(g)),
+    tile(t('Вага'), weightText(g)),
+    tile(t('Плавучість'), g.buoy || null, g.buoy ? label(BUOYS, g.buoy).split('—')[1]?.trim() : null),
+    tile(t('Заглиблення'), num(g.depth) ? `${fmt.num(g.depth)} ${t('м')}` : null),
+  ];
   const list = tiles.filter(Boolean);
   return list.length ? h('div', { class: 'spec-tiles' }, list) : null;
+}
+
+/** Де лежить, категорія, напрямок і колір — чипами під характеристиками; місце й колір натискаються. */
+function metaChips(g, host) {
+  const chip = (ico, text, onclick = null, cls = '') => h(onclick ? 'button' : 'span', { type: onclick ? 'button' : null, class: `meta-chip ${cls}`.trim(), onclick },
+    ico ? icon(ico) : null, h('span', {}, text));
+  const place = !active(g) ? null
+    : host ? chip('pin', t('на «{name}»', { name: gearTitle(host) }), () => gearDetail(host.id), 'link')
+      : g.placeId ? chip('pin', pathOf(g.placeId), () => placeDetail(g.placeId), 'link') : chip('pin', t('без місця'), null, 'dim');
+  return h('div', { class: 'meta-chips' }, place,
+    chip('tag', catOf(g.cat).name),
+    chip(null, label(DIRS, dirOf(g)) || t('Універсальне')),
+    g.color ? chip('drop', g.color, () => searchFor(g.color), 'link') : null);
+}
+
+/** Залишок приманки чи оснастки: велика цифра, «мало», втрати — і дії з кількістю тут же. */
+function stockBox(g) {
+  const low = isLow(g);
+  const lost = lostCount(g);
+  return h('div', { class: `stock${low ? ' low' : ''}` },
+    h('div', { class: 'stock-head' },
+      h('span', { class: 'stock-num' }, fmt.num(g.qty), h('small', {}, unitLabel(g))),
+      h('span', { class: 'stock-meta' },
+        low ? h('b', { class: 'warn-text' }, t('мало — докупити')) : h('b', {}, t('у наявності')),
+        num(g.low) ? h('span', {}, t('поріг «мало» — {n}', { n: fmt.num(g.low) })) : null,
+        lost ? h('span', {}, t('втрачено {n} {u}', { n: fmt.num(lost), u: unitLabel(g) })) : null)),
+    h('div', { class: 'btn-row' },
+      pieces(g) ? btn(t('−1 Втратив'), () => lostOne(g), 'primary') : btn(t('Витратив'), () => spendSheet(g), 'primary'),
+      btn(t('+ Купив'), () => buySheet(g)),
+      btn(t('Кількість'), () => qtySheet(g))));
 }
 
 /** Головні цифри котушки чи шнура одним рядком для «Стоїть»: «1000S · 5.2:1», «PE 0.1 · 0,05 мм · 150 м». */
@@ -1104,37 +1147,26 @@ function gearBody(g) {
   const host = findGear(g.onId);
   const group = groupOf(g);
   const qty = isQty(g);
-  const where = host ? link(t('на «{name}»', { name: gearTitle(host) }), () => gearDetail(host.id))
-    : g.placeId ? link(pathOf(g.placeId), () => placeDetail(g.placeId)) : t('без місця');
   // Що стоїть на вудилищі чи котушці: котушка й шнур на ній
   const chain = mountedOn(g).flatMap((x) => [x, ...mountedOn(x)]);
+  // Дії з кількістю — у блоці залишку; тут — решта, «Списати» тихою кнопкою наприкінці (рідкісна дія)
   const actions = [
-    qty && pieces(g) ? btn(t('−1 Втратив'), () => lostOne(g), 'primary') : null,
-    qty && !pieces(g) ? btn(t('Витратив'), () => spendSheet(g), 'primary') : null,
-    qty ? btn(t('+ Купив'), () => buySheet(g)) : null,
-    qty ? btn(t('Кількість'), () => qtySheet(g)) : null,
     btn(t('Перенести'), () => placePicker(t('Куди перенести'), (placeId) => moveGear([g], placeId))),
     group === 'reels' ? (host ? btn(t('Зняти з вудилища'), () => unmount(g)) : btn(t('На вудилище'), () => mountSheet(g, 'rods'))) : null,
     ['reels', 'rods'].includes(group) && active(g) ? btn(t('Обслужив'), () => serviceSheet(g)) : null,
     group === 'lines' && host ? btn(t('Перемотав'), () => rewound(g)) : null,
     group === 'lines' ? (host ? btn(t('Змотати з котушки'), () => unmount(g)) : btn(t('Намотати на котушку'), () => mountSheet(g, 'reels'))) : null,
-    active(g) ? btn(t('Списати'), () => statusSheet(g)) : btn(t('Повернути в наявні'), () => setStatus(g, 'have', t('Повернуто в наявні'))),
+    active(g) ? btn(t('Списати'), () => statusSheet(g), 'quiet') : btn(t('Повернути в наявні'), () => setStatus(g, 'have', t('Повернуто в наявні')), 'primary'),
   ];
-  return h('div', {},
+  return h('div', { class: 'gear-sheet' },
     // Фото й характеристики поруч на широкому екрані, одне під одним — на телефоні
     photo || specs ? h('div', { class: `gear-hero${photo && specs ? ' two' : ''}` },
       photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) }, h('img', { class: 'item-photo', src: photo.thumb, alt: '' })) : null,
       specs) : null,
+    metaChips(g, host),
+    qty ? stockBox(g) : null,
     kv([
-      [t('Де'), active(g) ? where : null],
-      [t('Напрямок'), label(DIRS, dirOf(g)) || t('Універсальне')],
       active(g) ? null : [t('Стан'), `${t(STATUS[g.status])}${g.statusDate ? ` · ${fmt.date(g.statusDate)}` : ''}`],
-      qty ? [t('Кількість'), h('span', { class: isLow(g) ? 'warn-text' : '' }, `${qtyText(g)}${isLow(g) ? ` · ${t('докупити')}` : ''}`)] : null,
-      lostCount(g) ? [t('Втрачено'), `${fmt.num(lostCount(g))} ${unitLabel(g)}`] : null,
-      [t('Розмір'), sizeText(g)],
-      [t('Вага'), weightText(g)],
-      [t('Колір'), g.color ? link(g.color, () => searchFor(g.color)) : null],
-      [t('Плавучість'), label(BUOYS, g.buoy)], [t('Заглиблення'), g.depth ? `${g.depth} ${t('м')}` : null],
       host && group === 'lines' && g.onDate ? [t('Намотано'), `${fmt.date(g.onDate)} · ${t('{n} міс. тому', { n: Math.floor(monthsSince(g.onDate)) })}`] : null,
       group === 'reels' ? [t('Обслуговано'), (g.service ?? []).length ? fmt.date(serviceSince(g)) : t('ще ні')] : null,
       serviceDue(g) ? [t('Увага'), h('span', { class: 'warn-text' }, serviceDue(g))] : null,
@@ -1144,8 +1176,6 @@ function gearBody(g) {
     chain.length ? box(t('Стоїть'), h('div', { class: 'rows' }, chain.map((x) =>
       row(gearTitle(x), [mountSpecs(x) || catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: gearThumb(x) })))) : null,
     fold('gear-details', t('Деталі'), kv([
-      [t('Категорія'), catOf(g.cat).name],
-      qty && num(g.low) ? [t('Поріг «мало»'), `${fmt.num(g.low)} ${unitLabel(g)}`] : null,
       [t('Бренд'), g.brand], [t('Модель'), g.model],
       // Характеристики вудилища, котушки й шнура — у плитках угорі; тут лише те, чого плитки не показали
       ...(specs ? [] : [[t('Тип'), label(ROD_TYPES, g.rodType)], [t('Довжина'), g.length ? `${fmt.num(g.length)} ${t('м')}` : null], [t('Тест'), g.test ? `${g.test} ${t('г')}` : null],
@@ -1509,7 +1539,8 @@ function tripRow(tr) {
   const lost = tripLosses(tr.id).reduce((s, x) => s + (num(x.n) || 1), 0);
   return row(tripTitle(tr),
     [fmt.date(tr.date), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', '), shortWeather(tr.weather)].filter(Boolean).join(' · '),
-    [n ? `🐟 ${fmt.num(n)}` : t('без улову'), lost ? `−${fmt.num(lost)}` : null].filter(Boolean).join(' '),
+    h('span', { class: 'row-side' }, n ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(n)) : h('span', { class: 'muted small' }, t('без улову')),
+      lost ? h('span', { class: 'muted small' }, `−${fmt.num(lost)}`) : null),
     () => tripDetail(tr.id), { id: tr.id, thumb: findPhoto(tr.photoIds?.[0]) ? thumbImg(tr.photoIds[0]) : null });
 }
 
@@ -1660,7 +1691,8 @@ function baitStrip(select, baits, tr) {
   const note = h('p', { class: 'muted small bait-note' });
   const say = (v) => {
     const g = findGear(v);
-    note.textContent = g ? [full(g), caughtCount(g) ? t('🐟 {n}', { n: caughtCount(g) }) : null].filter(Boolean).join(' · ') : t('Впишіть нижче, на що впіймали');
+    note.replaceChildren(...(g ? [full(g), caughtCount(g) ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(caughtCount(g))) : null].filter(Boolean)
+      .flatMap((x, i) => (i ? [' · ', x] : [x])) : [t('Впишіть нижче, на що впіймали')]));
   };
   const wrap = h('div', { class: 'field bait-pick' }, h('span', { class: 'field-label' }, t('На що')));
   const paint = () => {

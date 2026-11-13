@@ -994,3 +994,53 @@ button.about-avatar { padding: 0; border: 0; }
 .view > div > p.muted, .gear-groups + p.muted { padding: 10px 12px; border-radius: 12px; background: var(--surface); }
 /* Назва моделі приманки — переноситься, а не «…» */
 .model-head .sec-name { white-space: normal; overflow: visible; }
+
+/* ---------- Картки (0.19.0): шапка, чипи, залишок, рядки списку ---------- */
+/* Шапка аркуша з трьома й більше кнопками: кнопки — рядком угорі, назва — під ними на всю ширину */
+.sheet-head.stacked { flex-wrap: wrap; row-gap: 2px; padding-bottom: 4px; }
+.sheet-head.stacked h2 { order: 3; flex: 1 0 100%; font-size: 21px; line-height: 1.25; text-wrap: balance; -webkit-line-clamp: 4; line-clamp: 4; }
+.sheet-head.stacked .sheet-tools { margin-left: auto; }
+/* Фото речі: світла підкладка під товарні фото на білому, без обрізання */
+.gear-sheet .item-photo { aspect-ratio: 4 / 3; max-height: 240px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
+.gear-sheet .photo-btn { width: 100%; }
+/* Плитки характеристик: акцентна цифра, підпис — дрібно й спокійно */
+.spec-tile { border: 1px solid var(--line-soft); }
+.spec-tile b { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Чипи: місце, категорія, напрямок, колір. Натискні — з акцентною іконкою, висота під палець */
+.meta-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.meta-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 40px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface-2); color: var(--text); font: 600 14px/1.25 system-ui, sans-serif; text-align: left; }
+.meta-chip > span:last-child { overflow-wrap: anywhere; }
+button.meta-chip { cursor: pointer; transition: background-color .15s, border-color .15s; }
+button.meta-chip:active { background: var(--seg-on); }
+.meta-chip.link { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.meta-chip.link .ico { color: var(--accent-2); }
+.meta-chip.dim { color: var(--muted); font-weight: 500; }
+.meta-chip .ico, .row-place .ico, .fish-count .ico { display: inline-grid; flex: none; place-items: center; }
+.meta-chip .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Залишок: велика цифра й стан, дії з кількістю — в тій самій картці */
+.stock { margin: 0 0 14px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); }
+.stock.low { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); box-shadow: inset 4px 0 0 var(--warn); }
+.stock-head { display: flex; align-items: center; gap: 14px; margin: 0 0 10px; }
+.stock-num { display: flex; align-items: baseline; gap: 4px; font-size: 32px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.stock-num small { color: var(--muted); font-size: 15px; font-weight: 700; }
+.stock.low .stock-num { color: var(--warn); }
+.stock-meta { display: grid; gap: 2px; min-width: 0; color: var(--muted); font-size: 13px; }
+.stock-meta b { color: var(--text); font-size: 15px; }
+.stock-meta b.warn-text { color: var(--warn); }
+.stock .btn-row { margin: 0; }
+/* «Списати» — тиха кнопка: рідкісна дія не має виглядати головною */
+.gear-sheet > .btn-row .btn.quiet { flex: 0 1 auto; color: var(--muted); }
+/* Рядок списку: характеристики й місце — по рядку, з трьома крапками; праворуч — кількість і улов */
+.row-line { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row-place { display: flex; align-items: center; gap: 4px; }
+.row-place .ico svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.row-place > :last-child { overflow: hidden; text-overflow: ellipsis; }
+.row-side { display: grid; justify-items: end; gap: 4px; }
+.fish-count { display: inline-flex; align-items: center; gap: 4px; color: var(--clean); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fish-count .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+legend .fish-count { margin-left: 8px; vertical-align: -2px; }
+/* Дії залишку: головна («−1 Втратив» / «Витратив») — на всю ширину, під нею дві рівні */
+.stock .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stock .btn-row .btn.primary { grid-column: 1 / -1; }
+.gear-sheet > .btn-row .btn.quiet { margin-left: auto; }
