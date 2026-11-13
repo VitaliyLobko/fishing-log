@@ -3308,5 +3308,11 @@ showNews();
 fortuneOnStart(newsDue);
 setTimeout(backupReminder, 1500);
 sync.onStatus(renderSyncChip);
+// Увійшли в Google в іншому застосунку автора (Shooter's Log, «Вага»…) — Диск тут підключається сам
+const googleFromOtherApp = () => {
+  if (sync.autoConnect()) { toast(t('Google Диск підключено — вхід з іншого вашого застосунку')); sync.syncNow(); }
+};
+googleFromOtherApp();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') googleFromOtherApp(); });
 sync.preload();
 sync.syncNow();

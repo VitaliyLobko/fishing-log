@@ -130,6 +130,7 @@ export async function connect() {
   }
   conf.enabled = true;
   conf.consented = true;
+  delete conf.declined;
   save();
   await syncNow();
 }
@@ -154,11 +155,25 @@ function refreshOnSave() {
   }).then(syncNow, () => set('auth', t('Натисніть, щоб увійти в Google')));
 }
 
+/**
+ * Тут Диск ще не підключали, а в іншому застосунку автора вже є живий вхід у Google (той самий OAuth-клієнт, згоду дано) —
+ * підключаємося самі, без вікна. Відключили тут вручну (declined) — самі не підключаємось. true — підключилися.
+ */
+export function autoConnect() {
+  if (!configured() || conf.enabled || conf.declined || !navigator.onLine) return false;
+  const s = sharedToken(conf);
+  if (!s) return false;
+  Object.assign(conf, { token: s.token, expires: s.expires, enabled: true, consented: true });
+  save();
+  return true;
+}
+
 export function disconnect() {
   // Вхід у Google не відкликаємо: він спільний з іншими застосунками автора — відключається лише цей
   // Незроблене лишаємо: фото, видалені тут, ще треба прибрати з Диска, а «Замінити все» — донести до файлу
   const { trash, restoreAt } = conf;
-  conf = { ...(trash?.length ? { trash } : {}), ...(restoreAt ? { restoreAt } : {}) };
+  // declined — вхід з інших застосунків цей застосунок назад не підключає (див. autoConnect)
+  conf = { declined: true, ...(trash?.length ? { trash } : {}), ...(restoreAt ? { restoreAt } : {}) };
   save();
   set('off');
 }
