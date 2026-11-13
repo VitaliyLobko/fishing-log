@@ -973,7 +973,11 @@ export function playFortune(params = {}) {
     el.classList.remove('wait');
     if (p.event === 'tsunami') tsunamiSeen();
     crackFeedback(p);
-    stage.getAnimations({ subtree: true }).forEach((a) => a.play());
+    stage.getAnimations({ subtree: true }).forEach((a) => {
+      // безкінечні із затримкою (риба б'ється на кладці, моргає сом) — відлік від дотику, а не від появи сцени
+      if (!isFinite(a) && a.effect.getTiming().delay > 0) a.currentTime = 0;
+      a.play();
+    });
   };
   // перший дотик — розлам, наступний — одразу останній кадр; закривається лише кнопкою чи Esc
   stage.addEventListener('pointerdown', () => (el.classList.contains('wait') ? start() : finite().forEach((a) => a.finish())));

@@ -1248,29 +1248,30 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 @keyframes fc-say { 0% { opacity: 0; transform: scale(.5); } 12% { opacity: 1; transform: scale(1.06); } 18% { transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 
 /* бобер: підпливає, спирається на ящик, забирає ліву половинку й пливе геть */
-.scene-fortune .fc-bvr { animation: fc-bvr 2.6s ease-in-out .4s both; }
+.scene-fortune .fc-bvr { animation: fc-bvr 2.6s linear .4s both; }
 @keyframes fc-bvr {
-  0% { transform: translate(-80px, 400px); opacity: 0; }
+  0% { transform: translate(-80px, 400px); opacity: 0; animation-timing-function: cubic-bezier(.3, .5, .5, 1); }
   6% { opacity: 1; }
-  55% { transform: translate(108px, 399px); }
-  66%, 71% { transform: translate(124px, 381px) rotate(-14deg); }
-  79% { transform: translate(106px, 399px); }
+  55% { transform: translate(108px, 399px); animation-timing-function: ease-in-out; }
+  66% { transform: translate(124px, 381px) rotate(-14deg); animation-timing-function: linear; }
+  71% { transform: translate(124px, 381px) rotate(-14deg); animation-timing-function: ease-in; }
+  79% { transform: translate(106px, 399px); animation-timing-function: cubic-bezier(.4, 0, .7, .6); }
   94% { opacity: 1; }
   100% { transform: translate(-70px, 402px); opacity: 0; }
 }
 .scene-fortune .fc-bvr-face { animation: fc-bvr-turn 2.6s linear .4s both; }
-@keyframes fc-bvr-turn { 0%, 74% { transform: none; } 75%, 100% { transform: scaleX(-1); } }
+@keyframes fc-bvr-turn { 0%, 71% { transform: none; animation-timing-function: ease-in-out; } 79%, 100% { transform: scaleX(-1); } }
 .scene-fortune .fc-bvr-ck { animation: fc-show .1s linear 2.2s both; }
 .scene-fortune.ev-beaver .fc-ck-l > g { animation: fc-hide .12s linear 2.2s both; }
 
 /* дрон: прилітає, зависає над поплавком, скидає годівницю, відлітає */
-.scene-fortune .fc-drone { animation: fc-drone 3s ease-in-out .35s both; }
+.scene-fortune .fc-drone { animation: fc-drone 3s linear .35s both; }
 @keyframes fc-drone {
-  0% { transform: translate(430px, 80px) rotate(-14deg); opacity: 0; }
+  0% { transform: translate(430px, 80px) rotate(-14deg); opacity: 0; animation-timing-function: cubic-bezier(.25, .6, .4, 1); }
   4% { opacity: 1; }
-  45% { transform: translate(296px, 262px) rotate(-3deg); }
-  52% { transform: translate(296px, 264px) rotate(0deg); }
-  60% { transform: translate(296px, 256px) rotate(2deg); }
+  45% { transform: translate(296px, 262px) rotate(-3deg); animation-timing-function: ease-in-out; }
+  52% { transform: translate(296px, 264px) rotate(0deg); animation-timing-function: ease-in-out; }
+  60% { transform: translate(296px, 256px) rotate(2deg); animation-timing-function: cubic-bezier(.5, 0, .8, .5); }
   96% { opacity: 1; }
   100% { transform: translate(-90px, 30px) rotate(-16deg); opacity: 0; }
 }
@@ -1308,14 +1309,22 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 }
 .scene-fortune.ev-tsunami .fc-dark { animation: fc-dark-t 3.8s ease-in-out .2s both; }
 @keyframes fc-dark-t { 0% { opacity: 0; } 25%, 68% { opacity: .55; } 80% { opacity: .2; } 100% { opacity: .12; } }
-.scene-fortune .fc-wave { animation: fc-wave 2.4s cubic-bezier(.5, 0, .8, .6) .3s both; }
+.scene-fortune .fc-wave { animation: fc-wave 2.4s linear .3s both; }
 @keyframes fc-wave {
-  0% { transform: translate(0, 302px) scale(.5, .02); opacity: 0; }
-  5% { opacity: 1; }
-  40% { transform: translate(-40px, 306px) scale(.7, .3); }
-  75% { transform: translate(-190px, 440px) scale(1.05, .75); }
-  94% { transform: translate(-480px, 790px) scale(1.7, 1.6); opacity: 1; }
-  100% { transform: translate(-480px, 790px) scale(1.7, 1.6); opacity: 0; }
+  0% { transform: translate(47.5px, 302px) scale(0.5, 0.02); opacity: 0; }
+  8% { transform: translate(43.632px, 302.301px) scale(0.509, 0.051); opacity: 1; }
+  16% { transform: translate(32.029px, 304.407px) scale(0.535, 0.113); }
+  24% { transform: translate(12.69px, 310.122px) scale(0.578, 0.198); }
+  32% { transform: translate(-14.385px, 321.252px) scale(0.639, 0.302); }
+  40% { transform: translate(-49.195px, 339.602px) scale(0.717, 0.423); }
+  48% { transform: translate(-91.741px, 366.977px) scale(0.813, 0.559); }
+  56% { transform: translate(-142.023px, 405.181px) scale(0.926, 0.71); }
+  64% { transform: translate(-200.04px, 456.02px) scale(1.056, 0.874); }
+  72% { transform: translate(-265.793px, 521.298px) scale(1.204, 1.051); }
+  80% { transform: translate(-339.281px, 602.82px) scale(1.369, 1.241); }
+  87% { transform: translate(-409.929px, 688.896px) scale(1.528, 1.416); }
+  94% { transform: translate(-486.5px, 790px) scale(1.7, 1.6); opacity: 1; }
+  100% { transform: translate(-486.5px, 790px) scale(1.7, 1.6); opacity: 0; }
 }
 .scene-fortune .fc-foam { animation: fc-foam 1.5s ease-out 2.35s both; }
 @keyframes fc-foam { 0% { opacity: 0; } 13%, 33% { opacity: 1; } 100% { opacity: 0; } }
