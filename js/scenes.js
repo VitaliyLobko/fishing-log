@@ -517,7 +517,7 @@ ${layer('fc-front')}
 // ---------- показ ----------
 
 // Звук синтезується тут же, без файлів, і лише після дотику (раніше браузер і не дасть):
-// хрускіт печива, тихий «бульк» поплавка, сплеск риби; золоте — ще й дзвіночки
+// хрускіт печива, тихий «бульк» поплавка, бубонці на вершинці від поклювки, сплеск риби; золоте — ще й дзвіночки
 export const SOUND_OFF = 'fishing-log:fortune-sound-off';
 let audio = null;
 
@@ -563,16 +563,34 @@ function plop(out, at, f0, f1, vol) {
   osc.stop(at + 0.2);
 }
 
-function bell(out, at, freq, vol) {
+/** Удар по металу: синус із миттєвим наростанням і згасанням за dur. */
+function ring(out, at, freq, vol, dur) {
   const osc = audio.createOscillator(), g = audio.createGain();
   osc.type = 'sine';
   osc.frequency.value = freq;
   g.gain.setValueAtTime(0, at);
-  g.gain.linearRampToValueAtTime(vol, at + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0001, at + 1.2);
+  g.gain.linearRampToValueAtTime(vol, at + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
   osc.connect(g).connect(out);
   osc.start(at);
-  osc.stop(at + 1.3);
+  osc.stop(at + dur + 0.05);
+}
+
+const bell = (out, at, freq, vol) => ring(out, at, freq, vol, 1.2);
+
+// Два бубонці, трохи різні за тоном; обертони негармонійні — тому звучить металом, а не дудочкою
+const JINGLE_BELLS = [2480, 2930];
+const JINGLE_PARTIALS = [[1, 1, 0.3], [2.37, 0.45, 0.16], [4.1, 0.22, 0.09]];
+const JINGLE_HITS = [0, 0.055, 0.1, 0.17, 0.22, 0.3, 0.37, 0.47, 0.6, 0.78];
+
+/** Бубонці на вершинці: вудилище смикнулось від поклювки, кулька тріпоче й поступово стихає. */
+function jingle(out, at, vol) {
+  JINGLE_HITS.forEach((dt, k) => {
+    const v = vol * (1 - k / JINGLE_HITS.length) ** 1.4 * (0.75 + Math.random() * 0.5);
+    const base = JINGLE_BELLS[k % 2] * (0.99 + Math.random() * 0.02);
+    for (const [mul, amp, dur] of JINGLE_PARTIALS) ring(out, at + dt, base * mul, v * amp, dur);
+    noise(out, at + dt, 0.012, 5200, v * 0.5);
+  });
 }
 
 function crackFeedback(gold) {
@@ -583,6 +601,7 @@ function crackFeedback(gold) {
     const t0 = audio.currentTime + 0.02;
     noise(out, t0, 0.09, 2400, 0.9);
     plop(out, t0 + 0.14, 700, 240, 0.35);
+    jingle(out, t0 + 0.18, 0.16);
     noise(out, t0 + 0.36, 0.25, 1500, 0.45);
     noise(out, t0 + 1.22, 0.35, 900, 0.7);
     plop(out, t0 + 1.24, 420, 120, 0.6);
