@@ -682,7 +682,7 @@ export function wheelStrip(strip, onFocus, item) {
     // Відступи по краях — щоб і крайня плитка ставала в рамку посередині; вибрана — одразу в рамці, сторінка не гортається
     settle: (on) => {
       if (!strip.clientWidth) return;
-      strip.style.paddingInline = `${Math.max(0, strip.clientWidth / 2 - 42)}px`;
+      strip.style.paddingInline = `${Math.max(0, strip.clientWidth / 2 - (strip.querySelector(item)?.offsetWidth ?? 84) / 2)}px`;
       strip.scrollLeft = on ? on.offsetLeft + on.offsetWidth / 2 - strip.clientWidth / 2 : 0;
       focusMid();
     },
@@ -693,7 +693,7 @@ export function wheelStrip(strip, onFocus, item) {
  * Вибір стрічкою плиток-зразків: options — [значення, підпис, плитка]; вибране — посередині, «‹ ›» по краях.
  * onPick(значення) — щойно плитка стала посередині (live) або коли стрічка зупинилась (для важких змін, як тема).
  */
-export function pickStrip(options, value, onPick, { label = '', live = true } = {}) {
+export function pickStrip(options, value, onPick, { label = '', live = true, cls = '' } = {}) {
   let now = String(value);
   const strip = h('div', { class: 'bg-picks', role: 'radiogroup', 'aria-label': label }, options.map(([v, name, sw]) => h('button', {
     type: 'button', class: 'bg-pick', role: 'radio', 'aria-checked': String(String(v) === now), dataset: { v },
@@ -726,7 +726,7 @@ export function pickStrip(options, value, onPick, { label = '', live = true } = 
     width = strip.clientWidth;
     wheel.settle(strip.querySelector('[aria-checked="true"]'));
   }).observe(strip);
-  return h('div', { class: 'bg-wheel' }, nav(-1, t('Попередній'), '‹'), strip, nav(1, t('Наступний'), '›'));
+  return h('div', { class: `bg-wheel ${cls}`.trim() }, nav(-1, t('Попередній'), '‹'), strip, nav(1, t('Наступний'), '›'));
 }
 
 /**

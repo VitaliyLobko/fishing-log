@@ -121,6 +121,18 @@
   background: color-mix(in srgb, var(--text) 11%, transparent); }
 .bg-sw[data-bg$="acc-lines"]::after { -webkit-mask: url(lines-acc.svg) center / cover no-repeat; mask: url(lines-acc.svg) center / cover no-repeat;
   background: color-mix(in srgb, var(--accent) 42%, transparent); }
+/* «На що» в улові: плитки — фото приманки; підпис — модель і колір, по два рядки */
+.bait-pick .bg-wheel { margin-top: 4px; }
+.bait-wheel .bg-pick { width: 88px; }
+.bait-sw { aspect-ratio: 1; background: var(--surface-2); }
+.bait-sw .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; font-size: 26px; }
+.bait-sw .thumb-ico svg { width: 30px; height: 30px; }
+.bait-other { display: grid; place-items: center; color: var(--muted); }
+.bait-other svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.bait-wheel .bg-pick > span:last-child { display: grid; gap: 1px; width: 100%; }
+.bait-wheel .bg-pick :is(b, small) { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.bait-wheel .bg-pick small { -webkit-line-clamp: 1; font-weight: 500; font-size: 11px; }
+.bait-note { min-height: 1.4em; margin: 2px 0 6px; text-align: center; }
 /* Плитки тем: власні кольори теми (токени тем живуть на :root і плитці не дістаються); спецрежими — тим самим фільтром */
 .theme-sw { --tb: #0b1d26; --tc: #17323d; --tx: #8eacb4; --ta: #fb923c; display: grid; align-content: start; gap: 8px; padding: 12px 9px; background: var(--tb); }
 .theme-sw i { display: block; height: 18px; border-radius: 6px; background: linear-gradient(var(--tx), var(--tx)) 7px 50% / 55% 3px no-repeat, var(--tc); }

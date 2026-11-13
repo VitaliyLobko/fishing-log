@@ -1515,12 +1515,60 @@ function tripBody(tr) {
 
 const baitText = (c) => (c.baitId ? (findGear(c.baitId) ? [gearTitle(findGear(c.baitId)), findGear(c.baitId).color].filter(Boolean).join(' ') : null) : c.bait) || null;
 
+const BAIT_STRIP = 12;
+
+/**
+ * «На що» в улові — стрічкою плиток з фото замість довгого списку: «Інше, впишу», далі приманки цього виїзду
+ * (на що ловив, що втратив чи витратив), найуловистіші, нещодавно втрачені; решта — «Усі приманки…» з пошуком.
+ * select лишається джерелом значення (схований), стрічка його лише виставляє.
+ */
+function baitStrip(select, baits, tr) {
+  if (!baits.length) return;
+  const field = select.closest('.field');
+  field.hidden = true;
+  const own = new Map();
+  [...(tr.catches ?? [])].reverse().forEach((x, i) => { if (x.baitId && !own.has(x.baitId)) own.set(x.baitId, i); });
+  [...tripLosses(tr.id), ...tripSpends(tr.id)].forEach(({ g }) => { if (!own.has(g.id)) own.set(g.id, own.size + 1000); });
+  const recent = (g) => Math.max(0, ...[...(g.losses ?? []), ...(g.spends ?? [])].map((x) => Date.parse(x.date) || 0));
+  const ranked = [...baits].sort((a, b) => (own.get(a.id) ?? 1e9) - (own.get(b.id) ?? 1e9) || caughtCount(b) - caughtCount(a) || recent(b) - recent(a) || byGroup(a, b));
+  const name = (g) => (g.model ? [g.brand, g.model, sizeText(g)].filter(Boolean).join(' ') : gearTitle(g));
+  const full = (g) => [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ');
+  const note = h('p', { class: 'muted small bait-note' });
+  const say = (v) => {
+    const g = findGear(v);
+    note.textContent = g ? [full(g), caughtCount(g) ? t('🐟 {n}', { n: caughtCount(g) }) : null].filter(Boolean).join(' · ') : t('Впишіть нижче, на що впіймали');
+  };
+  const wrap = h('div', { class: 'field bait-pick' }, h('span', { class: 'field-label' }, t('На що')));
+  const paint = () => {
+    const v = select.value;
+    const shown = ranked.slice(0, BAIT_STRIP);
+    const extra = findGear(v);
+    if (extra && !shown.includes(extra)) shown.unshift(extra);
+    const other = h('span', { class: 'bg-sw bait-sw bait-other', 'aria-hidden': 'true' });
+    other.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
+    const strip = pickStrip([['', h('span', {}, h('b', {}, t('Інше, впишу'))), other],
+      ...shown.map((g) => [g.id, h('span', {}, h('b', {}, name(g)), g.color ? h('small', {}, g.color) : null), h('span', { class: 'bg-sw bait-sw', 'aria-hidden': 'true' }, gearThumb(g))])],
+    v, (x) => { select.value = x; select.dispatchEvent(new Event('change')); say(x); }, { label: t('На що'), cls: 'bait-wheel' });
+    say(v);
+    wrap.replaceChildren(wrap.firstChild, strip, note,
+      ranked.length > BAIT_STRIP ? h('div', { class: 'btn-row' }, btn(t('Усі приманки… ({n})', { n: ranked.length }), () => gearPickSheet(t('На що'), ranked, (g) => {
+        select.value = g.id; select.dispatchEvent(new Event('change')); paint();
+      }), 'mini')) : null);
+  };
+  field.after(wrap);
+  paint();
+}
+
 /** Вибір кількісної речі: зверху — що вже втрачали чи брали, далі всі за розділами. */
 function pickConsumable(title, fits, onPick) {
   const list = state.gear.filter((g) => active(g) && isQty(g) && fits(g));
   if (!list.length) { toast(t('Немає підхожих речей')); return; }
   const recent = (g) => Math.max(0, ...[...(g.losses ?? []), ...(g.spends ?? [])].map((x) => Date.parse(x.date) || 0));
-  const sorted = [...list].sort((a, b) => recent(b) - recent(a) || byGroup(a, b));
+  gearPickSheet(title, [...list].sort((a, b) => recent(b) - recent(a) || byGroup(a, b)), onPick);
+}
+
+/** Аркуш вибору речі з пошуком; sorted — у потрібному порядку. */
+function gearPickSheet(title, sorted, onPick) {
   const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук'), autocomplete: 'off' });
   const rows = h('div', { class: 'rows' });
   const paint = () => {
@@ -1548,6 +1596,9 @@ function catchForm(tr, c = null) {
   f.el.append(h('datalist', { id: 'species-list' }, allSpecies().map((x) => h('option', { value: x }))));
   const fitBait = () => { f.inputs.bait.closest('.field').hidden = Boolean(f.inputs.baitId.value); };
   f.inputs.baitId.addEventListener('change', fitBait);
+  // Нова рибина — найчастіше на ту саму приманку, що й попередня в цьому виїзді
+  if (!c) f.inputs.baitId.value = [...(tr.catches ?? [])].reverse().find((x) => findGear(x.baitId) && active(findGear(x.baitId)))?.baitId ?? '';
+  baitStrip(f.inputs.baitId, baits, tr);
   fitBait();
   let released = c?.released ?? true;
   const rel = chips([['1', t('Відпустив')], ['0', t('Забрав')]], released ? '1' : '0', (v) => { released = v === '1'; });
