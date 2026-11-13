@@ -94,10 +94,45 @@
   background: repeating-linear-gradient(0deg, rgb(0 0 0 / .22) 0 1px, transparent 1px 3px),
     radial-gradient(ellipse 85% 75% at 50% 50%, transparent 55%, rgb(0 0 0 / .55)); }
 .night-level { margin-top: 12px; }
-.theme-group { margin: 12px 0 6px; }
-/* «Білий фосфор» не влазить у чверть рядка — переноситься на два рядки, а не обрізається трьома крапками */
-.theme-group + .chips.segmented button { white-space: normal; line-height: 1.15; }
 .night-level input { width: 100%; accent-color: var(--accent); }
+
+/* Стрічка вибору (тема, фон) — як у Shooter's Log: вибраний посередині в рамці, сусіди видні й гаснуть до країв, «‹ ›» по боках */
+.bg-wheel { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px; margin: 0 -8px; }
+.bg-nav { width: 28px; height: 56px; padding: 0; border: 0; background: none; color: var(--muted); font: 600 26px system-ui, sans-serif; cursor: pointer; }
+.bg-picks { position: relative; display: flex; gap: 10px; padding-block: 4px 6px; overflow-x: auto; scroll-snap-type: x mandatory;
+  scrollbar-width: none; overscroll-behavior-x: contain; mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+.bg-picks::-webkit-scrollbar { display: none; }
+.bg-pick { flex: none; display: grid; gap: 6px; justify-items: center; align-content: start; width: 84px; padding: 0; border: 0; background: none;
+  scroll-snap-align: center; color: var(--muted); font: 600 12px/1.2 system-ui, sans-serif; text-align: center; cursor: pointer; }
+/* Гасне лише плитка сусіда, підпис лишається читабельним */
+.bg-sw { position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 12px;
+  background: radial-gradient(120% 60% at 50% -10%, var(--bg-glow), var(--bg) 60%) var(--bg); box-shadow: 0 0 0 1px var(--line); opacity: .55; transition: opacity .2s; }
+.bg-pick.focus .bg-sw { opacity: 1; }
+.bg-pick[aria-checked="true"] { color: var(--accent-2); }
+.bg-pick[aria-checked="true"] .bg-sw { box-shadow: 0 0 0 2px var(--accent); }
+@media (prefers-reduced-motion: reduce) { .bg-sw { transition: none; } }
+/* Плитки фонів малюють те саме, що й сторінка: карта — через --paper, хвилі й лінії — тими ж масками */
+.bg-sw:is([data-bg="map"], [data-bg="l-map"]) { background: var(--paper); }
+.bg-sw:is([data-bg$="waves"], [data-bg$="acc-lines"])::before,
+.bg-sw[data-bg$="acc-lines"]::after { content: ""; position: absolute; inset: 0; }
+.bg-sw[data-bg$="waves"]::before { -webkit-mask: url(waves.svg) center / cover no-repeat; mask: url(waves.svg) center / cover no-repeat;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--accent-2) 9%, transparent)); }
+.bg-sw[data-bg$="acc-lines"]::before { -webkit-mask: url(lines.svg) center / cover no-repeat; mask: url(lines.svg) center / cover no-repeat;
+  background: color-mix(in srgb, var(--text) 11%, transparent); }
+.bg-sw[data-bg$="acc-lines"]::after { -webkit-mask: url(lines-acc.svg) center / cover no-repeat; mask: url(lines-acc.svg) center / cover no-repeat;
+  background: color-mix(in srgb, var(--accent) 42%, transparent); }
+/* Плитки тем: власні кольори теми (токени тем живуть на :root і плитці не дістаються); спецрежими — тим самим фільтром */
+.theme-sw { --tb: #0b1d26; --tc: #17323d; --tx: #8eacb4; --ta: #fb923c; display: grid; align-content: start; gap: 8px; padding: 12px 9px; background: var(--tb); }
+.theme-sw i { display: block; height: 18px; border-radius: 6px; background: linear-gradient(var(--tx), var(--tx)) 7px 50% / 55% 3px no-repeat, var(--tc); }
+.theme-sw i:first-child { width: 62%; height: 12px; border-radius: 999px; background: var(--ta); }
+.theme-sw[data-th="light"] { --tb: #e9f2f3; --tc: #fafdfd; --tx: #52707a; }
+.theme-sw[data-th="lime"] { --tb: #0c0f0a; --tc: #1b2116; --tx: #96a08a; --ta: #a3e635; }
+.theme-sw[data-th="auto"] { --tb: linear-gradient(135deg, #0b1d26 50%, #e9f2f3 50%); --tc: linear-gradient(90deg, #17323d 50%, #fafdfd 50%); }
+.theme-sw[data-th="night"] { --tb: #000; filter: url(#night-red); }
+.theme-sw:is([data-th="phosphor"], [data-th="amber"], [data-th="white"]) { --tb: #0b0d0b; --tc: #1b221b; }
+.theme-sw[data-th="phosphor"] { filter: url(#phosphor); }
+.theme-sw[data-th="amber"] { filter: url(#amber); }
+.theme-sw[data-th="white"] { filter: url(#white); }
 
 * { box-sizing: border-box; }
 /* hidden ховає завжди: правило з display у класі (flex, grid) інакше перебиває атрибут */
@@ -916,6 +951,11 @@ button.about-avatar { padding: 0; border: 0; }
 .model-fold { margin: 0; border-top: 0; }
 .model-fold > summary { min-height: 56px; padding: 6px 10px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); color: var(--text); font-size: 14px; font-weight: 650; }
 .model-head .thumb { width: 40px; height: 40px; border-radius: 10px; }
+/* Зразки кольорів моделі — віялом: кожен наступний трохи насуває на попередній */
+.model-thumbs { display: flex; flex: none; }
+.model-thumbs .thumb { width: 36px; height: 36px; border: 2px solid var(--surface); box-sizing: content-box; }
+.model-thumbs .thumb + .thumb { margin-left: -12px; }
+.thumb-more { display: grid; place-items: center; color: var(--muted); font-size: 12px; font-weight: 750; }
 .model-head .sec-count { min-width: auto; }
 .model-rows { margin: 6px 0 4px 14px; }
 

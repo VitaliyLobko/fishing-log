@@ -5,7 +5,7 @@ import * as sync from './sync.js';
 import { t, lang, collate, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
-import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable } from './ui.js';
+import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
 let tab = 'gear';
@@ -771,10 +771,22 @@ function modelHead(gs) {
   const g = gs[0];
   const total = gs.reduce((s, x) => s + num(x.qty), 0);
   const low = gs.filter(isLow).length;
-  return h('span', { class: 'sec-head model-head' }, gearThumb(g),
+  return h('span', { class: 'sec-head model-head' }, modelThumbs(gs),
     h('span', { class: 'sec-name' }, [[g.brand, g.model].filter(Boolean).join(' ') || gearTitle(g), sizeText(g)].filter(Boolean).join(' · ')),
     low ? h('span', { class: 'sec-low' }, t('мало: {n}', { n: low })) : null,
     h('span', { class: 'sec-count' }, t('{c} кол. · {n} шт', { c: gs.length, n: fmt.num(total) })));
+}
+
+const MODEL_THUMBS = 3;
+
+/** Зразки кольорів у заголовку моделі: фото кожного кольору віялом, понад MODEL_THUMBS — «+N»; без жодного фото — один значок. */
+function modelThumbs(gs) {
+  const shots = gs.filter((g) => findPhoto(g.photoId));
+  if (!shots.length) return gearThumb(gs[0]);
+  const more = shots.length - MODEL_THUMBS;
+  return h('span', { class: 'model-thumbs', 'aria-hidden': 'true' },
+    shots.slice(0, more > 0 ? MODEL_THUMBS - 1 : MODEL_THUMBS).map(gearThumb),
+    more > 0 ? h('span', { class: 'thumb thumb-more' }, `+${more + 1}`) : null);
 }
 
 /** Тап по кольору в картці — усі речі цього кольору в «Снастях». */
@@ -2201,7 +2213,7 @@ function settingsGroup(title, items) {
 /** Рядок налаштувань: іконка, назва й поточне значення; тап розгортає керування. Відкритий — один. */
 function setRow(key, ico, title, value, body, { tone = '', danger = false } = {}) {
   const open = recall(SET_OPEN_KEY) === key;
-  const el = h('div', { class: `set-row${open ? ' open' : ''}${danger ? ' danger' : ''}` });
+  const el = h('div', { class: `set-row${open ? ' open' : ''}${danger ? ' danger' : ''}`, dataset: { key } });
   const head = h('button', {
     type: 'button', class: 'set-head', 'aria-expanded': String(open), onclick: () => {
       const opening = !el.classList.contains('open');
@@ -2325,29 +2337,45 @@ function wipeRow() {
     { danger: true });
 }
 
-function themeRow() {
-  const themeChips = (special) => {
-    const c = chips(THEMES.filter(([k]) => SPECIAL_THEMES.includes(k) === special).map(([k, label]) => [k, t(label)]), themePref(),
-      (v) => { remember('fishing-log:theme', v); applyTheme(); render(); });
-    c.classList.add('segmented');
-    return c;
-  };
-  return setRow('theme', 'palette', t('Тема'), t(THEMES.find(([k]) => k === themePref())[1]), [
-    themeChips(false),
-    h('div', { class: 'field-label theme-group' }, t('Спецрежими')), themeChips(true),
-    themePref() === 'night' ? h('label', { class: 'field night-level' }, h('span', {}, t('Яскравість червоного')),
-      h('input', { type: 'range', min: '20', max: '100', step: '5', value: String(nightLevel()),
-        oninput: (e) => { remember('fishing-log:night-level', e.target.value); applyTheme(); } })) : null]);
+/** Плитка-зразок теми: фон, кнопка акцентом і дві картки; спецрежими — тим самим фільтром, що й уся сторінка. */
+function themeSwatch(k) {
+  return h('span', { class: 'bg-sw theme-sw', dataset: { th: k }, 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
 }
 
+/** Тема — стрічкою плиток-зразків; застосовується, коли стрічка зупинилась, без перемальовування сторінки. */
+function themeRow() {
+  const night = h('label', { class: 'field night-level', hidden: themePref() !== 'night' }, h('span', {}, t('Яскравість червоного')),
+    h('input', { type: 'range', min: '20', max: '100', step: '5', value: String(nightLevel()),
+      oninput: (e) => { remember('fishing-log:night-level', e.target.value); applyTheme(); } }));
+  const strip = pickStrip(THEMES.map(([k, label]) => [k, t(label), themeSwatch(k)]), themePref(), (v) => {
+    remember('fishing-log:theme', v);
+    applyTheme();
+    row.querySelector('.set-val').textContent = t(THEMES.find(([k]) => k === v)[1]);
+    night.hidden = v !== 'night';
+    // Набір фонів залежить від теми (у спецрежимах його немає) — рядок «Фон» міняємо на місці
+    const old = document.querySelector('.set-row[data-key="backdrop"]');
+    const next = backdropRow();
+    if (old && next) old.replaceWith(next);
+    else if (old) old.remove();
+    else if (next) row.after(next);
+  }, { label: t('Тема'), live: false });
+  const row = setRow('theme', 'palette', t('Тема'), t(THEMES.find(([k]) => k === themePref())[1]), [strip, night]);
+  return row;
+}
+
+/** Фон під картками — плитки з самим фоном; гортаєш — фон міняється наживо. Набір — для поточної теми, у спецрежимах немає. */
 function backdropRow() {
   const fam = bgFamily(document.documentElement.dataset.theme);
   const list = BACKDROPS[fam];
   if (!list) return null;
-  const now = backdropPref(fam);
-  // «З акцентом», «Без малюнка» сегментом на 360 px обрізались — чипи з переносом
-  const c = chips(list.map(([k, label]) => [k, t(label)]), now, (v) => { remember(BG_KEY[fam], v); applyTheme(); render(); });
-  return setRow('backdrop', 'gallery', t('Фон'), t(list.find(([k]) => k === now)[1]), [c]);
+  const label = (k) => t(list.find(([x]) => x === k)[1]);
+  const strip = pickStrip(list.map(([k, name]) => [k, t(name), h('span', { class: 'bg-sw', dataset: { bg: k }, 'aria-hidden': 'true' })]), backdropPref(fam), (v) => {
+    remember(BG_KEY[fam], v);
+    applyTheme();
+    row.querySelector('.set-val').textContent = label(v);
+  }, { label: t('Фон') });
+  const row = setRow('backdrop', 'gallery', t('Фон'), label(backdropPref(fam)), [strip]);
+  return row;
 }
 
 /** Довгий текст під розкриттям. */
