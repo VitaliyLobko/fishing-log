@@ -1315,9 +1315,31 @@ function historyList(list) {
 }
 
 /** Та сама річ іншого кольору: копія без фото, історії й кольору. */
-function copyGear(g) {
+async function copyGear(g) {
   const { id, photoId, history, created, updated, status, statusDate, onId, onDate, color, losses, buys, spends, firstBuy, ...rest } = g;
-  gearForm(null, { preset: rest });
+  gearForm(null, { preset: rest, file: await photoCopy(photoId) });
+}
+
+/** Фото для копії речі: повний файл, а якщо його на пристрої немає — мініатюра. Збережеться окремим фото. */
+async function photoCopy(photoId) {
+  const p = findPhoto(photoId);
+  if (!p) return null;
+  try {
+    const blob = (await db.getBlob(p.id)) ?? dataUrlBlob(p.thumb);
+    return blob ? new File([blob], 'copy', { type: blob.type || 'image/jpeg' }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** data:image/jpeg;base64,… → Blob без fetch: CSP (connect-src) data: не пускає. */
+function dataUrlBlob(url) {
+  const m = /^data:([^;,]+);base64,(.*)$/.exec(url ?? '');
+  if (!m) return null;
+  const bin = atob(m[2]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: m[1] });
 }
 
 /** Котушку — на вудилище, шнур — на котушку (з датою намотки). */
