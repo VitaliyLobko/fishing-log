@@ -916,7 +916,8 @@ function renderGear() {
   // Пошук і «Вибрати» — одним рядком угорі; нижче — що потребує уваги, далі розділи
   const top = h('div', { class: 'search-row' }, search, picking ? null : btn(t('Вибрати'), () => { picking = new Set(); render(); }, 'quiet mini'));
   // Хижак / мирна: універсальне видно в обох; вибір пам'ятається
-  const dirs = chips([['', t('Усі')], ...DIRS.map(([k, l]) => [k, t(l)])], dirFilter, (v) => { dirFilter = v; remember('fishing-log:dir', v); paintGear(); });
+  const DIR_ICON = { '': 'all', predator: 'predator', peaceful: 'peaceful', camp: 'camp' };
+  const dirs = chips([['', 'Усі'], ...DIRS].map(([k, l]) => [k, [icon(DIR_ICON[k]), h('span', {}, t(l))]]), dirFilter, (v) => { dirFilter = v; remember('fishing-log:dir', v); paintGear(); });
   dirs.classList.add('segmented', 'dir-switch');
   const out = h('div', {}, top, dirs, gearList);
   queueMicrotask(paintGear);
@@ -1453,11 +1454,56 @@ function parseCoords(text) {
 
 const coordsText = (s) => (hasCoords(s) ? `${Number(s.lat).toFixed(5)}, ${Number(s.lon).toFixed(5)}` : '');
 
+const SPOT_KINDS = [['river', 'Річка'], ['lake', 'Озеро'], ['pond', 'Ставок'], ['reservoir', 'Водосховище'], ['quarry', 'Кар’єр'], ['canal', 'Канал'], ['sea', 'Море, лиман'], ['other', 'Інше']];
+const ACCESS = [['car', 'Авто до води'], ['walk', 'Пішки'], ['shore', 'З берега'], ['boat', 'З човна'], ['ice', 'По льоду']];
+const PAY = [['free', 'Безкоштовно'], ['paid', 'Платно']];
+
+// Виїзди за водоймами — один прохід на завантаження (state.trips міняється лише через refresh)
+const spotTripsIdx = new WeakMap();
+function spotTrips(spotId) {
+  let map = spotTripsIdx.get(state.trips);
+  if (!map) {
+    map = new Map();
+    for (const tr of state.trips) if (tr.spotId) map.set(tr.spotId, [...(map.get(tr.spotId) ?? []), tr]);
+    for (const list of map.values()) list.sort((a, b) => collate(b.date, a.date) || collate(b.from ?? '', a.from ?? ''));
+    spotTripsIdx.set(state.trips, map);
+  }
+  return [...(map.get(spotId) ?? [])];
+}
+
+const spotPrice = (s) => (s.pay === 'paid' ? (num(s.price) ? t('путівка {s}', { s: fmt.money(s.price) }) : t('платно')) : s.pay === 'free' ? t('безкоштовно') : null);
+// Google Maps — посиланням у новій вкладці: сам застосунок координати нікуди не шле
+const mapUrl = (s) => `https://www.google.com/maps/search/?api=1&query=${Number(s.lat)},${Number(s.lon)}`;
+const routeUrl = (s) => `https://www.google.com/maps/dir/?api=1&destination=${Number(s.lat)},${Number(s.lon)}`;
+
+function spotRow(s) {
+  const trips = spotTrips(s.id);
+  const fish = trips.reduce((n, x) => n + tripCatch(x), 0);
+  const sub = [label(SPOT_KINDS, s.kind), trips.length ? t('виїздів: {n}, останній {d}', { n: fmt.num(trips.length), d: fmt.date(trips[0].date) }) : t('ще не їздив'), spotPrice(s)];
+  return row(s.name, sub.filter(Boolean).join(' · '),
+    fish ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(fish)) : '',
+    () => spotDetail(s.id), { id: s.id, thumb: findPhoto(s.photoId) ? thumbImg(s.photoId) : null });
+}
+
+function renderSpots() {
+  // Спершу ті, куди їздив нещодавно; нові й забуті — за назвою внизу
+  const last = (s) => spotTrips(s.id)[0]?.date ?? '';
+  const list = [...state.spots].sort((a, b) => collate(last(b), last(a)) || collate(a.name, b.name));
+  if (list.length) $('subtitle').textContent = t('водойм: {n}', { n: fmt.num(list.length) });
+  return list.length ? h('div', { class: 'rows' }, list.map(spotRow))
+    : empty(t('Ще немає водойм'), t('Де ловите: тип, як дістатися, чи платно, координати для погоди й маршруту. Тут же — улов, уловисті приманки й де обриваєте.'),
+      [btn(t('Додати'), () => spotForm(), 'primary add')]);
+}
+
 function spotForm(s = null, { onSaved = null } = {}) {
   const f = form([
     { name: 'name', label: t('Назва'), value: s?.name, required: true, placeholder: t('напр. Дніпро, Козачий острів') },
+    { name: 'kind', label: t('Тип'), type: 'chips', options: SPOT_KINDS.map(([k, l]) => [k, t(l)]), value: s?.kind ?? '' },
     { name: 'coords', label: t('Координати'), value: coordsText(s), placeholder: '50.45012, 30.52341', hint: t('Можна вставити посилання з Google Maps') },
-    { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 2, value: s?.note },
+    { name: 'pay', label: t('Риболовля'), type: 'chips', options: PAY.map(([k, l]) => [k, t(l)]), value: s?.pay ?? '' },
+    { name: 'price', label: t('Путівка, грн'), type: 'number', value: s?.price, half: true },
+    { name: 'depth', label: t('Глибини, м'), value: s?.depth, half: true, placeholder: t('напр. 2–6') },
+    { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 3, value: s?.note, placeholder: t('де лишити машину, ями, коряжник, хто сторожує') },
   ]);
   const here = btn([icon('pin'), t('Звідси')], () => {
     if (!navigator.geolocation) { toast(t('Телефон не дає місце')); return; }
@@ -1468,22 +1514,181 @@ function spotForm(s = null, { onSaved = null } = {}) {
       { enableHighAccuracy: true, timeout: 15000 });
   }, 'mini');
   f.inputs.coords.closest('.field').after(h('div', { class: 'specs-find' }, here));
-  const close = sheet(s ? t('Водойма') : t('Нова водойма'), f.el, {
-    tools: s ? [toolBtn('delete', t('Видалити'), () => confirmSheet(t('Видалити «{name}»?', { name: s.name }), t('Виїзди залишаться, але без водойми.'), t('Видалити'), async () => {
-      close();
-      await save({ spots: { del: [s.id] } });
-    }), 'danger')] : [],
+  // Ціна путівки — лише коли платно
+  const fitPrice = () => { f.inputs.price.closest('.field').hidden = f.inputs.pay.value !== 'paid'; };
+  f.inputs.pay.addEventListener('click', fitPrice);
+  fitPrice();
+  const access = multiChips(ACCESS.map(([k, l]) => [k, t(l)]), s?.access ?? []);
+  const fishHere = multiChips([...new Set([...allSpecies(), ...(s?.species ?? [])])].map((x) => [x, x]), s?.species ?? []);
+  const pick = photoPicker(findPhoto(s?.photoId), { query: () => f.inputs.name.value.trim() });
+  const close = sheet(s ? t('Змінити') : t('Нова водойма'), h('div', {}, f.el,
+    h('div', { class: 'field-label' }, t('Як дістатися й ловити')), access.el,
+    h('div', { class: 'field-label' }, t('Хто водиться')), fishHere.el,
+    h('div', { class: 'field-label' }, t('Фото')), pick.el), {
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
       if (invalidField(f)) return;
       const v = f.values();
       const c = v.coords ? parseCoords(v.coords) : null;
       if (v.coords && !c) { fieldError(f.inputs.coords, t('Не схоже на координати')); return; }
-      const rec = { ...(s ?? { id: db.uid(), created: Date.now() }), name: v.name, note: v.note, lat: c?.lat ?? null, lon: c?.lon ?? null };
+      const id = s?.id ?? db.uid();
+      let photo;
+      try { photo = await photoChanges(s, pick.value(), id); } catch (err) { toast(err.message); return; }
+      const rec = {
+        ...(s ?? { id, created: Date.now() }), name: v.name, kind: v.kind || null, note: v.note, lat: c?.lat ?? null, lon: c?.lon ?? null,
+        pay: v.pay || null, price: v.pay === 'paid' ? v.price : null, depth: v.depth, access: access.value(), species: fishHere.value(), photoId: photo.photoId,
+      };
       close();
-      await save({ spots: { put: [rec] } }, [rec.id]);
+      await save(joinChanges(photo.changes, { spots: { put: [rec] } }), [rec.id]);
       onSaved?.(rec);
     }, 'primary')],
   });
+}
+
+function removeSpot(s) {
+  confirmSheet(t('Видалити «{name}»?', { name: s.name }), t('Виїзди залишаться, але без водойми.'), t('Видалити'), async () => {
+    await save(joinChanges(s.photoId ? dropPhotos([s.photoId]) : {}, { spots: { del: [s.id] } }));
+    toast(t('Видалено'));
+  });
+}
+
+function spotDetail(id) {
+  const build = () => { const s = findSpot(id); return s ? spotBody(s) : null; };
+  sheet(() => findSpot(id)?.name, build(), {
+    live: build,
+    tools: [toolBtn('edit', t('Змінити'), () => spotForm(findSpot(id))), toolBtn('delete', t('Видалити'), () => removeSpot(findSpot(id)), 'danger')],
+  });
+}
+
+/** Приманки, на які тут ловилось: річ зі «Снастей» або вписане словами — { name, n, g }. */
+function spotBaits(trips) {
+  const by = new Map();
+  for (const tr of trips) {
+    for (const c of tr.catches ?? []) {
+      const g = findGear(c.baitId);
+      const name = baitText(c);
+      if (!name) continue;
+      const key = g ? g.id : `txt:${norm(name)}`;
+      const cur = by.get(key) ?? { name, n: 0, g };
+      cur.n += num(c.n) || 1;
+      by.set(key, cur);
+    }
+  }
+  return [...by.values()].sort((a, b) => b.n - a.n || collate(a.name, b.name));
+}
+
+const MONTHS = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+// Частина доби за годиною улову: з 5 — ранок, з 10 — день, з 17 — вечір, з 22 — ніч
+const DAYPARTS = [['morning', 'Ранок', 5], ['day', 'День', 10], ['evening', 'Вечір', 17], ['night', 'Ніч', 22]];
+const daypart = (time) => {
+  const hh = Number(String(time).slice(0, 2));
+  return [...DAYPARTS].reverse().find(([, , from]) => hh >= from) ?? DAYPARTS[3];
+};
+
+/** Смужки «скільки» — частка від найбільшого; підпис ліворуч, число праворуч. */
+function bars(list) {
+  const max = Math.max(...list.map((x) => x.n), 1e-9);
+  return h('div', { class: 'bars' }, list.map((x) => h('div', { class: 'bar' },
+    h('span', { class: 'bar-label' }, x.label),
+    h('span', { class: 'bar-track' }, h('span', { class: 'bar-fill', style: `width:${Math.max(4, Math.round((x.n / max) * 100))}%` })),
+    h('span', { class: 'bar-num' }, x.text ?? fmt.num(x.n)))));
+}
+
+/** Хто ловиться на водоймі: вид → { n, best } — кількість і найбільша рибина (поштучні записи). */
+function spotSpecies(trips) {
+  const map = new Map();
+  for (const tr of trips) {
+    for (const c of tr.catches ?? []) {
+      const cur = map.get(c.species) ?? { n: 0, best: null };
+      cur.n += num(c.n) || 1;
+      const one = (num(c.n) || 1) === 1;
+      if (one && (num(c.weight) > num(cur.best?.weight) || (!num(cur.best?.weight) && !num(c.weight) && num(c.length) > num(cur.best?.length)))) cur.best = c;
+      map.set(c.species, cur);
+    }
+  }
+  return map;
+}
+
+function spotBody(s) {
+  const photo = findPhoto(s.photoId);
+  const trips = spotTrips(s.id);
+  const fish = trips.reduce((n, x) => n + tripCatch(x), 0);
+  const kg = trips.reduce((n, x) => n + tripKg(x), 0);
+  const blank = trips.filter((x) => !tripCatch(x)).length;
+  const cost = trips.reduce((n, x) => n + tripCost(x).total, 0);
+  const tile = (name, value, sub = null) => h('div', { class: 'spec-tile' }, h('small', {}, name), h('b', {}, value), sub ? h('span', {}, sub) : null);
+  const tiles = trips.length ? h('div', { class: 'spec-tiles' },
+    tile(t('Виїздів'), fmt.num(trips.length), t('останній {d}', { d: fmt.date(trips[0].date) })),
+    tile(t('Риб'), fmt.num(fish), kg ? `${fmt.num(Math.round(kg * 10) / 10)} ${t('кг')}` : null),
+    tile(t('За виїзд'), fmt.num(Math.round((fish / trips.length) * 10) / 10), blank ? t('без улову: {n}', { n: fmt.num(blank) }) : t('завжди з уловом')),
+    cost ? tile(t('Витрати, грн'), fmt.num(Math.round(cost)), fish ? t('{s} грн за рибину', { s: fmt.num(Math.round(cost / fish)) }) : null) : null) : null;
+  const chip = (ico, text, onclick = null, cls = '') => h(onclick ? 'button' : 'span', { type: onclick ? 'button' : null, class: `meta-chip ${cls}`.trim(), onclick },
+    ico ? icon(ico) : null, h('span', {}, text));
+  const meta = [
+    s.kind ? chip('drop', label(SPOT_KINDS, s.kind)) : null,
+    spotPrice(s) ? chip('tag', spotPrice(s)) : null,
+    s.depth ? chip(null, t('глибини {d} м', { d: s.depth })) : null,
+    ...(s.access ?? []).map((k) => chip(null, label(ACCESS, k))),
+    hasCoords(s) ? null : chip('pin', t('додати координати'), () => spotForm(s), 'link'),
+  ].filter(Boolean);
+  const open = (url) => window.open(url, '_blank', 'noopener');
+  const species = spotSpecies(trips);
+  const caught = [...species].sort((a, b) => b[1].n - a[1].n || collate(a[0], b[0]));
+  const unseen = (s.species ?? []).filter((x) => !species.has(x));
+  const baits = spotBaits(trips).slice(0, 6);
+  // Коли клює: риб на виїзд по місяцях; час доби — з улову, де вказано «Коли»
+  const months = new Map();
+  for (const tr of trips) {
+    const m = Number(tr.date.slice(5, 7)) - 1;
+    const cur = months.get(m) ?? { trips: 0, n: 0 };
+    cur.trips += 1;
+    cur.n += tripCatch(tr);
+    months.set(m, cur);
+  }
+  const parts = new Map();
+  for (const tr of trips) {
+    for (const c of tr.catches ?? []) {
+      if (!c.time) continue;
+      const [key, name] = daypart(c.time);
+      parts.set(key, { label: t(name), n: (parts.get(key)?.n ?? 0) + (num(c.n) || 1) });
+    }
+  }
+  // Що обриваю саме тут
+  const lost = new Map();
+  for (const tr of trips) {
+    for (const x of tripLosses(tr.id)) {
+      const cur = lost.get(x.g.id) ?? { g: x.g, n: 0 };
+      cur.n += num(x.n) || 1;
+      lost.set(x.g.id, cur);
+    }
+  }
+  const losses = [...lost.values()].sort((a, b) => b.n - a.n);
+  const lostTotal = losses.reduce((n, x) => n + x.n, 0);
+  return h('div', { class: 'gear-sheet spot-sheet' },
+    photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) },
+      h('img', { class: 'item-photo spot-photo', src: photo.thumb, alt: '' })) : null,
+    meta.length ? h('div', { class: 'meta-chips' }, meta) : null,
+    h('div', { class: 'btn-row spot-acts' },
+      hasCoords(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
+      hasCoords(s) ? btn([icon('map'), t('На карті')], () => open(mapUrl(s))) : null,
+      btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
+    tiles,
+    s.note ? h('p', { class: 'pre spot-note' }, s.note) : null,
+    caught.length || unseen.length ? box(t('Хто ловиться'), h('div', {},
+      caught.length ? bars(caught.map(([sp, x]) => ({ label: sp, n: x.n, text: [fmt.num(x.n), x.best ? fishSize(x.best).split(' · ')[0] : null].filter(Boolean).join(' · ') }))) : null,
+      unseen.length ? h('p', { class: 'muted small' }, t('Водиться, ще не ловив: {list}', { list: unseen.join(', ') })) : null)) : null,
+    baits.length ? box(t('Уловисті приманки тут'), h('div', { class: 'rows' }, baits.map((x) => row(x.name,
+      x.g ? [catOf(x.g.cat).name, weightText(x.g), !active(x.g) ? t('вже немає') : isQty(x.g) ? t('є {n}', { n: qtyText(x.g) }) : null].filter(Boolean).join(' · ') : t('вписано в улові'),
+      h('span', { class: 'fish-count' }, icon('fish'), fmt.num(x.n)), x.g ? () => gearDetail(x.g.id) : null,
+      { thumb: x.g ? gearThumb(x.g) : null, cls: x.g ? '' : 'static' })))) : null,
+    months.size > 1 || parts.size ? box(t('Коли клює'), h('div', {},
+      months.size > 1 ? [h('div', { class: 'field-label' }, t('Риб за виїзд по місяцях')),
+        bars([...months].sort((a, b) => a[0] - b[0]).map(([m, x]) => ({ label: t(MONTHS[m]), n: x.n / x.trips, text: fmt.num(Math.round((x.n / x.trips) * 10) / 10) })))] : null,
+      parts.size ? [h('div', { class: 'field-label' }, t('Час доби — з улову, де вказано «Коли»')),
+        bars(DAYPARTS.map(([k]) => parts.get(k)).filter(Boolean))] : null)) : null,
+    losses.length ? box(t('Що тут обриваю · {n}', { n: fmt.num(lostTotal) }), h('div', { class: 'rows' }, losses.slice(0, 6).map((x) => row(gearTitle(x.g),
+      [weightText(x.g), x.g.color].filter(Boolean).join(' · ') || null, `−${fmt.num(x.n)}`, () => gearDetail(x.g.id), { thumb: gearThumb(x.g) })))) : null,
+    trips.length ? fold('spot-trips', `${t('Виїзди')} · ${trips.length}`, () => h('div', { class: 'rows' }, trips.map(tripRow))) : null,
+    hasCoords(s) ? h('p', { class: 'muted small' }, t('Координати {c} — для погоди у виїздах і маршруту.', { c: coordsText(s) })) : null);
 }
 
 // ---------- погода й місяць ----------
@@ -1546,7 +1751,6 @@ function tripRow(tr) {
 
 function renderTrips() {
   const list = [...state.trips].sort((a, b) => collate(b.date, a.date) || collate(b.from ?? '', a.from ?? ''));
-  const spots = [...state.spots].sort((a, b) => collate(a.name, b.name));
   const year = today().slice(0, 4);
   const season = list.filter((x) => x.date.startsWith(year));
   $('subtitle').textContent = season.length ? t('сезон {y}: виїздів {n}, риб {f}', { y: year, n: season.length, f: fmt.num(season.reduce((s, x) => s + tripCatch(x), 0)) }) : '';
@@ -1555,11 +1759,7 @@ function renderTrips() {
     seasonBox(),
     recordsBox(),
     list.length ? h('div', { class: 'rows' }, list.map(tripRow))
-      : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]),
-    fold('spots', `${t('Водойми')} · ${spots.length}`, h('div', {},
-      spots.length ? h('div', { class: 'rows' }, spots.map((s) => row(s.name, [coordsText(s) || t('без координат'), s.note].filter(Boolean).join(' · '),
-        fmt.num(state.trips.filter((x) => x.spotId === s.id).length), () => spotForm(s)))) : null,
-      h('div', { class: 'btn-row' }, btn(t('+ Водойма'), () => spotForm())))));
+      : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]));
 }
 
 /** Кілька значень чипами: повертає { el, value() }. */
@@ -1579,9 +1779,9 @@ function tripForm(tr = null, preset = {}) {
     { name: 'date', label: t('Дата'), type: 'dmy', value: tr?.date ?? today(), required: true },
     { name: 'from', label: t('З'), type: 'time', value: tr?.from ?? '', half: true },
     { name: 'to', label: t('До'), type: 'time', value: tr?.to ?? '', half: true },
-    { name: 'spotId', label: t('Водойма'), type: 'select', options: spotOpts(), value: tr?.spotId ?? last?.spotId ?? '' },
+    { name: 'spotId', label: t('Водойма'), type: 'select', options: spotOpts(), value: tr?.spotId ?? preset.spotId ?? last?.spotId ?? '' },
     { name: 'waterT', label: t('Вода, °C'), type: 'number', value: tr?.waterT, half: true },
-    { name: 'cost', label: t('Інші витрати, грн'), type: 'number', value: tr?.cost, half: true, placeholder: t('бензин, путівка') },
+    { name: 'cost', label: t('Інші витрати, грн'), type: 'number', value: tr?.cost ?? preset.cost, half: true, placeholder: t('бензин, путівка') },
     { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 2, value: tr?.note },
   ]);
   f.inputs.spotId.closest('.field').after(h('div', { class: 'specs-find' }, btn(t('+ Водойма'), () => spotForm(null, {
@@ -1627,7 +1827,7 @@ function tripBody(tr) {
     photos.length ? h('div', { class: 'photo-strip' }, photos.map((pid) => h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(pid, photos) }, h('img', { src: findPhoto(pid).thumb, alt: '' })))) : null,
     kv([
       [t('Коли'), [fmt.date(tr.date), [tr.from, tr.to].filter(Boolean).join('–')].filter(Boolean).join(' · ')],
-      [t('Водойма'), s ? link(s.name, () => spotForm(s)) : t('Без водойми')],
+      [t('Водойма'), s ? link(s.name, () => spotDetail(s.id)) : t('Без водойми')],
       [t('Як ловив'), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', ')],
       [t('Чим ловив'), (tr.gearIds ?? []).map(findGear).filter(Boolean).map(gearTitle).join(', ')],
       [t('Вода'), tr.waterT !== null && tr.waterT !== undefined && tr.waterT !== '' ? `${fmt.num(tr.waterT)} °C` : null],
@@ -2698,6 +2898,7 @@ function renderSettings() {
 const VIEWS = {
   gear: { title: 'Снасті', render: renderGear, fab: () => gearForm() },
   trips: { title: 'Виїзди', render: renderTrips, fab: () => tripForm() },
+  spots: { title: 'Водойми', render: renderSpots, fab: () => spotForm() },
   places: { title: 'Місця зберігання', render: renderPlaces, fab: () => placeForm() },
   shop: { title: 'Покупки', render: renderShop, fab: () => wishForm() },
   settings: { title: 'Налаштування', render: renderSettings },

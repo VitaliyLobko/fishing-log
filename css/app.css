@@ -480,6 +480,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: transparent; font-weight: 650; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 400px) { .chips.segmented button { font-size: 14px; padding: 6px 4px; } }
+/* Перемикач напрямку зі значками: значок і підпис рядком; на вузькому екрані — значок над підписом */
+.dir-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.dir-switch button > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dir-switch .ico { display: inline-flex; flex: none; }
+.dir-switch .ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dir-switch button.on .ico { color: var(--accent); }
+@media (max-width: 400px) { .dir-switch button { flex-direction: column; gap: 2px; min-height: 52px; font-size: 13px; } }
 .chips.segmented button.on { background: var(--seg-on); color: var(--text); box-shadow: 0 1px 4px rgb(0 0 0 / .25); }
 .panel .chips.segmented { margin-bottom: 0; }
 
@@ -517,7 +524,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   z-index: 10;
   display: grid;
   /* Вкладки — не ширші за сторінку (.view 720px): на комп'ютері не розбігаються по краях, фон — на всю ширину */
-  grid-template-columns: repeat(3, minmax(0, 150px));
+  grid-template-columns: repeat(4, minmax(0, 150px));
   justify-content: center;
   height: calc(var(--tabs-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
@@ -1046,3 +1053,21 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .stock .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .stock .btn-row .btn.primary { grid-column: 1 / -1; }
 .gear-sheet > .btn-row .btn.quiet { margin-left: auto; }
+
+/* ---------- Водойми (0.21.0) ---------- */
+/* Фото водойми — пейзаж: на всю ширину, обрізане, а не на білому тлі, як фото речі */
+.spot-sheet .item-photo.spot-photo { aspect-ratio: 16 / 9; max-height: 220px; object-fit: cover; background: var(--surface-2); }
+.spot-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 14px; }
+.spot-acts .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+.spot-acts .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.spot-note { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line-soft); }
+.row.static { cursor: default; }
+/* Одна сітка на всі смужки: колонка чисел однакова, тож смужки однієї довжини */
+.bars { display: grid; grid-template-columns: minmax(64px, 30%) minmax(0, 1fr) auto; align-items: center; gap: 8px 10px; margin: 4px 0 10px; }
+.bar { display: contents; }
+.spot-sheet .spec-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 600px) { .spot-sheet .spec-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bar-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.bar-num { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
