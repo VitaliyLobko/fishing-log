@@ -3,6 +3,7 @@
 import * as db from './db.js';
 import * as sync from './sync.js';
 import * as bot from './bot.js';
+import * as nfc from './nfc.js';
 import { t, lang, collate, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
@@ -936,7 +937,9 @@ function renderGear() {
   search.value = query;
   gearList = h('div');
   // Пошук і «Вибрати» — одним рядком угорі; нижче — що потребує уваги, далі розділи
-  const top = h('div', { class: 'search-row' }, search, picking ? null : btn(t('Вибрати'), () => { picking = new Set(); render(); }, 'quiet mini'));
+  const top = h('div', { class: 'search-row' }, search,
+    picking || !nfc.supported() ? null : toolBtn('nfc', t('Знайти річ за NFC-міткою'), () => nfcStart(true), nfc.active() ? 'nfc-btn on' : 'nfc-btn'),
+    picking ? null : btn(t('Вибрати'), () => { picking = new Set(); render(); }, 'quiet mini'));
   // Хижак / мирна: універсальне видно в обох; вибір пам'ятається
   const DIR_ICON = { '': 'all', predator: 'predator', peaceful: 'peaceful', camp: 'camp' };
   const dirs = chips([['', 'Усі'], ...DIRS].map(([k, l]) => [k, [icon(DIR_ICON[k]), h('span', {}, t(l))]]), dirFilter, (v) => { dirFilter = v; remember('fishing-log:dir', v); paintGear(); });
@@ -1196,7 +1199,8 @@ function gearDetail(id) {
   const build = () => { const g = findGear(id); return g ? gearBody(g) : null; };
   sheet(() => gearTitle(findGear(id)), build(), {
     live: build,
-    tools: [toolBtn('copy', t('Копіювати'), () => copyGear(findGear(id))), toolBtn('edit', t('Змінити'), () => gearForm(findGear(id))),
+    tools: [nfc.supported() ? toolBtn('nfc', t('NFC-мітка'), () => nfcWriteSheet(itemUrl(findGear(id)), gearTitle(findGear(id)))) : null,
+      toolBtn('copy', t('Копіювати'), () => copyGear(findGear(id))), toolBtn('edit', t('Змінити'), () => gearForm(findGear(id))),
       toolBtn('delete', t('Видалити'), () => removeGear(findGear(id)), 'danger')],
   });
 }
@@ -1561,7 +1565,9 @@ function placeDetail(id) {
   const build = () => { const p = findPlace(id); return p ? placeBody(p) : null; };
   sheet(() => findPlace(id)?.name, build(), {
     live: build,
-    tools: [toolBtn('qr', t('Наклейка'), () => printLabels([findPlace(id)])), toolBtn('edit', t('Змінити'), () => placeForm(findPlace(id))),
+    tools: [toolBtn('qr', t('Наклейка'), () => printLabels([findPlace(id)])),
+      nfc.supported() ? toolBtn('nfc', t('NFC-мітка'), () => nfcWriteSheet(placeUrl(findPlace(id)), findPlace(id).name)) : null,
+      toolBtn('edit', t('Змінити'), () => placeForm(findPlace(id))),
       toolBtn('delete', t('Видалити'), () => removePlace(findPlace(id)), 'danger')],
   });
 }
@@ -2474,10 +2480,62 @@ function fortuneRow() {
     row, snd, h('div', { class: 'btn-row' }, btn(t('Розламати зараз'), () => playFortune(), 'primary'))]);
 }
 
+// ---------- NFC-мітки ----------
+
+/** Картка речі чи місця з мітки або посилання; запис могли видалити — тоді підказка. */
+function openTagged(kind, id) {
+  if (kind === 'item') {
+    if (findGear(id)) gearDetail(id); else toast(t('Річ з мітки не знайдено — можливо, її видалено'));
+  } else if (findPlace(id)) placeDetail(id); else toast(t('Місце з наклейки не знайдено'));
+}
+
+/** Дотик мітки, поки застосунок відкритий: посилання Fishing Log — одразу картка. */
+function onNfcTag(urls) {
+  for (const u of urls) {
+    const m = /#(item|place)=([^&]+)$/.exec(u);
+    if (m) { openTagged(m[1], decodeURIComponent(m[2])); return; }
+  }
+  toast(urls.length ? t('Мітка не з Fishing Log') : t('Мітка порожня. Запишіть її з картки речі: значок NFC угорі'));
+}
+
+/** Слухати мітки; з кнопки — ще й підказати, що робити, і показати, чому не вийшло. */
+async function nfcStart(fromButton = false) {
+  try {
+    await nfc.listen(onNfcTag);
+    document.querySelectorAll('.nfc-btn').forEach((b) => b.classList.add('on'));
+    if (fromButton) toast(t('Піднесіть телефон до мітки'));
+  } catch (err) {
+    if (fromButton) toast(err.name === 'NotAllowedError' ? t('Дозвольте NFC для цього сайту в налаштуваннях Chrome') : t('NFC недоступний: увімкніть його в налаштуваннях телефона'));
+  }
+}
+
+/** Записати на мітку посилання: торкання мітки відкриватиме цю річ чи місце. */
+function nfcWriteSheet(url, name) {
+  const ctrl = new AbortController();
+  const close = sheet(t('NFC-мітка'), h('div', { class: 'nfc-write' },
+    h('div', { class: 'nfc-wave', 'aria-hidden': 'true' }, icon('nfc')),
+    h('p', {}, t('Прикладіть мітку до задньої кришки телефона й потримайте секунду.')),
+    h('p', { class: 'muted small' }, t('На мітку запишеться посилання на «{name}». Далі досить торкнутися її телефоном — відкриється ця картка, навіть коли застосунок закритий. Те, що було на мітці, буде замінено.', { name }))), {
+    actions: [btn(t('Скасувати'), () => close())],
+    onClose: () => ctrl.abort(),
+  });
+  nfc.writeUrl(url, ctrl.signal).then(() => {
+    close();
+    toast(t('Мітку записано: {name}', { name }));
+  }).catch((err) => {
+    if (err.name === 'AbortError') return;
+    close();
+    toast(err.name === 'NotAllowedError' ? t('Дозвольте NFC для цього сайту в налаштуваннях Chrome')
+      : err.name === 'NotSupportedError' ? t('Ця мітка не підходить для запису') : t('Не вдалося записати мітку: {e}', { e: err.message }));
+  });
+}
+
 // ---------- наклейки з QR ----------
 
 /** Адреса місця для QR: камера телефона відкриє застосунок одразу на цьому місці. */
 const placeUrl = (p) => `${location.origin}${location.pathname}#place=${encodeURIComponent(p.id)}`;
+/** Адреса речі — для NFC-мітки: телефон відкриє застосунок одразу на картці. */
+const itemUrl = (g) => `${location.origin}${location.pathname}#item=${encodeURIComponent(g.id)}`;
 
 function labelsSheet(list) {
   const sorted = [...list].sort((a, b) => collate(pathOf(a.id), pathOf(b.id)));
@@ -3160,6 +3218,7 @@ function aboutPanel() {
       h('li', {}, t('Відкрийте місце й додавайте речі кнопкою «+ Річ сюди» — місце підставиться саме. «Зберегти й ще» — наступна одразу.')),
       h('li', {}, t('Приманкам і оснастці поставте поріг «мало» — що закінчується, з’явиться в «Покупки» → «Докупити».')),
       h('li', {}, t('«Місця» → «Друк наклейок»: QR на ящик відкриває його вміст камерою телефона.')),
+      nfc.supported() ? h('li', {}, t('NFC-мітка: у картці речі значок NFC записує на мітку посилання. Торкнулися мітки телефоном — відкрилася ця річ.')) : null,
       h('li', {}, t('На риболовлі — «Виїзди» → «+»: улов, «−1 Втратив…»; погода підтягнеться сама, якщо в водойми є координати.')),
       h('li', {}, t('Хочете спершу подивитися — ⚙ → «Демодані». Перед своїми записами видаліть демо: ⚙ → «Видалити дані з пристрою».')))),
     h('nav', { class: 'about-links' },
@@ -3228,6 +3287,15 @@ function route() {
     render();
     const p = findPlace(decodeURIComponent(place));
     if (p) placeDetail(p.id); else toast(t('Місце з наклейки не знайдено'));
+    return;
+  }
+  // NFC-мітка на речі: #item=<id> — картка речі поверх «Снастей»
+  const item = location.hash.match(/^#item=(.+)$/)?.[1];
+  if (item) {
+    history.replaceState(null, '', '#gear');
+    tab = 'gear';
+    render();
+    openTagged('item', decodeURIComponent(item));
     return;
   }
   const next = location.hash.slice(1);
@@ -3350,5 +3418,11 @@ const googleFromOtherApp = () => {
 };
 googleFromOtherApp();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') googleFromOtherApp(); });
+// NFC: дозвіл уже є — мітки читаються, поки застосунок на екрані; згорнули — читання зупиняється
+if (nfc.supported()) {
+  const nfcAuto = async () => { if (document.visibilityState === 'visible' && await nfc.granted()) nfcStart(); };
+  nfcAuto();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') nfc.stop(); else nfcAuto(); });
+}
 sync.preload();
 sync.syncNow();

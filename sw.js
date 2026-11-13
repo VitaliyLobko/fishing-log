@@ -26,6 +26,7 @@ const ASSETS = [
   './js/weather.js',
   './js/scenes.js',
   './js/bot.js',
+  './js/nfc.js',
   './js/bot-key.js',
   './js/vendor/qrcode.js',
   './icons/icon-192.png',

@@ -1227,3 +1227,13 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 @media (prefers-reduced-motion: reduce) {
   .scene-fortune :is(.fc-reeds-l, .fc-reeds-r, .fc-fall > *, .fc-rays, .fc-boat, .fc-mist, .fc-clouds, .fc-gulls) { animation: none; }
 }
+
+/* ---------- NFC-мітки ---------- */
+.search-row .nfc-btn { flex: none; width: 44px; height: 44px; }
+.search-row .nfc-btn.on { color: var(--accent); }
+.nfc-write { text-align: center; }
+.nfc-wave { display: grid; place-items: center; width: 96px; height: 96px; margin: 8px auto 16px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); animation: nfc-pulse 1.6s ease-in-out infinite; }
+.nfc-wave .ico { display: grid; }
+.nfc-wave svg { width: 48px; height: 48px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@keyframes nfc-pulse { 50% { transform: scale(1.06); opacity: .8; } }
+@media (prefers-reduced-motion: reduce) { .nfc-wave { animation: none; } }
