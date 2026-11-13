@@ -1076,6 +1076,14 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .bar-num { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
 
 /* ---------- Печиво з передбаченням (js/scenes.js) ---------- */
+/* «Усі передбачення» у схованій панелі: нумерований список, кожен рядок — кнопка на всю ширину */
+.fortune-head { margin: 16px 0 6px; font-size: 15px; }
+.fortune-head:first-child { margin-top: 0; }
+.fortune-list { margin: 0; padding-left: 28px; }
+.fortune-list li { margin: 0; }
+.fortune-list button { display: block; width: 100%; min-height: 44px; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer; }
+.fortune-list li:last-child button { border-bottom: 0; }
 .scene { position: fixed; inset: 0; z-index: 1300; background: #1a2a3a; animation: fc-fade .3s ease-out both; overflow: hidden; touch-action: manipulation; }
 .scene svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .scene.out { opacity: 0; transition: opacity .35s ease; }

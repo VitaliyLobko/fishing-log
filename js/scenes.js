@@ -126,6 +126,11 @@ function fortuneParams() {
   };
 }
 
+/** Усі передбачення для перегляду в схованій панелі: звичайні, золоті й ті, що зараз складаються з журналу. */
+export function fortuneList() {
+  return { plain: FORTUNES.map((x) => t(x)), gold: GOLD_FORTUNES.map((x) => t(x)), own: fortuneSource() };
+}
+
 function fortuneText(p) {
   const list = p.gold ? GOLD_FORTUNES : FORTUNES;
   return p.own ?? t(list[((p.i ?? 0) % list.length + list.length) % list.length]);
@@ -299,12 +304,13 @@ function fortuneCookie(p = {}) {
   // що летить через увесь кадр за вітром: осінь — листя, зима — сніг, весна — пух; влітку тихо
   const fall = {
     autumn: (x, y, j) => `<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="1.8" ry="4" fill="${LEAF[j % 3]}"`,
-    winter: (x, y, j) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(1.3 + (j % 3) * 0.5)}" fill="#fff"`,
+    // сніжинки м'які й різні за розміром (ближчі — більші), щоб уночі їх не плутали з зірками
+    winter: (x, y, j) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1([2.4, 3.2, 4.4][j % 3])}" fill="url(#fc-flake)"`,
     spring: (x, y) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="1.3" fill="#fffbe6" opacity=".85"`,
     summer: (x, y, j) => `<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="1.6" ry="4" fill="${LEAF[j % 3]}"`,
   }[season];
   let falling = '';
-  const nFall = { autumn: 16, winter: 30, spring: 12, summer: 0 }[season];
+  const nFall = { autumn: 16, winter: 44, spring: 12, summer: 0 }[season];
   for (let j = 0; j < nFall; j++) {
     const x = -200 + rnd() * 760, y = -120 + rnd() * 80;
     falling += `${fall(x, y, j)} style="animation-duration:${(7 + rnd() * 5).toFixed(1)}s;animation-delay:-${(rnd() * 11).toFixed(1)}s"/>`;
@@ -407,7 +413,7 @@ ${layer('fc-back')}
   ${season === 'winter' ? '<path d="M-1400 300H1760V306Q900 312 0 305T-1400 308Z" fill="#e8eef6" opacity=".8"/>' : ''}
 </svg>
 ${layer('fc-water-fx')}
-  <defs><radialGradient id="fc-ffglow"><stop offset=".3" stop-color="#fff38a" stop-opacity=".8"/><stop offset="1" stop-color="#fff38a" stop-opacity="0"/></radialGradient></defs>
+  <defs><radialGradient id="fc-flake"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#eaf2ff" stop-opacity="0"/></radialGradient><radialGradient id="fc-ffglow"><stop offset=".3" stop-color="#fff38a" stop-opacity=".8"/><stop offset="1" stop-color="#fff38a" stop-opacity="0"/></radialGradient></defs>
   <g class="fc-clouds">${clouds}</g>
   ${gulls}
   <g class="fc-glints" stroke="${night ? '#f3ecd0' : tod === 'evening' ? '#ffc08a' : '#fffaf0'}" stroke-linecap="round" opacity=".6">${glints}</g>

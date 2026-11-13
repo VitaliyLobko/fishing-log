@@ -2243,6 +2243,68 @@ function fortuneOnStart(newsDue) {
   setTimeout(() => playFortune(), 500);
 }
 
+// Панель сценок — лише для автора: вмикається на пристрої 7 тапами по Гомерчику за 3 с (як режим розробника в Android)
+const SCENES_PANEL_KEY = 'fishing-log:scenes-panel';
+let authorTaps = [];
+// що показати в панелі: час доби й пора року ('' — як зараз)
+const preview = { tod: '', season: '' };
+
+/** Тап по аватару: щоразу кліпає, сьомий за 3 с перемикає панель сценок. */
+function authorTap(e) {
+  avatarHi(e);
+  const now = Date.now();
+  authorTaps = [...authorTaps.filter((x) => now - x < 3000), now];
+  if (authorTaps.length < 7) return;
+  authorTaps = [];
+  const on = recall(SCENES_PANEL_KEY) !== '1';
+  remember(SCENES_PANEL_KEY, on ? '1' : '');
+  toast(on ? t('Сценки й передбачення — у «Вигляді»') : t('Сценки й передбачення сховано'));
+  render();
+}
+
+/** Параметри перегляду: обраний час і пора року плюс те, що задає кнопка. */
+const previewParams = (extra) => ({ ...(preview.tod ? { tod: preview.tod } : {}), ...(preview.season ? { season: preview.season } : {}), ...extra });
+
+function scenesRow() {
+  if (recall(SCENES_PANEL_KEY) !== '1') return null;
+  const tod = chips([['', t('Зараз')], ['morning', t('Ранок')], ['day', t('День')], ['evening', t('Вечір')], ['night', t('Ніч')]], preview.tod, (v) => { preview.tod = v; });
+  const season = chips([['', t('Зараз')], ['spring', t('Весна')], ['summer', t('Літо')], ['autumn', t('Осінь')], ['winter', t('Зима')]], preview.season, (v) => { preview.season = v; });
+  return setRow('scenes', 'play', t('Сценки й передбачення'), '', [
+    h('p', { class: 'muted small' }, t('Сховано від усіх: 7 тапів по Гомерчику в «Про застосунок» прибирають цей рядок.')),
+    h('div', { class: 'field-label' }, t('Час доби')), tod,
+    h('div', { class: 'field-label' }, t('Пора року')), season,
+    h('div', { class: 'btn-row' },
+      btn(t('Печиво'), () => playFortune(previewParams({ gold: false })), 'primary'),
+      btn(t('Золоте'), () => playFortune(previewParams({ gold: true, own: null }))),
+      btn(t('З журналу'), () => fortunesOwn()),
+      btn(t('Усі передбачення'), fortunesSheet))]);
+}
+
+/** Печиво з передбаченням із журналу — якщо зараз нічого не складається, так і кажемо. */
+function fortunesOwn() {
+  const own = myFortunes();
+  if (!own.length) { toast(t('Зараз з журналу нічого не складається')); return; }
+  playFortune(previewParams({ gold: false, own: own[Math.floor(Math.random() * own.length)] }));
+}
+
+/** Усі передбачення списком: тап — це печиво зі сценкою. */
+function fortunesSheet() {
+  import('./scenes.js').then((m) => {
+    m.setFortuneSource(myFortunes);
+    const { plain, gold, own } = m.fortuneList();
+    // own: null — щоб випадковий вибір не підмінив обране «своїм» передбаченням
+    const part = (title, list, params) => [h('h3', { class: 'fortune-head' }, `${title} · ${fmt.num(list.length)}`),
+      list.length
+        ? h('ol', { class: 'fortune-list' }, list.map((text, i) => h('li', {},
+          h('button', { type: 'button', onclick: () => playFortune(previewParams(params(text, i))) }, text))))
+        : h('p', { class: 'muted' }, t('Зараз з журналу нічого не складається'))];
+    sheet(t('Усі передбачення'), h('div', {},
+      ...part(t('Звичайні'), plain, (_, i) => ({ gold: false, own: null, i })),
+      ...part(t('Золоті'), gold, (_, i) => ({ gold: true, own: null, i })),
+      ...part(t('З журналу'), own, (text) => ({ gold: false, own: text }))));
+  }).catch((err) => toast(err.message));
+}
+
 function fortuneRow() {
   const sound = recall(FORTUNE_SOUND_OFF) !== '1';
   const row = chips([['on', t('Показувати')], ['off', t('Не показувати')]], fortuneOn() ? 'on' : 'off', (v) => { remember(FORTUNE_OFF, v === 'off' ? '1' : ''); render(); });
@@ -2914,7 +2976,7 @@ function aboutPanel() {
   const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
   return h('section', { class: 'panel about' },
     h('div', { class: 'about-head' },
-      h('button', { type: 'button', class: 'about-avatar', 'aria-label': t('Автор — тапніть, щоб кліпнув'), onclick: avatarHi },
+      h('button', { type: 'button', class: 'about-avatar', 'aria-label': t('Автор — тапніть, щоб кліпнув'), onclick: authorTap },
         h('img', { src: './icons/author.jpg', alt: '', width: 64, height: 64, loading: 'lazy' }),
         Object.assign(h('span', { class: 'av-live' }), { innerHTML: AVATAR_SVG })),
       h('div', {}, h('h3', {}, 'Fishing Log'),
@@ -2967,7 +3029,7 @@ function renderSettings() {
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [placesRow(), catsRow(), serviceRow()]),
-    settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow()]));
+    settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow(), scenesRow()].filter(Boolean)));
 }
 
 // ---------- навігація ----------
