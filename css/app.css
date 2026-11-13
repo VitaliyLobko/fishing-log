@@ -1281,6 +1281,26 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .scene-fortune .fc-prop { transform-box: fill-box; transform-origin: center; animation: fc-prop .09s linear infinite; }
 @keyframes fc-prop { 50% { transform: scaleX(.25); } }
 .scene-fortune .fc-led { animation: fc-led .5s steps(1) infinite; }
+.scene-fortune .fc-fuse { animation: fc-led .12s steps(1) infinite; }
+/* вибух: спалах, стовп води, кадр здригається; риба летить дугою — x рівно, y вгору гальмуючи й униз розганяючись */
+.scene-fortune .fc-flash { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-flash .55s ease-out 2.6s both; }
+@keyframes fc-flash { 0% { transform: scale(.3); opacity: 0; } 12% { transform: scale(1); opacity: .95; } 100% { transform: scale(1.8); opacity: 0; } }
+.scene-fortune .fc-geyser { transform-box: view-box; transform-origin: 296px 358px; animation: fc-geyser 1.3s ease-out 2.6s both; }
+@keyframes fc-geyser { 0% { transform: scale(.4, 0); opacity: 0; } 12% { transform: scale(1, 1); opacity: .95; } 55% { transform: scale(1.25, .9); opacity: .85; } 100% { transform: scale(1.8, .05); opacity: 0; } }
+.scene-fortune.ev-drone .fc-layer { animation: fc-quake .5s linear 2.6s both; }
+.scene-fortune :is(.fc-boom-x, .fc-boom-y, .fc-boom-r) { animation-fill-mode: both; }
+.scene-fortune .fc-boom-x { animation-name: fc-boom-x; animation-timing-function: linear; }
+.scene-fortune .fc-boom-x.in { animation-name: fc-boom-xin; }
+@keyframes fc-boom-x { 0% { transform: translateX(var(--x0)); opacity: 0; } 5% { opacity: 1; } 100% { transform: translateX(var(--x1)); opacity: 1; } }
+@keyframes fc-boom-xin { 0% { transform: translateX(var(--x0)); opacity: 0; } 5%, 90% { opacity: 1; } 100% { transform: translateX(var(--x1)); opacity: 0; } }
+.scene-fortune .fc-boom-y { animation-name: fc-boom-y; }
+@keyframes fc-boom-y {
+  0% { transform: translateY(var(--y0)); animation-timing-function: cubic-bezier(.3, .6, .6, 1); }
+  45% { transform: translateY(var(--ym)); animation-timing-function: cubic-bezier(.4, 0, .7, .4); }
+  100% { transform: translateY(var(--y1)); }
+}
+.scene-fortune .fc-boom-r { animation-name: fc-boom-r; animation-timing-function: linear; }
+@keyframes fc-boom-r { from { transform: rotate(var(--r0)); } to { transform: rotate(var(--r1)); } }
 
 /* рибпатруль: човен з маячком підходить зліва, інспектор світить ліхтарем на печиво */
 .scene-fortune .fc-insp { animation: fc-insp 1.7s cubic-bezier(.2, .7, .3, 1) .35s both; }
@@ -1331,7 +1351,7 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .scene-fortune .fc-after { animation: fc-show .01s linear 2.75s both; }
 @media (prefers-reduced-motion: reduce) {
   .scene-fortune :is(.fc-flop, .fc-cat-wh, .fc-beam, .fc-prop) { animation: none; }
-  .scene-fortune.ev-tsunami .fc-layer { animation: none; }
+  .scene-fortune:is(.ev-tsunami, .ev-drone) .fc-layer { animation: none; }
 }
 
 /* ---------- NFC-мітки ---------- */

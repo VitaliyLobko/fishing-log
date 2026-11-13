@@ -212,7 +212,7 @@ const PAL = {
 const EVENTS = {
   catfish: { title: 'Сом-велетень', fortunes: ['Тобі все одно ніхто не повірить'] },
   beaver: { title: 'Бобер', fortunes: ['Бобер узяв своє. Друга половина удачі — твоя', 'Половину печива з’їли. Удачу лишили тобі', 'Бобер без здобичі не лишається. І ти не лишишся'] },
-  drone: { title: 'Дрон з прикормкою', fortunes: ['Прикормку доставлено. Точність — до поплавка', 'Згори видніше, де стоїть риба', 'Скид пройшов. Чекай поклювки'] },
+  drone: { title: 'Дрон', fortunes: ['Скид пройшов. Улов — на кладці', 'Найкоротша рибалка у твоєму житті', 'Сьогодні риба сама вийде на берег', 'Рибпатруль цього не бачив'] },
   inspector: { title: 'Рибпатруль', fortunes: ['Путівку перевірено. Удачу дозволено', 'Порушень не виявлено. Клювання дозволено до заходу сонця', 'Улов у межах норми. Радість — без обмежень', 'Протокол: щасливий рибалка, одна штука'] },
   fishrain: { title: 'Рибний дощ', fortunes: ['Прогноз на сьогодні: опади рибою', 'Коли щастить, підсак не потрібен', 'Небо теж прикормлене'] },
   tsunami: { title: 'Цунамі', fortunes: ['Хвиля пішла, риба лишилась. Збирай', 'Кінець світу перенесли. Клювання — ні', 'Море саме принесло улов. Підсак не знадобився', 'Після такого будь-яка поклювка — дрібниця'] },
@@ -242,8 +242,11 @@ function tsunamiSeen() {
 /** Набір передбачень для цього печива: подія, золоте чи звичайне. */
 const listOf = (p) => (EVENTS[p.event] ? EVENTS[p.event].fortunes : p.gold ? GOLD_FORTUNES : FORTUNES);
 
-const CAGE = '<rect x="-4.5" y="-6.5" width="9" height="13" rx="2" fill="#4f6a3a" stroke="#c8d0d4" stroke-width=".8"/>'
-  + '<path d="M-4.5-2.5h9M-4.5 1.5h9M-1.5-6.5v13M1.5-6.5v13" stroke="#c8d0d4" stroke-width=".5"/>';
+// В'язка динаміту з ґнотом, що іскрить
+const DYNAMITE = '<rect x="-7" y="-7" width="4.4" height="14" rx="1.6" fill="#b8281f"/><rect x="-2.2" y="-7.5" width="4.4" height="15" rx="1.6" fill="#d23a2c"/>'
+  + '<rect x="2.6" y="-7" width="4.4" height="14" rx="1.6" fill="#b8281f"/><rect x="-7.4" y="-1.6" width="14.8" height="3" fill="#3a3a3a"/>'
+  + '<path d="M0-7.5q.5-3.5 3.5-5" stroke="#4a3a2a" stroke-width=".8" fill="none"/>'
+  + '<circle class="fc-fuse" cx="3.6" cy="-12.6" r="3.4" fill="#ffb02a" opacity=".45"/><circle class="fc-fuse" cx="3.6" cy="-12.6" r="1.6" fill="#fff2a0" style="animation-delay:-.06s"/>';
 
 // Малюнок подій: back — між кладкою й ящиком (тінь ночі лягає й на нього), front — над усім, крім записки
 const EVENT_ART = {
@@ -292,14 +295,41 @@ const EVENT_ART = {
   </g></g></g>`,
   }),
 
-  // FPV-дрон прилітає, скидає годівницю точно до поплавка й відлітає
-  drone: ({ ringC, splash, drops }) => ({
-    back: '',
-    front: `<g class="fc-splash" fill="none" stroke="${ringC}" stroke-width="1.3">${splash(296, 356, 2.15)}</g>
-  <g class="fc-drops" fill="${ringC}">${drops(296, 356, 2.15, 61)}</g>
-  <g class="fc-feeder"><g transform="scale(1.4)">${CAGE}</g></g>
+  // FPV-дрон скидає в'язку динаміту біля поплавка: вибух, стовп води — риба летить просто на кладку
+  drone: ({ ringC, splash, drops, edgeX }) => {
+    const r = seeded(61), X = 296, Y = 356;
+    const all = [];
+    let rings = '';
+    for (let k = 0; k < 14; k++) {
+      const pier = k < 10;
+      const y1 = pier ? 425 + r() * 175 : 322 + r() * 56;
+      const x1 = pier ? edgeX(y1, -1) + 16 + r() * (edgeX(y1, 1) - edgeX(y1, -1) - 32) : X + (r() - 0.5) * 260;
+      const ym = Math.min(Y, y1) - 90 - r() * 120;
+      const d = 2.62 + r() * 0.12, dur = 0.85 + r() * 0.3;
+      const r0 = (r() - 0.5) * 90, r1 = pier ? (r() - 0.5) * 50 : r0 + 200;
+      const s = f1(pier ? 0.6 + (y1 - 392) / 450 : 0.5);
+      const time = `animation-delay:${d.toFixed(2)}s;animation-duration:${dur.toFixed(2)}s`;
+      const body = `<g transform="scale(${r() < 0.5 ? -s : s} ${s})">${FISH(false)}</g>`;
+      all.push([y1, `<g class="fc-boom-x${pier ? '' : ' in'}" style="--x0:${X}px;--x1:${f1(x1)}px;${time}"><g class="fc-boom-y" style="--y0:${Y}px;--ym:${f1(ym)}px;--y1:${f1(y1)}px;${time}"><g class="fc-boom-r" style="--r0:${f1(r0)}deg;--r1:${f1(r1)}deg;${time}">${
+        pier ? `<g class="fc-flop" style="animation-delay:${(d + dur).toFixed(2)}s">${body}</g>` : body}</g></g></g>`]);
+      if (!pier) rings += splash(f1(x1), f1(y1 + 4), Math.round((d + dur * 0.95) * 100) / 100);
+    }
+    return {
+      back: '',
+      front: `<g class="fc-splash" fill="none" stroke="${ringC}" stroke-width="1.3">${splash(X, Y, 2.15)}${rings}</g>
+  <g class="fc-drops" fill="${ringC}">${drops(X, Y, 2.15, 61)}${drops(X, Y - 6, 2.62, 62)}${drops(X, Y - 20, 2.66, 63)}</g>
+  <ellipse class="fc-ev-ring" cx="${X}" cy="${Y + 2}" rx="56" ry="6" fill="none" stroke="${ringC}" stroke-width="1.6" style="animation-delay:2.62s"/>
+  <ellipse class="fc-ev-ring" cx="${X}" cy="${Y + 2}" rx="56" ry="6" fill="none" stroke="${ringC}" stroke-width="1.2" style="animation-delay:2.85s"/>
+  <circle class="fc-flash" cx="${X}" cy="${Y - 6}" r="50" fill="url(#fc-gglow)"/>
+  <g class="fc-geyser"><g transform="translate(${X} ${Y + 2})" fill="#eef7fb">
+    <path d="M-16 2Q-12-50-24-100Q-14-128 0-150Q14-128 24-100Q12-50 16 2Z" opacity=".92"/>
+    <path d="M-30 2Q-26-30-42-58Q-30-62-22-40Q-18-20-14 2Z" opacity=".7"/><path d="M30 2Q26-30 42-58Q30-62 22-40Q18-20 14 2Z" opacity=".7"/>
+    <circle cx="-14" cy="-128" r="9"/><circle cx="10" cy="-140" r="11"/><circle cx="-2" cy="-152" r="8"/><circle cx="22" cy="-110" r="7"/><circle cx="-26" cy="-98" r="7"/>
+  </g></g>
+  ${all.sort((a, b) => a[0] - b[0]).map((x) => x[1]).join('')}
+  <g class="fc-feeder"><g transform="scale(1.4)">${DYNAMITE}</g></g>
   <g class="fc-drone"><g transform="scale(1.4)">
-    <g class="fc-drone-feed"><path d="M0 4V24" stroke="#e8e8e8" stroke-width=".7"/><g transform="translate(0 30)">${CAGE}</g></g>
+    <g class="fc-drone-feed"><path d="M0 4V20" stroke="#e8e8e8" stroke-width=".7"/><g transform="translate(0 30)">${DYNAMITE}</g></g>
     <path d="M-22-2L22-2M-15 3L15 3" stroke="#22282e" stroke-width="2.6" stroke-linecap="round"/>
     <rect x="-24.5" y="-4.5" width="5" height="4" rx="1" fill="#3a4148"/><rect x="19.5" y="-4.5" width="5" height="4" rx="1" fill="#3a4148"/>
     <rect x="-17.5" y="1" width="5" height="4" rx="1" fill="#3a4148"/><rect x="12.5" y="1" width="5" height="4" rx="1" fill="#3a4148"/>
@@ -311,7 +341,8 @@ const EVENT_ART = {
     <g fill="#d6dee2" opacity=".55"><ellipse class="fc-prop" cx="-22" cy="-6" rx="12" ry="1.6"/><ellipse class="fc-prop" cx="22" cy="-6" rx="12" ry="1.6" style="animation-delay:-.04s"/>
       <ellipse class="fc-prop" cx="-15" cy="-1" rx="10" ry="1.4" style="animation-delay:-.02s"/><ellipse class="fc-prop" cx="15" cy="-1" rx="10" ry="1.4" style="animation-delay:-.06s"/></g>
   </g></g>`,
-  }),
+    };
+  },
 
   // Човен рибоохорони з маячком: підходить зліва, інспектор світить ліхтарем на кладку
   inspector: ({ ringC }) => ({
@@ -888,8 +919,12 @@ const EVENT_SOUND = {
   },
   drone: (out, t0) => {
     buzz(out, t0 + 0.35, 3, 0.09);
-    plop(out, t0 + 2.15, 520, 160, 0.5);
-    noise(out, t0 + 2.15, 0.25, 1300, 0.5);
+    plop(out, t0 + 2.15, 520, 160, 0.4);
+    noise(out, t0 + 2.15, 0.25, 1300, 0.4);
+    swell(out, t0 + 2.6, 1.3, 80, 1.8, 0.04, 'lowpass');
+    noise(out, t0 + 2.6, 0.7, 380, 1.3);
+    noise(out, t0 + 2.7, 1.1, 1700, 0.5);
+    for (let k = 0; k < 10; k++) plop(out, t0 + 3.45 + Math.random() * 0.45, 240 + Math.random() * 120, 90, 0.25);
   },
   inspector: (out, t0) => {
     putt(out, t0 + 0.4, 1.7, 0.6);
@@ -910,7 +945,7 @@ const EVENT_SOUND = {
 };
 
 function crackFeedback({ gold, event }) {
-  navigator.vibrate?.(event === 'tsunami' ? [20, 60, 14, 400, 300, 80, 400, 80, 700] : gold ? [18, 60, 14, 900, 30] : [20, 60, 14, 1000, 24]);
+  navigator.vibrate?.(event === 'tsunami' ? [20, 60, 14, 400, 300, 80, 400, 80, 700] : event === 'drone' ? [20, 60, 14, 2560, 350, 80, 120] : gold ? [18, 60, 14, 900, 30] : [20, 60, 14, 1000, 24]);
   const out = audioOut();
   if (!out) return;
   try {
@@ -929,7 +964,7 @@ function crackFeedback({ gold, event }) {
 }
 
 // Коли з'являється записка: подія спершу відіграє своє (типово — 0,85 с після розламу)
-const SLIP_AT = { catfish: 3.3, beaver: 3, drone: 3.2, inspector: 2.9, fishrain: 3.8, tsunami: 3.9 };
+const SLIP_AT = { catfish: 3.3, beaver: 3, drone: 4, inspector: 2.9, fishrain: 3.8, tsunami: 3.9 };
 
 /** Програти печиво; params — для перегляду (?gold=1…), інакше випадкові. Повертає проміс закриття. */
 export function playFortune(params = {}) {
