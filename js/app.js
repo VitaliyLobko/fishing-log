@@ -38,10 +38,20 @@ function box(title, content, tools = null) {
   return h('fieldset', { class: 'box' }, h('legend', {}, title, tools), content);
 }
 
-/** Група, що згортається; розгорнуту пам'ятає між запусками. */
-function fold(key, title, body, cls = '') {
-  const el = h('details', { class: `ex-more ${cls}`.trim(), open: recall(`fishing-log:open:${key}`) === '1' }, h('summary', {}, title), body);
-  el.addEventListener('toggle', () => remember(`fishing-log:open:${key}`, el.open ? '1' : ''));
+/**
+ * Група, що згортається; розгорнуту пам'ятає між запусками. body-функція будує вміст лише при першому розгортанні;
+ * has — id записів усередині: щоб «збережено» підсвітило заголовок згорнутої групи, коли рядків ще немає.
+ */
+function fold(key, title, body, cls = '', has = null) {
+  const open = recall(`fishing-log:open:${key}`) === '1';
+  const lazy = typeof body === 'function';
+  let built = !lazy || open;
+  const el = h('details', { class: `ex-more ${cls}`.trim(), open, dataset: has?.length ? { has: has.join(' ') } : null },
+    h('summary', {}, title), lazy ? (open ? body() : null) : body);
+  el.addEventListener('toggle', () => {
+    if (el.open && !built) { built = true; el.append(body()); }
+    remember(`fishing-log:open:${key}`, el.open ? '1' : '');
+  });
   return el;
 }
 
@@ -91,14 +101,47 @@ function dropPhotos(ids) {
 
 /** Мініатюра речі: фото, а без нього — значок її розділу (монограма «ГП» нічого не каже). */
 function gearThumb(g) {
+  // Значок розділу — лише коли фото немає: розбирати SVG для кожного рядка з фото — зайва робота
+  if (findPhoto(g.photoId)) return thumbImg(g.photoId);
   const el = h('span', { class: 'thumb-ico', 'aria-hidden': 'true' });
   el.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[sectionOf(groupOf(g))?.icon] ?? GROUP_ICONS.other}</svg>`;
-  return thumbImg(g.photoId, el);
+  return thumbImg(null, el);
+}
+
+// Мініатюра зберігається data-URL (~10–20 КБ тексту): у src щоразу копіювався б увесь рядок, тож один раз — blob-адреса
+const thumbUrls = new Map();
+function thumbUrl(p) {
+  const was = thumbUrls.get(p.id);
+  if (was?.src === p.thumb) return was.url;
+  if (was) URL.revokeObjectURL(was.url);
+  const m = /^data:([^;,]+);base64,(.*)$/.exec(p.thumb ?? '');
+  if (!m) return p.thumb;
+  const bin = atob(m[2]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: m[1] }));
+  thumbUrls.set(p.id, { src: p.thumb, url });
+  return url;
+}
+
+// src — лише коли мініатюра підходить до екрана: інакше кожна з сотень у списку одразу починає вантажитись
+const thumbWait = new Set();
+const thumbIo = 'IntersectionObserver' in window ? new IntersectionObserver((list) => {
+  for (const e of list) if (e.isIntersecting) { e.target.src = e.target.dataset.src; thumbIo.unobserve(e.target); thumbWait.delete(e.target); }
+}, { rootMargin: '600px 300px' }) : null;
+/** Мініатюри, що пішли зі сторінки (перемальовування, закритий аркуш), не показались — перестаємо стежити, щоб не тримати їх у пам'яті. */
+function dropGoneThumbs() {
+  for (const img of thumbWait) if (!img.isConnected) { thumbIo.unobserve(img); thumbWait.delete(img); }
 }
 
 function thumbImg(photoId, fallback = '') {
   const p = findPhoto(photoId);
-  return p ? h('img', { class: 'thumb', src: p.thumb, alt: '' }) : h('span', { class: 'thumb mono', style: '--h: 25' }, fallback);
+  if (!p) return h('span', { class: 'thumb mono', style: '--h: 25' }, fallback);
+  if (!thumbIo) return h('img', { class: 'thumb', src: thumbUrl(p), alt: '', decoding: 'async' });
+  const img = h('img', { class: 'thumb', alt: '', decoding: 'async', dataset: { src: thumbUrl(p) } });
+  thumbIo.observe(img);
+  thumbWait.add(img);
+  return img;
 }
 
 /** Фото на весь екран: двома пальцями — збільшити, подвійний тап — 1× / 2.5×, змах убік — сусіднє фото зі списку ids. */
@@ -168,10 +211,17 @@ function showPhoto(id, ids = [id]) {
 
 // ---------- дані ----------
 
-const findGear = (id) => (id ? state.gear.find((x) => x.id === id) : null);
-const findPlace = (id) => (id ? state.places.find((x) => x.id === id) : null);
-const findPhoto = (id) => (id ? state.photos.find((x) => x.id === id) : null);
-const prefs = () => state.prefs.find((p) => p.id === 'settings') ?? { id: 'settings' };
+// Пошук за id — через Map, що будується раз на завантаження: state після кожного збереження новий, масиви не міняються на місці
+const indexes = new WeakMap();
+function byId(list) {
+  let map = indexes.get(list);
+  if (!map) { map = new Map(list.map((x) => [x.id, x])); indexes.set(list, map); }
+  return map;
+}
+const findGear = (id) => (id ? byId(state.gear).get(id) : null);
+const findPlace = (id) => (id ? byId(state.places).get(id) : null);
+const findPhoto = (id) => (id ? byId(state.photos).get(id) : null);
+const prefs = () => byId(state.prefs).get('settings') ?? { id: 'settings' };
 
 async function load() {
   state = await db.loadAll();
@@ -226,19 +276,37 @@ const CATS = [
  * Розділи по порядку: вбудовані (GROUPS) і свої. prefs.sections — збережений список { key, name, icon, qty } у порядку показу;
  * вбудований, якого там ще немає (з'явився в новій версії), додається в кінець. Як «Групи» в «Заняттях» Хобі-плану.
  */
-function sections() {
+function buildSections() {
   const base = GROUPS.map(([key, name]) => ({ key, name: t(name), icon: key, builtin: true }));
   const own = prefs().sections ?? [];
   const seen = new Set(own.map((x) => x.key));
   return [...own.map((x) => ({ ...(base.find((b) => b.key === x.key) ?? {}), ...x, builtin: base.some((b) => b.key === x.key) })),
     ...base.filter((b) => !seen.has(b.key))];
 }
-const sectionOf = (key) => sections().find((x) => x.key === key) ?? sections().find((x) => x.key === 'other');
-const groupLabel = (g) => sectionOf(g)?.name ?? t('Інше');
 /** Вбудовані категорії (назву можна змінити — prefs.catNames) + свої. */
-const allCats = () => [...CATS.map(([id, name, group, kind]) => ({ id, name: prefs().catNames?.[id] || t(name), group, builtin: true, ...(kind ? { kind } : {}) })),
+const buildCats = () => [...CATS.map(([id, name, group, kind]) => ({ id, name: prefs().catNames?.[id] || t(name), group, builtin: true, ...(kind ? { kind } : {}) })),
   ...(prefs().cats ?? [])];
-const catOf = (id) => allCats().find((c) => c.id === id) ?? { id: 'other', name: t('Інше'), group: 'other' };
+
+// Розділи й категорії залежать лише від налаштувань і мови — будуються раз на їх зміну, а не на кожен рядок і кожне порівняння сортування
+let catsMemo = { prefs: null, lang: null };
+function catsCache() {
+  if (catsMemo.prefs !== state.prefs || catsMemo.lang !== lang()) {
+    const secs = buildSections();
+    const cats = buildCats();
+    // Як find/findIndex: за однакового ключа перемагає перший
+    const first = (list, key) => { const m = new Map(); list.forEach((x, i) => { if (!m.has(x[key])) m.set(x[key], [x, i]); }); return m; };
+    const secs1 = first(secs, 'key');
+    catsMemo = { prefs: state.prefs, lang: lang(), secs, cats, secByKey: new Map([...secs1].map(([k, [x]]) => [k, x])),
+      secIndex: new Map([...secs1].map(([k, [, i]]) => [k, i])), catById: new Map([...first(cats, 'id')].map(([k, [x]]) => [k, x])) };
+  }
+  return catsMemo;
+}
+/** Розділи по порядку. Копія списку — щоб випадкова зміна масиву не зіпсувала кеш. */
+const sections = () => [...catsCache().secs];
+const sectionOf = (key) => catsCache().secByKey.get(key) ?? catsCache().secByKey.get('other');
+const groupLabel = (g) => sectionOf(g)?.name ?? t('Інше');
+const allCats = () => [...catsCache().cats];
+const catOf = (id) => catsCache().catById.get(id) ?? { id: 'other', name: t('Інше'), group: 'other' };
 const groupOf = (g) => catOf(g.cat).group;
 // Кількістю: вбудовані приманки, оснастка й фідерне; свій розділ — якщо так позначено
 const qtyCat = (c) => (c.kind ? c.kind === 'qty' : QTY_GROUPS.includes(c.group) || Boolean(sectionOf(c.group)?.qty));
@@ -685,7 +753,7 @@ function quickAction(g) {
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/[’ʼ`']/g, "'");
 const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), sizeText(g), g.buoy, whereText(g)].join(' '));
-const sectionIndex = (key) => { const i = sections().findIndex((x) => x.key === key); return i < 0 ? 999 : i; };
+const sectionIndex = (key) => catsCache().secIndex.get(key) ?? 999;
 const byGroup = (a, b) => sectionIndex(groupOf(a)) - sectionIndex(groupOf(b)) || collate(gearTitle(a), gearTitle(b));
 
 /** Пошук — по речах у наявності; списані видно в своєму розділі. */
@@ -734,13 +802,14 @@ function paintGear() {
         const items = list.filter((g) => groupOf(g) === x.key);
         // Порожній свій розділ теж видно — щоб змінити чи видалити, як порожні групи в Хобі-плані
         return items.length || !x.builtin ? fold(`gear-${x.key}`, sectionHead(x.icon, x.name, items.length, items.filter(isLow).length, () => sectionForm(x)),
-          items.length ? (x.key === 'lures' ? lureBody(items) : h('div', { class: 'rows' }, items.map(gearRow)))
-            : h('p', { class: 'muted small' }, t('Порожній: категорію розділу вибирають у картці речі, олівець — змінити розділ.'))) : null;
+          items.length ? () => (x.key === 'lures' ? lureBody(items) : h('div', { class: 'rows' }, items.map(gearRow)))
+            : h('p', { class: 'muted small' }, t('Порожній: категорію розділу вибирають у картці речі, олівець — змінити розділ.')), '', items.map((g) => g.id)) : null;
       }),
-      gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), h('div', { class: 'rows' }, gone.map(gearRow))) : null,
+      gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), () => h('div', { class: 'rows' }, gone.map(gearRow)), '', gone.map((g) => g.id)) : null,
       h('div', { class: 'btn-row' }, btn(t('+ Розділ'), () => sectionForm(null), 'quiet')));
   // «Потребує уваги» — лише в огляді: під час пошуку й вибору воно заважає
   gearList.replaceChildren(bar ?? '', query || picking ? '' : serviceDueBox() ?? '', body);
+  if (thumbIo) dropGoneThumbs();
 }
 
 // ---------- приманки: підгрупи й моделі ----------
@@ -755,7 +824,7 @@ function lureBody(items) {
   const used = new Set(items.map((g) => g.cat));
   return h('div', { class: 'gear-groups sub-groups' }, allCats().filter((c) => used.has(c.id)).map((c) => {
     const its = items.filter((g) => g.cat === c.id).sort(lureSort);
-    return fold(`lures-${c.id}`, sectionHead('lures', c.name, its.length, its.filter(isLow).length), h('div', { class: 'rows' }, modelRows(its)));
+    return fold(`lures-${c.id}`, sectionHead('lures', c.name, its.length, its.filter(isLow).length), () => h('div', { class: 'rows' }, modelRows(its)), '', its.map((g) => g.id));
   }));
 }
 
@@ -764,7 +833,7 @@ function modelRows(its) {
   const groups = new Map();
   for (const g of its) groups.set(modelKey(g), [...(groups.get(modelKey(g)) ?? []), g]);
   return [...groups.values()].map((gs) => (gs.length < 2 ? gearRow(gs[0])
-    : fold(`model-${modelKey(gs[0])}`, modelHead(gs), h('div', { class: 'rows model-rows' }, gs.map(gearRow)), 'model-fold')));
+    : fold(`model-${modelKey(gs[0])}`, modelHead(gs), () => h('div', { class: 'rows model-rows' }, gs.map(gearRow)), 'model-fold', gs.map((g) => g.id))));
 }
 
 function modelHead(gs) {
@@ -1297,8 +1366,8 @@ function removePlace(p) {
 
 // ---------- водойми ----------
 
-const findSpot = (id) => (id ? state.spots.find((x) => x.id === id) : null);
-const findTrip = (id) => (id ? state.trips.find((x) => x.id === id) : null);
+const findSpot = (id) => (id ? byId(state.spots).get(id) : null);
+const findTrip = (id) => (id ? byId(state.trips).get(id) : null);
 const hasCoords = (s) => Number.isFinite(Number(s?.lat)) && Number.isFinite(Number(s?.lon)) && s.lat !== null && s.lat !== '';
 
 /** «50.4501, 30.5234», посилання Google Maps (@50.45,30.52 чи q=50.45,30.52) → { lat, lon } або null. */
@@ -1376,8 +1445,20 @@ const allSpecies = () => [...new Set([...SPECIES.map((x) => t(x)), ...(prefs().s
 
 const tripCatch = (tr) => (tr.catches ?? []).reduce((n, c) => n + (num(c.n) || 1), 0);
 const tripKg = (tr) => (tr.catches ?? []).reduce((s, c) => s + num(c.weight), 0);
-const tripLosses = (tripId) => state.gear.flatMap((g) => (g.losses ?? []).filter((x) => x.tripId === tripId).map((x) => ({ g, ...x })));
-const tripSpends = (tripId) => state.gear.flatMap((g) => (g.spends ?? []).filter((x) => x.tripId === tripId).map((x) => ({ g, ...x })));
+// Втрати й витрати за виїздами — один прохід по речах на завантаження, а не на кожен виїзд у списку
+const tripLogs = new WeakMap();
+function tripLog(field, tripId) {
+  let all = tripLogs.get(state.gear);
+  if (!all) { all = {}; tripLogs.set(state.gear, all); }
+  if (!all[field]) {
+    const map = new Map();
+    for (const g of state.gear) for (const x of g[field] ?? []) if (x.tripId) map.set(x.tripId, [...(map.get(x.tripId) ?? []), { g, ...x }]);
+    all[field] = map;
+  }
+  return [...(all[field].get(tripId) ?? [])];
+}
+const tripLosses = (tripId) => tripLog('losses', tripId);
+const tripSpends = (tripId) => tripLog('spends', tripId);
 const tripTitle = (tr) => findSpot(tr.spotId)?.name ?? t('Без водойми');
 
 function tripRow(tr) {
@@ -1575,6 +1656,7 @@ function gearPickSheet(title, sorted, onPick) {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
     rows.replaceChildren(...sorted.filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); }).map((g) =>
       row(gearTitle(g), [weightText(g), g.color].filter(Boolean).join(' · '), qtyText(g), () => { close(); onPick(g); }, { thumb: gearThumb(g) })));
+    if (thumbIo) dropGoneThumbs();
   };
   search.addEventListener('input', paint);
   paint();
@@ -1657,7 +1739,7 @@ function removeTrip(tr) {
 
 // ---------- збори ----------
 
-const findPack = (id) => (id ? state.packs.find((x) => x.id === id) : null);
+const findPack = (id) => (id ? byId(state.packs).get(id) : null);
 const packKey = (it) => it.gearId ?? it.id;
 
 /** Пункти збору по порядку обходу: за шляхом місця, де лежить річ; вільні пункти — наприкінці. */
@@ -2544,6 +2626,7 @@ function render() {
   $('title').textContent = t(view.title);
   $('subtitle').textContent = '';
   $('view').replaceChildren(view.render());
+  if (thumbIo) dropGoneThumbs();
   $('fab').hidden = !view.fab || Boolean($('view').querySelector('.empty .btn.add'));
   $('fab').classList.remove('away');
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));

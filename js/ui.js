@@ -19,13 +19,14 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
-const formatters = new Map();
+const formatters = new WeakMap();
 
-/** Форматер під поточну мову: створюється раз на мову й опції. */
+/** Форматер під поточну мову: створюється раз на мову й опції (опції — сталі об'єкти NUM, MONEY). */
 function nf(options) {
-  const key = `${locale()}|${JSON.stringify(options)}`;
-  if (!formatters.has(key)) formatters.set(key, new Intl.NumberFormat(locale(), options));
-  return formatters.get(key);
+  const loc = locale();
+  let f = formatters.get(options);
+  if (f?.loc !== loc) { f = { loc, nf: new Intl.NumberFormat(loc, options) }; formatters.set(options, f); }
+  return f.nf;
 }
 
 const NUM = { maximumFractionDigits: 3 };

@@ -319,6 +319,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: #fff;
 }
 .rows { display: flex; flex-direction: column; gap: 6px; }
+/* Довгі списки снастей: рядки за межами екрана браузер не розкладає й не малює, доки до них не догорнули */
+.gear-groups .rows > * { content-visibility: auto; contain-intrinsic-size: auto 72px; }
 .row {
   display: flex;
   align-items: center;
