@@ -9,6 +9,8 @@ import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectO
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
 let tab = 'gear';
+// Звідки відкрили налаштування — туди веде «Назад»
+let backTab = 'gear';
 
 const $ = (id) => document.getElementById(id);
 
@@ -2671,6 +2673,13 @@ function render() {
   $('fab').hidden = !view.fab || Boolean($('view').querySelector('.empty .btn.add'));
   $('fab').classList.remove('away');
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
+  // Налаштування — не в нижньому меню, а шестернею вгорі (як у Shooter's Log); у них — «Назад» туди, звідки прийшли
+  const gearBtn = $('settings-btn');
+  gearBtn.classList.toggle('active', tab === 'settings');
+  if (tab === 'settings' && !gearBtn.dataset.on) { gearBtn.classList.remove('play'); void gearBtn.offsetWidth; gearBtn.classList.add('play'); }
+  gearBtn.dataset.on = tab === 'settings' ? '1' : '';
+  $('back-btn').hidden = tab !== 'settings';
+  $('back-btn').href = `#${backTab}`;
 }
 
 function route() {
@@ -2685,7 +2694,9 @@ function route() {
     return;
   }
   const next = location.hash.slice(1);
-  tab = VIEWS[next] ? next : 'gear';
+  const to = VIEWS[next] ? next : 'gear';
+  if (to === 'settings' && tab !== 'settings' && VIEWS[tab]) backTab = tab;
+  tab = to;
   render();
   window.scrollTo(0, 0);
 }

@@ -517,7 +517,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   z-index: 10;
   display: grid;
   /* Вкладки — не ширші за сторінку (.view 720px): на комп'ютері не розбігаються по краях, фон — на всю ширину */
-  grid-template-columns: repeat(5, minmax(0, 150px));
+  grid-template-columns: repeat(4, minmax(0, 150px));
   justify-content: center;
   height: calc(var(--tabs-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
@@ -805,8 +805,6 @@ button.tree-toggle:active { background: var(--surface-2); }
 .pack-row.done .row-title { opacity: .55; text-decoration: line-through; }
 .pack-row .row-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
 
-/* «Налаштування» — найдовша назва вкладки: на вузькому екрані дрібніше, щоб влізло ціле */
-@media (max-width: 400px) { .tabs a { font-size: 11px; letter-spacing: -.02em; } }
 /* Сегменти з довгими назвами («Подаровано»): ширина за текстом, а не порівну — на 360 px не обрізаються */
 .chips.segmented.seg-fit { grid-auto-columns: auto; }
 .chips.segmented.seg-fit button { padding-inline: 6px; }
