@@ -1132,7 +1132,7 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 /* підпис над кнопками; передбачення — на записці, у підписі лише заголовок (текст — для читача екрана) */
 .scene-cap { position: absolute; left: 16px; right: 16px; bottom: calc(max(13%, 96px) + env(safe-area-inset-bottom)); margin: 0; text-align: center;
   font: 700 15px/1.2 system-ui, sans-serif; letter-spacing: .06em; color: #ffe2b0; text-shadow: 0 1px 3px rgb(20 12 6 / .9), 0 0 12px rgb(20 12 6 / .5);
-  animation: fc-cap .6s ease-out 1.8s both; text-wrap: balance; }
+  animation: fc-cap .6s ease-out calc(var(--slip, .85s) + .95s) both; text-wrap: balance; }
 .scene-cap span { display: block; }
 .scene-cap span + span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @keyframes fc-cap { from { opacity: 0; transform: translateY(10px); } }
@@ -1165,9 +1165,9 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 @keyframes fc-hide { to { opacity: 0; } }
 .scene-fortune :is(.fc-crumbs, .fc-drops) circle { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-spark .9s cubic-bezier(.15, .7, .3, 1) both; }
 @keyframes fc-spark { 0% { transform: translate(0, 0) scale(.5); opacity: 0; } 6% { opacity: 1; } 60% { opacity: .9; } 100% { transform: translate(var(--dx), calc(var(--dy) + 30px)) scale(.4); opacity: 0; } }
-.scene-fortune .fc-slip { opacity: 0; animation: fc-slip 1.2s cubic-bezier(.25, 1.12, .5, 1) .85s both; }
+.scene-fortune .fc-slip { opacity: 0; animation: fc-slip 1.2s cubic-bezier(.25, 1.12, .5, 1) var(--slip, .85s) both; }
 @keyframes fc-slip { 0% { transform: translateY(130px) scale(.12, .2) rotate(-8deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: scale(1.5) rotate(-3deg); opacity: 1; } }
-.scene-fortune .fc-twinkles path { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-twinkle 1.6s ease-in-out 1.7s infinite; }
+.scene-fortune .fc-twinkles path { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-twinkle 1.6s ease-in-out calc(var(--slip, .85s) + .85s) infinite; }
 @keyframes fc-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 
 /* клювання: поплавок пірнає, вудилище киває, з води вистрибує риба — бризки там, де вийшла й де пірнула */
@@ -1226,6 +1226,103 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 @keyframes fc-flare { 0% { transform: scale(.75); opacity: .55; } 30% { transform: scale(1.25); opacity: 1; } 100% { transform: none; opacity: .85; } }
 @media (prefers-reduced-motion: reduce) {
   .scene-fortune :is(.fc-reeds-l, .fc-reeds-r, .fc-fall > *, .fc-rays, .fc-boat, .fc-mist, .fc-clouds, .fc-gulls) { animation: none; }
+}
+
+/* рідкісні події: золоте печиво (сом, бобер, дрон, рибпатруль, рибний дощ) і цунамі */
+@keyframes fc-show { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fc-ripple { 0% { transform: scale(.4); opacity: 0; } 10% { opacity: .9; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes fc-blink { 0%, 92%, 100% { transform: none; } 96% { transform: scaleY(.1); } }
+@keyframes fc-led { 50% { opacity: .15; } }
+@keyframes fc-flop { 0%, 40%, 100% { transform: none; } 10% { transform: translateY(-4px) rotate(-18deg); } 22% { transform: translateY(-2px) rotate(12deg); } }
+.scene-fortune .fc-ev-ring { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-ripple 1.2s ease-out both; }
+.scene-fortune .fc-flop { transform-box: fill-box; transform-origin: center; animation: fc-flop 1.5s ease-in-out infinite; }
+
+/* сом: виринає біля кладки, ворушить вусами, просить закурити */
+.scene-fortune .fc-cat { animation: fc-cat 1s cubic-bezier(.2, .9, .3, 1) .55s both; }
+@keyframes fc-cat { from { transform: translateY(90px); } to { transform: none; } }
+.scene-fortune .fc-cat-bob { animation: fc-bob 3s ease-in-out infinite; }
+.scene-fortune .fc-cat-wh { transform-box: fill-box; transform-origin: 0 50%; animation: fc-whisker 2.2s ease-in-out infinite alternate; }
+@keyframes fc-whisker { to { transform: rotate(6deg); } }
+.scene-fortune .fc-cat-eye { transform-box: fill-box; transform-origin: center; animation: fc-blink 3.4s ease-in-out 2s infinite; }
+.scene-fortune .fc-say { transform-box: view-box; transform-origin: 98px 354px; animation: fc-say 1.8s ease-out 1.35s both; }
+@keyframes fc-say { 0% { opacity: 0; transform: scale(.5); } 12% { opacity: 1; transform: scale(1.06); } 18% { transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+
+/* бобер: підпливає, спирається на ящик, забирає ліву половинку й пливе геть */
+.scene-fortune .fc-bvr { animation: fc-bvr 2.6s ease-in-out .4s both; }
+@keyframes fc-bvr {
+  0% { transform: translate(-80px, 400px); opacity: 0; }
+  6% { opacity: 1; }
+  55% { transform: translate(108px, 399px); }
+  66%, 71% { transform: translate(124px, 381px) rotate(-14deg); }
+  79% { transform: translate(106px, 399px); }
+  94% { opacity: 1; }
+  100% { transform: translate(-70px, 402px); opacity: 0; }
+}
+.scene-fortune .fc-bvr-face { animation: fc-bvr-turn 2.6s linear .4s both; }
+@keyframes fc-bvr-turn { 0%, 74% { transform: none; } 75%, 100% { transform: scaleX(-1); } }
+.scene-fortune .fc-bvr-ck { animation: fc-show .1s linear 2.2s both; }
+.scene-fortune.ev-beaver .fc-ck-l > g { animation: fc-hide .12s linear 2.2s both; }
+
+/* дрон: прилітає, зависає над поплавком, скидає годівницю, відлітає */
+.scene-fortune .fc-drone { animation: fc-drone 3s ease-in-out .35s both; }
+@keyframes fc-drone {
+  0% { transform: translate(430px, 80px) rotate(-14deg); opacity: 0; }
+  4% { opacity: 1; }
+  45% { transform: translate(296px, 262px) rotate(-3deg); }
+  52% { transform: translate(296px, 264px) rotate(0deg); }
+  60% { transform: translate(296px, 256px) rotate(2deg); }
+  96% { opacity: 1; }
+  100% { transform: translate(-90px, 30px) rotate(-16deg); opacity: 0; }
+}
+.scene-fortune .fc-drone-feed { animation: fc-hide .05s linear 1.9s both; }
+.scene-fortune .fc-feeder { opacity: 0; animation: fc-feed .3s ease-in 1.88s forwards; }
+@keyframes fc-feed { 0% { transform: translate(296px, 306px); opacity: 1; } 80% { transform: translate(296px, 350px); opacity: 1; } 100% { transform: translate(296px, 360px); opacity: 0; } }
+.scene-fortune .fc-prop { transform-box: fill-box; transform-origin: center; animation: fc-prop .09s linear infinite; }
+@keyframes fc-prop { 50% { transform: scaleX(.25); } }
+.scene-fortune .fc-led { animation: fc-led .5s steps(1) infinite; }
+
+/* рибпатруль: човен з маячком підходить зліва, інспектор світить ліхтарем на печиво */
+.scene-fortune .fc-insp { animation: fc-insp 1.7s cubic-bezier(.2, .7, .3, 1) .35s both; }
+@keyframes fc-insp { 0% { transform: translate(-160px, 348px); opacity: 0; } 8% { opacity: 1; } 100% { transform: translate(62px, 348px); opacity: 1; } }
+.scene-fortune .fc-insp-bob { animation: fc-bob 2.4s ease-in-out infinite; }
+.scene-fortune .fc-beacon { animation: fc-led .6s steps(1) infinite; }
+.scene-fortune .fc-beam { animation: fc-show .3s ease-out 2s both, fc-sweep 2.6s ease-in-out 2.3s infinite alternate; }
+@keyframes fc-sweep { from { transform: rotate(-4deg); } to { transform: rotate(10deg); } }
+
+/* рибний дощ: небо темніє, з хмари сиплеться риба — у воду з колами, на кладку — лишається й підстрибує */
+.scene-fortune .fc-dark { animation: fc-dark 3.6s ease-in-out .3s both; }
+@keyframes fc-dark { 0% { opacity: 0; } 22%, 78% { opacity: .5; } 100% { opacity: .18; } }
+.scene-fortune .fc-rcloud { animation: fc-rcloud 3.6s ease-in-out .3s both; }
+@keyframes fc-rcloud { 0% { transform: translateY(-260px); } 22%, 80% { transform: none; } 100% { transform: translateY(-320px); opacity: 0; } }
+.scene-fortune .fc-rain-f { animation-name: fc-rain; animation-timing-function: cubic-bezier(.5, 0, 1, 1); animation-fill-mode: both; }
+.scene-fortune .fc-rain-f.in { animation-name: fc-rain-in; }
+@keyframes fc-rain { from { transform: translate(var(--x0), var(--y0)) rotate(var(--r0)); } to { transform: translate(var(--x1), var(--y1)) rotate(var(--r1)); } }
+@keyframes fc-rain-in { from { transform: translate(var(--x0), var(--y0)) rotate(var(--r0)); } 88% { opacity: 1; } to { transform: translate(var(--x1), var(--y1)) rotate(var(--r1)); opacity: 0; } }
+
+/* цунамі: гуркіт і трясіння, на обрії росте хвиля, накриває піною; відступає — на кладці риба */
+.scene-fortune.ev-tsunami .fc-layer { animation: fc-quake 2.4s linear .3s both; }
+@keyframes fc-quake {
+  0%, 100% { transform: none; } 10% { transform: translate(-2px, 1px); } 20% { transform: translate(2px, -1px); } 30% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -2px); } 50% { transform: translate(-4px, 2px); } 60% { transform: translate(4px, -1px); } 70% { transform: translate(-3px, 2px); }
+  80% { transform: translate(2px, -1px); } 90% { transform: translate(-1px, 1px); }
+}
+.scene-fortune.ev-tsunami .fc-dark { animation: fc-dark-t 3.8s ease-in-out .2s both; }
+@keyframes fc-dark-t { 0% { opacity: 0; } 25%, 68% { opacity: .55; } 80% { opacity: .2; } 100% { opacity: .12; } }
+.scene-fortune .fc-wave { animation: fc-wave 2.4s cubic-bezier(.5, 0, .8, .6) .3s both; }
+@keyframes fc-wave {
+  0% { transform: translate(0, 302px) scale(.5, .02); opacity: 0; }
+  5% { opacity: 1; }
+  40% { transform: translate(-40px, 306px) scale(.7, .3); }
+  75% { transform: translate(-190px, 440px) scale(1.05, .75); }
+  94% { transform: translate(-480px, 790px) scale(1.7, 1.6); opacity: 1; }
+  100% { transform: translate(-480px, 790px) scale(1.7, 1.6); opacity: 0; }
+}
+.scene-fortune .fc-foam { animation: fc-foam 1.5s ease-out 2.35s both; }
+@keyframes fc-foam { 0% { opacity: 0; } 13%, 33% { opacity: 1; } 100% { opacity: 0; } }
+.scene-fortune .fc-after { animation: fc-show .01s linear 2.75s both; }
+@media (prefers-reduced-motion: reduce) {
+  .scene-fortune :is(.fc-flop, .fc-cat-wh, .fc-beam, .fc-prop) { animation: none; }
+  .scene-fortune.ev-tsunami .fc-layer { animation: none; }
 }
 
 /* ---------- NFC-мітки ---------- */

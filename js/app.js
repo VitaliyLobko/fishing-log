@@ -2343,7 +2343,7 @@ function recordsBox() {
 
 // ---------- печиво з передбаченням ----------
 
-// Печиво при запуску: приблизно раз на шість запусків, не частіше ніж раз на 4 години; вимикається в «Вигляді».
+// Печиво при запуску: як у Shooter's Log, ≈ раз на шість запусків; вимикається в «Вигляді» (рядок «Сценки при запуску»).
 // Модуль сценки (js/scenes.js) вантажиться лише тоді, коли печиво справді показуємо.
 const FORTUNE_OFF = 'fishing-log:fortune-off';
 const FORTUNE_SOUND_OFF = 'fishing-log:fortune-sound-off'; // той самий ключ, що SOUND_OFF у scenes.js
@@ -2436,24 +2436,30 @@ function scenesRow() {
     h('div', { class: 'field-label' }, t('Час доби')), tod,
     h('div', { class: 'field-label' }, t('Пора року')), season,
     h('div', { class: 'btn-row' },
-      btn(t('Печиво'), () => playFortune(previewParams({ gold: false })), 'primary'),
+      btn(t('Печиво'), () => playFortune(previewParams({ gold: false, event: null })), 'primary'),
       btn(t('Золоте'), () => playFortune(previewParams({ gold: true, own: null }))),
       btn(t('З журналу'), () => fortunesOwn()),
-      btn(t('Усі передбачення'), fortunesSheet))]);
+      btn(t('Усі передбачення'), fortunesSheet)),
+    h('div', { class: 'field-label' }, t('Рідкісні події')),
+    h('div', { class: 'btn-row' }, SCENE_EVENTS.map(([event, label]) =>
+      btn(t(label), () => playFortune(previewParams({ gold: event !== 'tsunami', event, own: null })))))]);
 }
+
+// Події золотого печива й цунамі — для перегляду в панелі (ключі — EVENTS у scenes.js)
+const SCENE_EVENTS = [['catfish', 'Сом'], ['beaver', 'Бобер'], ['drone', 'Дрон'], ['inspector', 'Рибпатруль'], ['fishrain', 'Рибний дощ'], ['tsunami', 'Цунамі']];
 
 /** Печиво з передбаченням із журналу — якщо зараз нічого не складається, так і кажемо. */
 function fortunesOwn() {
   const own = myFortunes();
   if (!own.length) { toast(t('Зараз з журналу нічого не складається')); return; }
-  playFortune(previewParams({ gold: false, own: own[Math.floor(Math.random() * own.length)] }));
+  playFortune(previewParams({ gold: false, event: null, own: own[Math.floor(Math.random() * own.length)] }));
 }
 
 /** Усі передбачення списком: тап — це печиво зі сценкою. */
 function fortunesSheet() {
   import('./scenes.js').then((m) => {
     m.setFortuneSource(myFortunes);
-    const { plain, gold, own } = m.fortuneList();
+    const { plain, gold, own, events } = m.fortuneList();
     // own: null — щоб випадковий вибір не підмінив обране «своїм» передбаченням
     const part = (title, list, params) => [h('h3', { class: 'fortune-head' }, `${title} · ${fmt.num(list.length)}`),
       list.length
@@ -2461,22 +2467,24 @@ function fortunesSheet() {
           h('button', { type: 'button', onclick: () => playFortune(previewParams(params(text, i))) }, text))))
         : h('p', { class: 'muted' }, t('Зараз з журналу нічого не складається'))];
     sheet(t('Усі передбачення'), h('div', {},
-      ...part(t('Звичайні'), plain, (_, i) => ({ gold: false, own: null, i })),
-      ...part(t('Золоті'), gold, (_, i) => ({ gold: true, own: null, i })),
-      ...part(t('З журналу'), own, (text) => ({ gold: false, own: text }))));
+      ...part(t('Звичайні'), plain, (_, i) => ({ gold: false, event: null, own: null, i })),
+      ...part(t('Золоті'), gold, (_, i) => ({ gold: true, event: null, own: null, i })),
+      ...events.flatMap((e) => part(e.title, e.list, (_, i) => ({ gold: e.key !== 'tsunami', event: e.key, own: null, i }))),
+      ...part(t('З журналу'), own, (text) => ({ gold: false, event: null, own: text }))));
   }).catch((err) => toast(err.message));
 }
 
+/** Сценки при запуску — показувати чи ні; як у Shooter's Log, без подробиць, що саме буде: це сюрприз. */
 function fortuneRow() {
   const sound = recall(FORTUNE_SOUND_OFF) !== '1';
   const row = chips([['on', t('Показувати')], ['off', t('Не показувати')]], fortuneOn() ? 'on' : 'off', (v) => { remember(FORTUNE_OFF, v === 'off' ? '1' : ''); render(); });
   row.classList.add('segmented');
   const snd = chips([['on', t('Зі звуком')], ['off', t('Без звуку')]], sound ? 'on' : 'off', (v) => { remember(FORTUNE_SOUND_OFF, v === 'off' ? '1' : ''); render(); });
   snd.classList.add('segmented');
-  const value = fortuneOn() ? [t('інколи при запуску'), sound ? null : t('без звуку')].filter(Boolean).join(' · ') : t('вимкнено');
-  return setRow('fortune', 'fish', t('Печиво з передбаченням'), value, [
-    h('p', { class: 'muted small' }, t('Інколи при запуску — печиво на рибальському ящику: торкніться, і воно розламається.')),
-    row, snd, h('div', { class: 'btn-row' }, btn(t('Розламати зараз'), () => playFortune(), 'primary'))]);
+  const value = fortuneOn() ? [t('Показувати'), sound ? null : t('без звуку')].filter(Boolean).join(' · ') : t('Не показувати');
+  return setRow('fortune', 'spark', t('Сценки при запуску'), value, [
+    h('p', { class: 'muted small' }, t('Маленькі сюрпризи, коли відкриваєте застосунок.')),
+    row, fortuneOn() ? snd : null]);
 }
 
 // ---------- NFC-мітки ----------

@@ -112,15 +112,19 @@ export function setFortuneSource(fn) { fortuneSource = fn; }
 
 const SEASONS = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
 
-/** Печиво на цей показ; ?gold=1 ?own=1 ?season=winter ?tod=night ?i=5 — для перегляду. */
+/** Печиво на цей показ; ?gold=1 ?event=drone ?tsunami=1 ?own=1 ?season=winter ?tod=night ?i=5 — для перегляду. */
 function fortuneParams() {
   const q = new URLSearchParams(location.search), hr = new Date().getHours();
-  const gold = q.has('gold') ? q.get('gold') === '1' : Math.random() < 1 / 20;
-  const mine = gold ? [] : fortuneSource();
+  const tsunami = q.has('tsunami') ? q.get('tsunami') === '1' : rollTsunami(q);
+  const gold = !tsunami && (q.has('gold') ? q.get('gold') === '1' : Math.random() < 1 / 20);
+  // золоте: класична золота рибка або одна з подій, порівну
+  const roll = [null, ...GOLD_EVENTS][Math.floor(Math.random() * (GOLD_EVENTS.length + 1))];
+  const event = tsunami ? 'tsunami' : gold ? (q.has('event') ? (GOLD_EVENTS.includes(q.get('event')) ? q.get('event') : null) : roll) : null;
+  const mine = gold || event ? [] : fortuneSource();
   const own = mine.length && (q.get('own') === '1' || Math.random() < 0.4) ? mine[Math.floor(Math.random() * mine.length)] : null;
-  const list = gold ? GOLD_FORTUNES : FORTUNES;
+  const list = listOf({ gold, event });
   return {
-    gold, own, i: q.has('i') ? Number(q.get('i')) : Math.floor(Math.random() * list.length), n: 1 + Math.floor(Math.random() * 1e6),
+    gold, event, own, i: q.has('i') ? Number(q.get('i')) : Math.floor(Math.random() * list.length), n: 1 + Math.floor(Math.random() * 1e6),
     season: q.get('season') ?? SEASONS[new Date().getMonth()],
     tod: q.get('tod') ?? (hr >= 21 || hr < 5 ? 'night' : hr < 10 ? 'morning' : hr < 17 ? 'day' : 'evening'),
   };
@@ -128,11 +132,14 @@ function fortuneParams() {
 
 /** Усі передбачення для перегляду в схованій панелі: звичайні, золоті й ті, що зараз складаються з журналу. */
 export function fortuneList() {
-  return { plain: FORTUNES.map((x) => t(x)), gold: GOLD_FORTUNES.map((x) => t(x)), own: fortuneSource() };
+  return {
+    plain: FORTUNES.map((x) => t(x)), gold: GOLD_FORTUNES.map((x) => t(x)), own: fortuneSource(),
+    events: Object.entries(EVENTS).map(([key, e]) => ({ key, title: t(e.title), list: e.fortunes.map((x) => t(x)) })),
+  };
 }
 
 function fortuneText(p) {
-  const list = p.gold ? GOLD_FORTUNES : FORTUNES;
+  const list = listOf(p);
   return p.own ?? t(list[((p.i ?? 0) % list.length + list.length) % list.length]);
 }
 
@@ -196,6 +203,205 @@ const PAL = {
   day: { sky: ['#5d9bd6', '#9cc8ec', '#d6ecf6'], water: ['#9cc6dc', '#4d88aa', '#2c5b7a'], forest: '#3d5a3a', hills: '#7a99a8', sun: [272, 96, 20, '#fff6d0'], shade: 0 },
   evening: { sky: ['#3f3a72', '#c8687a', '#f7a85e'], water: ['#e59a6a', '#8a5f7a', '#3d3a5e'], forest: '#2e2a3e', hills: '#6a5578', sun: [232, 284, 30, '#ff7a3c'], shade: 0.14 },
   night: { sky: ['#0b1230', '#1d2a5a', '#34427a'], water: ['#2a3866', '#1b2650', '#0f1838'], forest: '#0d1426', hills: '#26325a', sun: [262, 108, 15, '#f3ecd0'], shade: 0.32 },
+};
+
+
+// ---------- рідкісні події ----------
+
+// Золоте печиво розігрує одну з подій замість звичайної золотої рибки (порівну з нею); цунамі — окремо й ще рідше
+const EVENTS = {
+  catfish: { title: 'Сом-велетень', fortunes: ['Тобі все одно ніхто не повірить'] },
+  beaver: { title: 'Бобер', fortunes: ['Бобер узяв своє. Друга половина удачі — твоя', 'Половину печива з’їли. Удачу лишили тобі', 'Бобер без здобичі не лишається. І ти не лишишся'] },
+  drone: { title: 'Дрон з прикормкою', fortunes: ['Прикормку доставлено. Точність — до поплавка', 'Згори видніше, де стоїть риба', 'Скид пройшов. Чекай поклювки'] },
+  inspector: { title: 'Рибпатруль', fortunes: ['Путівку перевірено. Удачу дозволено', 'Порушень не виявлено. Клювання дозволено до заходу сонця', 'Улов у межах норми. Радість — без обмежень', 'Протокол: щасливий рибалка, одна штука'] },
+  fishrain: { title: 'Рибний дощ', fortunes: ['Прогноз на сьогодні: опади рибою', 'Коли щастить, підсак не потрібен', 'Небо теж прикормлене'] },
+  tsunami: { title: 'Цунамі', fortunes: ['Хвиля пішла, риба лишилась. Збирай', 'Кінець світу перенесли. Клювання — ні', 'Море саме принесло улов. Підсак не знадобився', 'Після такого будь-яка поклювка — дрібниця'] },
+};
+const GOLD_EVENTS = ['catfish', 'beaver', 'drone', 'inspector', 'fishrain'];
+
+// Цунамі — як метеорит у Shooter's Log: не раніше TSUNAMI_GAP показів після попереднього, далі шанс TSUNAMI_CHANCE щоразу
+const TSUNAMI_KEY = 'fishing-log:tsunami';
+const TSUNAMI_GAP = 10, TSUNAMI_CHANCE = 1 / 30;
+
+/** Чи накриває цунамі цей показ; випало, але печиво не розламали — накриє наступного разу. */
+function rollTsunami(q) {
+  if (q.has('scene') || matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+  try {
+    const s = JSON.parse(localStorage.getItem(TSUNAMI_KEY) ?? 'null') ?? { n: 0 };
+    s.n = (s.n ?? 0) + 1;
+    s.due ||= s.n > TSUNAMI_GAP && Math.random() < TSUNAMI_CHANCE;
+    localStorage.setItem(TSUNAMI_KEY, JSON.stringify(s));
+    return !!s.due;
+  } catch { return false; }
+}
+
+function tsunamiSeen() {
+  try { localStorage.setItem(TSUNAMI_KEY, JSON.stringify({ n: 0 })); } catch { /* сховище недоступне — нічого */ }
+}
+
+/** Набір передбачень для цього печива: подія, золоте чи звичайне. */
+const listOf = (p) => (EVENTS[p.event] ? EVENTS[p.event].fortunes : p.gold ? GOLD_FORTUNES : FORTUNES);
+
+const CAGE = '<rect x="-4.5" y="-6.5" width="9" height="13" rx="2" fill="#4f6a3a" stroke="#c8d0d4" stroke-width=".8"/>'
+  + '<path d="M-4.5-2.5h9M-4.5 1.5h9M-1.5-6.5v13M1.5-6.5v13" stroke="#c8d0d4" stroke-width=".5"/>';
+
+// Малюнок подій: back — між кладкою й ящиком (тінь ночі лягає й на нього), front — над усім, крім записки
+const EVENT_ART = {
+  // Сом вилазить біля кладки й просить закурити
+  catfish: ({ night, ringC }) => ({
+    back: '',
+    front: `<ellipse class="fc-ev-ring" cx="50" cy="401" rx="46" ry="4.5" fill="none" stroke="${ringC}" stroke-width="1.4" style="animation-delay:.62s"/>
+  <ellipse class="fc-ev-ring" cx="50" cy="401" rx="46" ry="4.5" fill="none" stroke="${ringC}" stroke-width="1.1" style="animation-delay:.95s"/>
+  <g clip-path="url(#fc-catclip)"><g class="fc-cat"><g transform="translate(14 401) rotate(-9) scale(1.35)"><g class="fc-cat-bob">
+    <path d="M-16-44Q-6-58 10-47Z" fill="#2a3220"/>
+    <path d="M-70 8Q-76-22-42-40Q-8-54 30-46Q57-38 63-17Q67-4 61 6Z" fill="url(#fc-catg)"/>
+    <path d="M-58 6Q0-1 60 3L61 7H-60Z" fill="#a3a27c" opacity=".55"/>
+    <g fill="#1f261a" opacity=".35"><circle cx="-30" cy="-30" r="3"/><circle cx="-12" cy="-38" r="2.4"/><circle cx="-44" cy="-18" r="2.6"/><circle cx="4" cy="-30" r="2"/></g>
+    <path d="M63-9Q45-2 26-7" stroke="#151a10" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path d="M62-11Q46-6 28-9" stroke="#c9c39a" stroke-width="1" fill="none" opacity=".5"/>
+    <g class="fc-cat-eye">${night ? '<circle cx="35" cy="-28" r="9" fill="#ffe27a" opacity=".25"/>' : ''}<circle cx="35" cy="-28" r="4.2" fill="#e8d27a"/><circle cx="36" cy="-28" r="2.2" fill="#111"/><circle cx="35" cy="-29.6" r=".9" fill="#fff"/></g>
+    <g fill="none" stroke="#232b1b" stroke-linecap="round">
+      <path class="fc-cat-wh" d="M58-14Q92-26 98 4" stroke-width="2.4"/>
+      <path class="fc-cat-wh" d="M55-11Q78-4 80 14" stroke-width="2" style="animation-delay:-.9s"/>
+      <path d="M44 2q4 8 0 14M36 3q3 8-1 13M28 3q2 7-2 11" stroke-width="1.6"/>
+    </g>
+    <path d="M36 4Q52 0 66-9Q63 4 48 10Z" fill="#323b27"/>
+  </g></g></g></g>
+  <g class="fc-say"><path d="M24 294H164a10 10 0 0 1 10 10v16a10 10 0 0 1-10 10H110l-12 24-6-24H24a10 10 0 0 1-10-10v-16a10 10 0 0 1 10-10Z" fill="#fffdf5" stroke="#2a3a44" stroke-width="1.4"/>
+    <text x="94" y="317" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#2a3a44">${esc(t('Закурити є?'))}</text></g>`,
+  }),
+
+  // Бобер підпливає, хапає половинку печива з ящика й пливе геть, ляснувши хвостом
+  beaver: ({ ringC, splash, drops }) => ({
+    back: '',
+    front: `<g class="fc-splash" fill="none" stroke="${ringC}" stroke-width="1.3">${splash(110, 396, 2.45)}</g>
+  <g class="fc-drops" fill="${ringC}">${drops(110, 396, 2.45, 51)}</g>
+  <g class="fc-bvr"><g class="fc-bvr-face"><g transform="scale(1.3)">
+    <path d="M-24 3L-62-4M-24 5L-60 13" stroke="${ringC}" stroke-width="1" opacity=".5" stroke-linecap="round"/>
+    <ellipse cx="-32" cy="2" rx="11" ry="3.2" fill="#3a2a1c"/><path d="M-40 1h16M-38 3h12" stroke="#5a4430" stroke-width=".6"/>
+    <ellipse cx="-12" cy="-1" rx="18" ry="6" fill="#6b4a2e"/>
+    <ellipse cx="4" cy="-8" rx="11" ry="9" fill="#7a5434"/>
+    <circle cx="-3" cy="-15.5" r="2.6" fill="#5a3a22"/>
+    <ellipse cx="13" cy="-5" rx="6.5" ry="5" fill="#a07856"/>
+    <ellipse cx="18.2" cy="-7.2" rx="2.3" ry="1.7" fill="#1a120c"/>
+    <circle cx="7" cy="-12" r="1.6" fill="#111"/><circle cx="7.5" cy="-12.6" r=".55" fill="#fff"/>
+    <rect x="13.6" y="-1.6" width="3.6" height="4.2" rx=".7" fill="#f2c46a" stroke="#8a5a1a" stroke-width=".4"/>
+    <path d="M15-5l7-2M15-4l7 1" stroke="#2a1a10" stroke-width=".5"/>
+    <path class="fc-bvr-ck" d="M17 1Q22-6 29-1Q24 4 17 1Z" fill="#e2a24c" stroke="#a0621c" stroke-width=".6"/>
+    <ellipse cx="-6" cy="2.5" rx="30" ry="2.4" fill="none" stroke="${ringC}" stroke-width=".9" opacity=".55"/>
+  </g></g></g>`,
+  }),
+
+  // FPV-дрон прилітає, скидає годівницю точно до поплавка й відлітає
+  drone: ({ ringC, splash, drops }) => ({
+    back: '',
+    front: `<g class="fc-splash" fill="none" stroke="${ringC}" stroke-width="1.3">${splash(296, 356, 2.15)}</g>
+  <g class="fc-drops" fill="${ringC}">${drops(296, 356, 2.15, 61)}</g>
+  <g class="fc-feeder"><g transform="scale(1.4)">${CAGE}</g></g>
+  <g class="fc-drone"><g transform="scale(1.4)">
+    <g class="fc-drone-feed"><path d="M0 4V24" stroke="#e8e8e8" stroke-width=".7"/><g transform="translate(0 30)">${CAGE}</g></g>
+    <path d="M-22-2L22-2M-15 3L15 3" stroke="#22282e" stroke-width="2.6" stroke-linecap="round"/>
+    <rect x="-24.5" y="-4.5" width="5" height="4" rx="1" fill="#3a4148"/><rect x="19.5" y="-4.5" width="5" height="4" rx="1" fill="#3a4148"/>
+    <rect x="-17.5" y="1" width="5" height="4" rx="1" fill="#3a4148"/><rect x="12.5" y="1" width="5" height="4" rx="1" fill="#3a4148"/>
+    <rect x="-10" y="-6" width="20" height="10" rx="3" fill="#2b3238"/>
+    <rect x="-8" y="-7.4" width="16" height="2.6" rx="1.2" fill="#f07a2a"/>
+    <rect x="8.5" y="-3.5" width="5" height="5" rx="1.2" fill="#111"/><circle cx="12.5" cy="-1" r="1.3" fill="#4a7ab0"/>
+    <path d="M-7-7L-13-17" stroke="#777" stroke-width="1"/><circle cx="-13" cy="-17" r="1.2" fill="#d94a2a"/>
+    <circle class="fc-led" cx="-9" cy="3" r="1.3" fill="#ff4a3a"/><circle class="fc-led" cx="9" cy="3" r="1.3" fill="#5aff7a" style="animation-delay:-.25s"/>
+    <g fill="#d6dee2" opacity=".55"><ellipse class="fc-prop" cx="-22" cy="-6" rx="12" ry="1.6"/><ellipse class="fc-prop" cx="22" cy="-6" rx="12" ry="1.6" style="animation-delay:-.04s"/>
+      <ellipse class="fc-prop" cx="-15" cy="-1" rx="10" ry="1.4" style="animation-delay:-.02s"/><ellipse class="fc-prop" cx="15" cy="-1" rx="10" ry="1.4" style="animation-delay:-.06s"/></g>
+  </g></g>`,
+  }),
+
+  // Човен рибоохорони з маячком: підходить зліва, інспектор світить ліхтарем на кладку
+  inspector: ({ ringC }) => ({
+    back: `<g class="fc-insp"><g class="fc-insp-bob">
+    <path d="M-60 2L-110-4M-60 5L-108 12" stroke="${ringC}" stroke-width="1" opacity=".45" stroke-linecap="round"/>
+    <g transform="translate(-2 -29)"><path class="fc-beam" d="M0 0L132-34V40Z" fill="url(#fc-beam)"/></g>
+    <path d="M-46-8H48Q53-6 51-2Q43 9 30 10H-36Q-46 8-46-8Z" fill="#f2f5f7"/>
+    <path d="M-46-3.5H50" stroke="#1f5fae" stroke-width="3"/><path d="M-45 0H47" stroke="#f2c230" stroke-width="1"/>
+    <text x="2" y="7.2" text-anchor="middle" font-family="system-ui, sans-serif" font-size="5.6" font-weight="800" fill="#1f3f6e" letter-spacing=".04em">${esc(t('РИБПАТРУЛЬ'))}</text>
+    <rect x="-6" y="-20" width="16" height="12" rx="2" fill="#dfe6ea"/><path d="M10-20l6 12h-6z" fill="#9ec4dc"/>
+    <circle class="fc-beacon" cx="1" cy="-23" r="8" fill="#3d8bff" opacity=".35"/><rect class="fc-beacon" x="-2" y="-25.5" width="6" height="5" rx="1.5" fill="#2d7cf0"/>
+    <rect x="-30" y="-30" width="12" height="22" rx="3" fill="#1d2f4a"/><rect x="-30" y="-20" width="12" height="2" fill="#e8e870"/>
+    <circle cx="-24" cy="-35.5" r="5" fill="#e0b48a"/><path d="M-29.5-37Q-24-44-18.5-37Z" fill="#1d2f4a"/><path d="M-19.5-37.4h5" stroke="#1d2f4a" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M-19-26l12-2" stroke="#1d2f4a" stroke-width="3.4" stroke-linecap="round"/><rect x="-9" y="-30.8" width="7" height="3.6" rx="1" fill="#3a3a3a"/>
+    <ellipse cx="0" cy="9" rx="52" ry="3" fill="none" stroke="${ringC}" stroke-width=".9" opacity=".5"/>
+  </g></g>`,
+    front: '',
+  }),
+
+  // Небо темніє, з хмари сиплеться риба: у воду — з колами, на кладку — лишається й підстрибує
+  fishrain: ({ night, gold, ringC, splash, edgeX }) => {
+    const r = seeded(41);
+    const all = [];
+    let rings = '';
+    for (let k = 0; k < 40; k++) {
+      const pier = k < 10;
+      const y1 = pier ? 420 + r() * 170 : 316 + r() * 70;
+      const x1 = pier ? edgeX(y1, -1) + 14 + r() * (edgeX(y1, 1) - edgeX(y1, -1) - 28) : -20 + r() * 400;
+      const x0 = x1 + (r() - 0.5) * 80, y0 = -90 - r() * 80;
+      const d = 0.5 + r() * 2.3, dur = 1 + r() * 0.4;
+      const r0 = r() * 360, r1 = pier ? (r() - 0.5) * 50 : 80 + r() * 20;
+      const s = pier ? 0.55 + (y1 - 392) / 500 : 0.5 + (y1 - 300) / 300;
+      const body = `<g transform="scale(${f1(s * 10) / 10})">${FISH(false)}</g>`;
+      all.push([y1, `<g class="fc-rain-f ${pier ? 'on' : 'in'}" style="--x0:${f1(x0)}px;--y0:${f1(y0)}px;--r0:${f1(r0)}deg;--x1:${f1(x1)}px;--y1:${f1(y1)}px;--r1:${f1(r1)}deg;animation-delay:${d.toFixed(2)}s;animation-duration:${dur.toFixed(2)}s">${
+        pier ? `<g class="fc-flop" style="animation-delay:${(d + dur).toFixed(2)}s">${body}</g>` : body}</g>`]);
+      if (!pier) rings += splash(f1(x1), f1(y1 + 4), Math.round((d + dur * 0.92) * 100) / 100);
+    }
+    const cl = seeded(43);
+    let cloud = '';
+    for (let x = -260; x < 640; x += 26 + cl() * 22) cloud += `<circle cx="${f1(x)}" cy="${f1(36 + cl() * 40)}" r="${f1(30 + cl() * 26)}"/>`;
+    return {
+      back: '',
+      front: `<rect class="fc-dark" x="-1400" y="-700" width="3160" height="2000" fill="#0b1626"/>
+  <g class="fc-rcloud" fill="${night ? '#141b2a' : '#4a5260'}">${cloud}<rect x="-1400" y="-700" width="3160" height="740"/></g>
+  <g class="fc-splash" fill="none" stroke="${ringC}" stroke-width="1.1">${rings}</g>
+  ${all.sort((a, b) => a[0] - b[0]).map((x) => x[1]).join('')}`,
+    };
+  },
+
+  // Апокаліпсис: гуркіт, на обрії росте хвиля, накриває все піною; коли відступає — на кладці б'ється риба
+  tsunami: ({ night }) => {
+    const foam = '#eef8fb';
+    const crest = [[-420, -170], [-220, -250], [-20, -290], [150, -325], [290, -375], [390, -405]];
+    const crestY = (x) => {
+      for (let i = 1; i < crest.length; i++) {
+        if (x <= crest[i][0]) {
+          const [xa, ya] = crest[i - 1], [xb, yb] = crest[i];
+          return ya + ((x - xa) / (xb - xa)) * (yb - ya);
+        }
+      }
+      return crest[crest.length - 1][1];
+    };
+    const b = seeded(71);
+    let bubbles = '', spray = '';
+    for (let k = 0; k < 30; k++) { const x = -410 + b() * 790; bubbles += `<circle cx="${f1(x)}" cy="${f1(crestY(x) + b() * 10)}" r="${f1(4 + b() * 7)}"/>`; }
+    for (let k = 0; k < 22; k++) { const x = -380 + b() * 760; spray += `<circle cx="${f1(x)}" cy="${f1(crestY(x) - 12 - b() * 40)}" r="${f1(1.5 + b() * 2.5)}"/>`; }
+    // риба, що лишилась після хвилі: [x, y, кут, масштаб; мінус — дивиться праворуч]
+    const lying = [[158, 452, 12, 1.1], [212, 486, -16, -1.2], [116, 528, 24, 1.3], [256, 566, -18, 1.4], [178, 604, 10, -1.5], [196, 366, -6, 0.8], [110, 470, 30, -1]];
+    const fish = lying.map(([x, y, a, s], k) => `<g transform="translate(${x} ${y}) rotate(${a}) scale(${s} ${Math.abs(s)})"><g class="fc-flop" style="animation-delay:${(2.9 + k * 0.23).toFixed(2)}s">${FISH(false)}</g></g>`).join('');
+    let churn = '';
+    for (let x = -430; x < 800; x += 14 + b() * 10) churn += `<circle cx="${f1(x)}" cy="${f1(-2 - b() * 8)}" r="${f1(8 + b() * 9)}"/>`;
+    return {
+      back: `<g class="fc-wave">
+    <path d="M-420 0V-170Q-220-250-20-290Q150-325 290-375Q390-412 445-355Q480-305 425-275Q480-255 540-232Q650-200 780-168V0Z" fill="url(#fc-waveg)"/>
+    <g fill="none" stroke="#9fd6e4" opacity="${night ? 0.18 : 0.3}" stroke-width="3"><path d="M-400-110Q-100-190 280-300"/><path d="M-380-60Q0-140 420-220"/><path d="M-300-20Q100-80 700-120"/></g>
+    <path d="M-420-170Q-220-250-20-290Q150-325 290-375Q390-412 445-355" fill="none" stroke="${foam}" stroke-width="10" stroke-linecap="round"/>
+    <path d="M404-330Q420-352 445-355Q452-328 432-302Q410-306 404-330Z" fill="#0a2a40" opacity=".45"/><path d="M445-355Q472-318 442-292" fill="none" stroke="${foam}" stroke-width="9" stroke-linecap="round"/>
+    <path d="M425-275Q480-255 540-232Q650-200 780-168" fill="none" stroke="${foam}" stroke-width="7" opacity=".75"/>
+    <g fill="${foam}">${bubbles}</g><g fill="${foam}" opacity=".8">${spray}</g>
+    <g fill="${foam}" opacity=".9">${churn}</g>
+  </g>`,
+      front: `<rect class="fc-dark" x="-1400" y="-700" width="3160" height="2000" fill="#0b1626"/>
+  <g class="fc-after">
+    <g fill="#cfeaf3" opacity=".35"><ellipse cx="170" cy="470" rx="26" ry="4"/><ellipse cx="232" cy="545" rx="32" ry="5"/><ellipse cx="140" cy="590" rx="30" ry="5"/></g>
+    <g fill="none" stroke="#3f7a3a" stroke-width="2.4" stroke-linecap="round" opacity=".9"><path d="M140 371q6 9 0 18t2 16"/><path d="M214 371q-5 8 1 16t-3 14"/><path d="M303 330q6 10 0 20t3 14"/></g>
+    ${fish}
+  </g>
+  <rect class="fc-foam" x="-1400" y="-700" width="3160" height="2000" fill="${night ? '#b9d4dd' : '#e6f4f8'}"/>`,
+    };
+  },
 };
 
 function fortuneCookie(p = {}) {
@@ -391,6 +597,14 @@ function fortuneCookie(p = {}) {
   const along = (k) => [B[0] + (T[0] - B[0]) * k, B[1] + (T[1] - B[1]) * k];
   const [rx, ry] = along(0.24), [hx, hy] = along(0.42);
 
+  // подія замість риби, що вистрибує (золоте печиво чи цунамі)
+  const ringC = night ? '#c9d4f2' : '#ffffff';
+  const ev = EVENT_ART[p.event]?.({ night, gold, ringC, splash, drops, edgeX }) ?? { back: '', front: '' };
+  const jump = p.event ? '' : `<g class="fc-splash" fill="none" stroke="${ringC}" stroke-width="1.3">${splash(...FX0, 0.36)}${splash(...FX1, 1.22)}</g>
+  <g class="fc-drops" fill="${ringC}">${drops(...FX0, 0.36, 21)}${drops(...FX1, 1.22, 22)}</g>
+  <g clip-path="url(#fc-above)"><g class="fc-fish">${FISH(gold)}</g></g>
+  ${gold ? `<g class="fc-fish-sparks" fill="#fff3b0">${[0, 1, 2, 3, 4, 5].map((k) => `<path d="${star(236 + k * 13, 288 + (k % 2) * 16, 3.6, 1.2)}" style="animation-delay:${(0.75 + k * 0.06).toFixed(2)}s"/>`).join('')}</g>` : ''}`;
+
   const layer = (cls) => `<svg class="fc-layer ${cls}" viewBox="0 0 360 640" preserveAspectRatio="xMidYMid meet" aria-hidden="true">`;
   return `
 ${layer('fc-back')}
@@ -432,18 +646,19 @@ ${layer('fc-front')}
     <linearGradient id="fc-ckl" x1="0" y1="0" x2=".5" y2="1">${gold ? '<stop offset="0" stop-color="#fff4b8"/><stop offset=".55" stop-color="#f3c93e"/><stop offset="1" stop-color="#c4921a"/>' : '<stop offset="0" stop-color="#fcdc96"/><stop offset=".55" stop-color="#eaad50"/><stop offset="1" stop-color="#c88430"/>'}</linearGradient>
     <linearGradient id="fc-ckr" x1="1" y1="0" x2=".5" y2="1">${gold ? '<stop offset="0" stop-color="#fbe07a"/><stop offset=".55" stop-color="#dcac28"/><stop offset="1" stop-color="#a57a0e"/>' : '<stop offset="0" stop-color="#f0bf68"/><stop offset=".55" stop-color="#d4943c"/><stop offset="1" stop-color="#ad6e24"/>'}</linearGradient>
     <linearGradient id="fc-ckm" x1="0" y1="0" x2="0" y2="1">${gold ? '<stop offset="0" stop-color="#c9961a"/><stop offset="1" stop-color="#7f5c08"/>' : '<stop offset="0" stop-color="#c47f2c"/><stop offset="1" stop-color="#8c5418"/>'}</linearGradient>
-    <linearGradient id="fc-fish" x1="0" y1="0" x2="0" y2="1">${gold ? '<stop offset="0" stop-color="#ffe680"/><stop offset=".5" stop-color="#f5b82a"/><stop offset="1" stop-color="#d98a10"/>' : '<stop offset="0" stop-color="#7d93a3"/><stop offset=".45" stop-color="#dfe8ee"/><stop offset="1" stop-color="#f6f8f9"/>'}</linearGradient>
+    <linearGradient id="fc-fish" x1="0" y1="0" x2="0" y2="1">${gold && !p.event ?'<stop offset="0" stop-color="#ffe680"/><stop offset=".5" stop-color="#f5b82a"/><stop offset="1" stop-color="#d98a10"/>' : '<stop offset="0" stop-color="#7d93a3"/><stop offset=".45" stop-color="#dfe8ee"/><stop offset="1" stop-color="#f6f8f9"/>'}</linearGradient>
     <linearGradient id="fc-ray" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#fff3b8" stop-opacity=".85"/><stop offset=".6" stop-color="#ffe27a" stop-opacity=".2"/><stop offset="1" stop-color="#ffe27a" stop-opacity="0"/></linearGradient>
     <radialGradient id="fc-gglow"><stop offset="0" stop-color="#ffe27a"/><stop offset="1" stop-color="#ffe27a" stop-opacity="0"/></radialGradient>
     <radialGradient id="fc-lamp"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".9"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
     <clipPath id="fc-l"><rect x="0" y="300" width="180" height="100"/></clipPath>
     <clipPath id="fc-r"><rect x="180" y="300" width="180" height="100"/></clipPath>
     <clipPath id="fc-above"><rect x="-1400" y="-700" width="3160" height="1065"/></clipPath>
+    <clipPath id="fc-catclip"><rect x="-1400" y="-700" width="3160" height="1103"/></clipPath>
+    <linearGradient id="fc-catg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${night ? '#2a3122' : '#46523a'}"/><stop offset=".6" stop-color="${night ? '#323a28' : '#56603f'}"/><stop offset="1" stop-color="${night ? '#4a4a38' : '#7c7a58'}"/></linearGradient>
+    <linearGradient id="fc-beam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff6c8" stop-opacity=".75"/><stop offset="1" stop-color="#fff6c8" stop-opacity="0"/></linearGradient>
+    <linearGradient id="fc-waveg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${night ? '#1d4f66' : '#3a95ac'}"/><stop offset=".5" stop-color="${night ? '#123a52' : '#1f6a86'}"/><stop offset="1" stop-color="${night ? '#0a2236' : '#0f3f5a'}"/></linearGradient>
   </defs>
-  <g class="fc-splash" fill="none" stroke="${night ? '#c9d4f2' : '#ffffff'}" stroke-width="1.3">${splash(...FX0, 0.36)}${splash(...FX1, 1.22)}</g>
-  <g class="fc-drops" fill="${night ? '#c9d4f2' : '#ffffff'}">${drops(...FX0, 0.36, 21)}${drops(...FX1, 1.22, 22)}</g>
-  <g clip-path="url(#fc-above)"><g class="fc-fish">${FISH(gold)}</g></g>
-  ${gold ? `<g class="fc-fish-sparks" fill="#fff3b0">${[0, 1, 2, 3, 4, 5].map((k) => `<path d="${star(236 + k * 13, 288 + (k % 2) * 16, 3.6, 1.2)}" style="animation-delay:${(0.75 + k * 0.06).toFixed(2)}s"/>`).join('')}</g>` : ''}
+  ${jump}
   <path d="M${PIER.l - 2} ${PIER.y + 4}L${PIER.nl - 60} ${PIER.ny}H${PIER.nl + 40}L${PIER.l + 6} ${PIER.y + 2}Z" fill="#0b1626" opacity=".18"/>
   <path d="M${PIER.r + 2} ${PIER.y + 4}L${PIER.nr + 60} ${PIER.ny}H${PIER.nr - 40}L${PIER.r - 6} ${PIER.y + 2}Z" fill="#0b1626" opacity=".18"/>
   ${piles()}
@@ -456,6 +671,7 @@ ${layer('fc-front')}
   <path d="M${PIER.l} ${PIER.y}H${PIER.r}" stroke="${wood[1]}" stroke-width="2"/>
   <rect x="${PIER.l - 5}" y="374" width="7" height="22" rx="1.5" fill="${wood[1]}"/><rect x="${PIER.r - 2}" y="374" width="7" height="22" rx="1.5" fill="${wood[1]}"/>
   ${season === 'winter' ? `<path d="M${PIER.l} ${PIER.y}H${PIER.r}L${PIER.nr} ${PIER.ny}H${PIER.nl}Z" fill="#f4f7fb" opacity=".35"/><path d="M${PIER.l - 6} 374h9v-2.5h-9zM${PIER.r - 3} 374h9v-2.5h-9z" fill="#f4f7fb"/>` : ''}
+  ${ev.back}
   ${pal.shade ? `<rect x="-1400" y="-700" width="3160" height="1800" fill="#0b1230" opacity="${pal.shade}"/>` : ''}
   <g class="fc-rod">
     <path d="M${T[0]} ${T[1]}Q312 300 300 348" stroke="${night ? '#c9d4f2' : '#fbfbf6'}" stroke-width=".8" fill="none" opacity=".75"/>
@@ -499,6 +715,7 @@ ${layer('fc-front')}
   </g>
   <g class="fc-crumbs" fill="#d9a050">${crumbs}</g>
   <g class="fc-fall">${falling}</g>
+  ${ev.front}
   <g class="fc-hint"><g class="fc-hint-in">
     <rect x="48" y="458" width="264" height="36" rx="18" fill="#1a120c" opacity=".78"/>
     <text x="180" y="482" text-anchor="middle" font-family="system-ui, sans-serif" font-size="17" font-weight="700" fill="#fff6e0">${esc(t('Торкніться, щоб розламати'))}</text>
@@ -593,8 +810,107 @@ function jingle(out, at, vol) {
   });
 }
 
-function crackFeedback(gold) {
-  navigator.vibrate?.(gold ? [18, 60, 14, 900, 30] : [20, 60, 14, 1000, 24]);
+/** Шум, що наростає й спадає: гуркіт, рев хвилі, дощ. */
+function swell(out, at, dur, freq, vol, attack = 0.6, type = 'bandpass') {
+  const rate = audio.sampleRate, buf = audio.createBuffer(1, Math.ceil(rate * dur), rate), data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = audio.createBufferSource(), filter = audio.createBiquadFilter(), g = audio.createGain();
+  src.buffer = buf;
+  filter.type = type;
+  filter.frequency.value = freq;
+  filter.Q.value = 0.7;
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.linearRampToValueAtTime(vol, at + dur * attack);
+  g.gain.linearRampToValueAtTime(0.0001, at + dur);
+  src.connect(filter).connect(g).connect(out);
+  src.start(at);
+}
+
+/** Гудіння дрона: три «пилки» крізь фільтр; підлітає — гучнішає, відлітає — тон і гучність падають. */
+function buzz(out, at, dur, vol) {
+  const g = audio.createGain(), filter = audio.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 1400;
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.linearRampToValueAtTime(vol, at + dur * 0.35);
+  g.gain.setValueAtTime(vol, at + dur * 0.6);
+  g.gain.linearRampToValueAtTime(0.0001, at + dur);
+  filter.connect(g).connect(out);
+  for (const f of [196, 199, 294]) {
+    const osc = audio.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(f * 1.06, at);
+    osc.frequency.linearRampToValueAtTime(f, at + dur * 0.35);
+    osc.frequency.setValueAtTime(f, at + dur * 0.6);
+    osc.frequency.linearRampToValueAtTime(f * 0.9, at + dur);
+    osc.connect(filter);
+    osc.start(at);
+    osc.stop(at + dur + 0.05);
+  }
+}
+
+/** Мотор човна: глухі поштовхи, що стихають. */
+function putt(out, at, dur, vol) {
+  const n = Math.floor(dur / 0.085);
+  for (let k = 0; k < n; k++) noise(out, at + k * 0.085, 0.05, 140, vol * (1 - k / n) ** 0.7);
+}
+
+/** Коротка «крякалка» рибоохорони: тон угору й униз двічі. */
+function whoop(out, at, vol) {
+  const osc = audio.createOscillator(), g = audio.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(620, at);
+  for (const d of [0, 0.32]) {
+    osc.frequency.linearRampToValueAtTime(980, at + d + 0.16);
+    osc.frequency.linearRampToValueAtTime(620, at + d + 0.3);
+  }
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.linearRampToValueAtTime(vol, at + 0.03);
+  g.gain.setValueAtTime(vol, at + 0.58);
+  g.gain.linearRampToValueAtTime(0.0001, at + 0.64);
+  osc.connect(g).connect(out);
+  osc.start(at);
+  osc.stop(at + 0.7);
+}
+
+// Звук кожної події після хрускоту й бубонців; t0 — мить розламу
+const EVENT_SOUND = {
+  catfish: (out, t0) => {
+    plop(out, t0 + 0.62, 200, 50, 0.8);
+    noise(out, t0 + 0.62, 0.5, 500, 0.6);
+    [1.6, 1.75, 1.95].forEach((d) => plop(out, t0 + d, 320, 140, 0.25));
+  },
+  beaver: (out, t0) => {
+    swell(out, t0 + 0.4, 1.6, 700, 0.12);
+    [2.22, 2.3, 2.38].forEach((d) => noise(out, t0 + d, 0.04, 2600, 0.5));
+    noise(out, t0 + 2.45, 0.12, 1100, 1);
+    plop(out, t0 + 2.46, 300, 90, 0.5);
+  },
+  drone: (out, t0) => {
+    buzz(out, t0 + 0.35, 3, 0.09);
+    plop(out, t0 + 2.15, 520, 160, 0.5);
+    noise(out, t0 + 2.15, 0.25, 1300, 0.5);
+  },
+  inspector: (out, t0) => {
+    putt(out, t0 + 0.4, 1.7, 0.6);
+    whoop(out, t0 + 2, 0.08);
+  },
+  fishrain: (out, t0) => {
+    swell(out, t0 + 0.4, 3.2, 5000, 0.08, 0.3, 'highpass');
+    for (let k = 0; k < 24; k++) plop(out, t0 + 1.3 + Math.random() * 2.6,500 + Math.random() * 400, 180, 0.15 + Math.random() * 0.15);
+  },
+  tsunami: (out, t0) => {
+    swell(out, t0 + 0.25, 2.4, 70, 1.4, 0.85, 'lowpass');
+    swell(out, t0 + 0.4, 2.2, 150, 0.8, 0.85);
+    swell(out, t0 + 1, 1.6, 420, 0.7, 0.9);
+    noise(out, t0 + 2.45, 1.4, 350, 1.1);
+    noise(out, t0 + 2.45, 0.9, 1600, 0.6);
+    [3.1, 3.3, 3.6].forEach((d) => plop(out, t0 + d, 600, 250, 0.25));
+  },
+};
+
+function crackFeedback({ gold, event }) {
+  navigator.vibrate?.(event === 'tsunami' ? [20, 60, 14, 400, 300, 80, 400, 80, 700] : gold ? [18, 60, 14, 900, 30] : [20, 60, 14, 1000, 24]);
   const out = audioOut();
   if (!out) return;
   try {
@@ -602,12 +918,18 @@ function crackFeedback(gold) {
     noise(out, t0, 0.09, 2400, 0.9);
     plop(out, t0 + 0.14, 700, 240, 0.35);
     jingle(out, t0 + 0.18, 0.16);
-    noise(out, t0 + 0.36, 0.25, 1500, 0.45);
-    noise(out, t0 + 1.22, 0.35, 900, 0.7);
-    plop(out, t0 + 1.24, 420, 120, 0.6);
+    if (!event) {
+      noise(out, t0 + 0.36, 0.25, 1500, 0.45);
+      noise(out, t0 + 1.22, 0.35, 900, 0.7);
+      plop(out, t0 + 1.24, 420, 120, 0.6);
+    }
     if (gold) [1318.5, 1568, 1760, 2093].forEach((f, k) => bell(out, t0 + 0.7 + k * 0.11, f, 0.18));
+    EVENT_SOUND[event]?.(out, t0);
   } catch { /* без звуку — вібрації досить */ }
 }
+
+// Коли з'являється записка: подія спершу відіграє своє (типово — 0,85 с після розламу)
+const SLIP_AT = { catfish: 3.3, beaver: 3, drone: 3.2, inspector: 2.9, fishrain: 3.8, tsunami: 3.9 };
 
 /** Програти печиво; params — для перегляду (?gold=1…), інакше випадкові. Повертає проміс закриття. */
 export function playFortune(params = {}) {
@@ -629,8 +951,10 @@ export function playFortune(params = {}) {
   let run = 0;
   const play = () => {
     const id = ++run;
-    el.classList.remove('done');
+    el.classList.remove('done', ...Object.keys(EVENTS).map((k) => `ev-${k}`));
     el.classList.add('wait');
+    if (p.event) el.classList.add('ev', `ev-${p.event}`); else el.classList.remove('ev');
+    el.style.setProperty('--slip', `${SLIP_AT[p.event] ?? 0.85}s`);
     stage.innerHTML = fortuneCookie(p);
     const cap = document.createElement('p');
     cap.className = 'scene-cap';
@@ -647,7 +971,8 @@ export function playFortune(params = {}) {
   };
   const start = () => {
     el.classList.remove('wait');
-    crackFeedback(p.gold);
+    if (p.event === 'tsunami') tsunamiSeen();
+    crackFeedback(p);
     stage.getAnimations({ subtree: true }).forEach((a) => a.play());
   };
   // перший дотик — розлам, наступний — одразу останній кадр; закривається лише кнопкою чи Esc
