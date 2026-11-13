@@ -1,0 +1,645 @@
+// Печиво з передбаченням (≈ раз на кілька запусків): світанок на озері, кладка, на рибальському ящику — печиво.
+// Дотик — печиво розламується, поплавок пірнає, з води вистрибує риба, з печива — записка з передбаченням.
+// Малюнок — SVG у коді (офлайн, без файлів); рух — лише transform/opacity; модуль вантажиться ліниво з app.js.
+
+import { t } from './i18n.js';
+
+const f1 = (x) => Math.round(x * 10) / 10;
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** Відтворюваний «випадок»: той самий seed — той самий малюнок (очерет, листя не стрибають між показами). */
+function seeded(seed) {
+  let s = seed >>> 0 || 1;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+function star(cx, cy, R, r) {
+  let d = '';
+  for (let k = 0; k < 10; k++) {
+    const a = -Math.PI / 2 + (k * Math.PI) / 5, rr = k % 2 ? r : R;
+    d += `${k ? 'L' : 'M'}${f1(cx + Math.cos(a) * rr)} ${f1(cy + Math.sin(a) * rr)}`;
+  }
+  return `${d}Z`;
+}
+
+const FORTUNES = [
+  'Сьогодні клюватиме навіть на голий гачок',
+  'Риба вже чекає. А ти ще п’єш каву',
+  'Найбільша риба попереду. Головне — не забути підсак',
+  'Поплавок пірне саме тоді, коли ти відвернешся',
+  'Клювання буде. Правда, у сусіда',
+  'Удача любить тих, хто вчасно міняє приманку',
+  'На котушці сьогодні жодної бороди',
+  'Коряга сьогодні відпочиває. Закидай сміливо',
+  'Вітер у спину — клювання в руку',
+  'Хто рано встає, той бачить туман над водою. І щуку',
+  'Риба не знає, що ти новачок. Не кажи їй',
+  'Незабаром ти купиш ще одну коробку воблерів. Так написано',
+  'Твій трофей уже плаває десь поруч. Він трохи нервує',
+  'Тиск стабільний, настрій теж',
+  'Вузол сьогодні не розв’яжеться',
+  'Наступний закид буде точно під кущ. А не в кущ',
+  'Та, що зійшла, завжди була трофейною. Не засмучуйся',
+  'Черв’яки сьогодні особливо апетитні',
+  'Удача поруч — у третій коробці зліва',
+  'Підсак сьогодні знадобиться. Перевір, чи він у машині',
+  'Риба клює на терпіння. І трохи на опариша',
+  'Сусід по березі попросить гачок. Дай, і він повернеться рибою',
+  'Комарі сьогодні обрали іншого рибалку',
+  'Новий воблер окупиться першою ж щукою. Можливо',
+  'Сьогодні знайдеш загублену блешню. У своїй же кишені',
+  'Карась сьогодні в гарному настрої',
+  'Окунь уже зібрав зграю. Чекають на тебе',
+  'Щука сьогодні голодна й неуважна',
+  'Судак з цікавістю придивляється до твого джигу',
+  'Короп обходить чужі прикормки. Твою — ні',
+  'Не кажи «останній закид». Риба чує',
+  'Уранці туман, удень клювання',
+  'Удача сидить на кінчику вудилища. Не злякай',
+  'До водойми дорога легка, назад — важка. Від улову',
+  'Додому повернешся пізно. І не з порожнім садком',
+  'Сьогодні скажеш правду про розмір риби. Ну, майже',
+  'Рибу міряють від носа до хвоста. Розповіді — від ліктя до ліктя',
+  'Шнур сьогодні не заплутається. Але це не точно',
+  'Чай у термосі буде гарячим до вечора',
+  'Дощ пройде стороною. Клювання — ні',
+  'Тобі всміхнеться удача. І сом з-під коряги',
+  'Перший закид — пробний. Другий — уловистий',
+  'Бутерброд сьогодні не з’їси: буде ніколи',
+  'Знайдеш нове місце. Нікому не кажи',
+  'Головне в рибалці — не риба. Але з рибою краще',
+  'Гачок сьогодні гострий. Пальцем не перевіряй',
+  'Підсічка буде вчасною. Навіть із чашкою чаю в руці',
+  'Найкраща риба клює, щойно відкриєш термос',
+  'Хтось на березі спитає: «Ну що, клює?» Скажеш: «Клює!»',
+  'Твоє місце сьогодні ніхто не займе',
+  'Риба теж дивиться прогноз. Сьогоднішній їй подобається',
+  'Закинь туди, де вчора зачепився. Там і риба',
+  'У цьому печиві немає черв’яка. Перевірено',
+  'Не рахуй сходи. Рахуй рибу',
+  'Котушка сьогодні крутиться м’яко, як нова',
+  'Тиша, туман, поплавок. Що ще треба',
+  'Удома сьогодні скажуть: «Їдь, звісно»',
+  'Риба є. Питання лише — де',
+  'Прикормка збере всіх лящів округи',
+  'Підкрути фрикціон: сьогодні буде сильна риба',
+  'Улов сьогодні потрапить у журнал. І в розповіді друзям',
+  'Волосінь сьогодні витримає більше, ніж обіцяє пачка',
+  'Сонце сяде, а клювання тільки почнеться',
+  'Найкращий час для рибалки — зараз. Збиратися треба було вчора',
+  'Зачепів сьогодні буде менше, ніж приманок у коробці',
+];
+// Золоте печиво — рідкісне (≈ 1 з 20): з води вистрибує золота рибка
+const GOLD_FORTUNES = [
+  'Золота рибка! Загадай три бажання. Одне вже пішло на це печиво',
+  'Рідкісне печиво: сьогодні буде трофей',
+  'Одне на двадцять. Як і справжня риба тижня',
+  'Сфотографуй це печиво, бо скажуть, що вигадав',
+  'Сьогодні клюне з першого закиду',
+  'Золота рибка просила передати: щука на десять кіло вже в дорозі',
+  'Удача вже на гачку. Тільки не зірви',
+];
+
+// «Щасливі числа» по-рибальськи: гачок, волосінь, грузило, глибина
+const LUCKY = [
+  ['№2', '№4', '№6', '№8', '№10', '№12', '№14', '1/0', '2/0'],
+  ['0,10 мм', '0,12 мм', '0,14 мм', '0,16 мм', '0,18 мм', '0,20 мм', '0,25 мм', '0,30 мм'],
+  ['3 г', '5 г', '7 г', '10 г', '14 г', '21 г', '28 г'],
+  ['1,5 м', '2 м', '2,5 м', '3 м', '4 м', '5 м', '6 м', '8 м'],
+];
+
+// Передбачення з власного журналу (app.js: давно не їздив, уловиста приманка, рекорд…) — уже готові рядки
+let fortuneSource = () => [];
+export function setFortuneSource(fn) { fortuneSource = fn; }
+
+const SEASONS = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
+
+/** Печиво на цей показ; ?gold=1 ?own=1 ?season=winter ?tod=night ?i=5 — для перегляду. */
+function fortuneParams() {
+  const q = new URLSearchParams(location.search), hr = new Date().getHours();
+  const gold = q.has('gold') ? q.get('gold') === '1' : Math.random() < 1 / 20;
+  const mine = gold ? [] : fortuneSource();
+  const own = mine.length && (q.get('own') === '1' || Math.random() < 0.4) ? mine[Math.floor(Math.random() * mine.length)] : null;
+  const list = gold ? GOLD_FORTUNES : FORTUNES;
+  return {
+    gold, own, i: q.has('i') ? Number(q.get('i')) : Math.floor(Math.random() * list.length), n: 1 + Math.floor(Math.random() * 1e6),
+    season: q.get('season') ?? SEASONS[new Date().getMonth()],
+    tod: q.get('tod') ?? (hr >= 21 || hr < 5 ? 'night' : hr < 10 ? 'morning' : hr < 17 ? 'day' : 'evening'),
+  };
+}
+
+function fortuneText(p) {
+  const list = p.gold ? GOLD_FORTUNES : FORTUNES;
+  return p.own ?? t(list[((p.i ?? 0) % list.length + list.length) % list.length]);
+}
+
+/**
+ * Рядки записки: кожне речення — з нового рядка; довге — на стільки рядків, скільки треба для ~24 літер,
+ * слова розкладено рівно. Прийменник чи сполучник (до 2 літер) не лишається в кінці рядка, тире — на початку.
+ */
+function fortuneLines(text) {
+  const MAX = 24;
+  const greedy = (words) => words.reduce((out, w) => {
+    if (out.length && `${out[out.length - 1]} ${w}`.length <= MAX) out[out.length - 1] += ` ${w}`;
+    else out.push(w);
+    return out;
+  }, []).length;
+  const glue = (words) => words.reduce((out, w) => {
+    const prev = out[out.length - 1];
+    if (prev && (/^[—–-]$/.test(w) || (/^\p{L}{1,2}$/u.test(prev.split(' ').pop()) && !/[.,!?…:;]$/.test(prev)))) out[out.length - 1] = `${prev} ${w}`;
+    else out.push(w);
+    return out;
+  }, []);
+  const widest = (ls) => Math.max(...ls.map((l) => l.length));
+  const split = (words, k) => {
+    if (k <= 1) return [words.join(' ')];
+    let best = null;
+    for (let i = 1; i <= words.length - k + 1; i++) {
+      const cand = [words.slice(0, i).join(' '), ...split(words.slice(i), k - 1)];
+      if (!best || widest(cand) < widest(best)) best = cand;
+    }
+    return best;
+  };
+  return text.split(/(?<=[.!?…])\s+(?=[«"А-ЯІЇЄҐA-Z])/u).flatMap((s) => {
+    const words = glue(s.split(' '));
+    return split(words, Math.min(greedy(s.split(' ')), words.length));
+  });
+}
+
+// печиво спереду: два рум'яні пелюстки, загнуті до середини, між ними — складка в тіні; світло зліва
+const COOKIE_ART = '<path d="M180 334Q148 329 139 349Q133 366 145 374Q158 363 172 367Q177 350 180 334Z" fill="url(#fc-ckl)"/>'
+  + '<path d="M180 334Q212 329 221 349Q227 366 215 374Q202 363 188 367Q183 350 180 334Z" fill="url(#fc-ckr)"/>'
+  + '<path d="M172 367Q176 350 180 334Q184 350 188 367Q180 373 172 367Z" fill="url(#fc-ckm)"/>'
+  + '<path d="M145 374Q133 366 139 349Q148 329 180 334Q212 329 221 349Q227 366 215 374" fill="none" stroke="#a0621c" stroke-width="1.6" opacity=".6"/>'
+  + '<path d="M145 374Q158 363 172 367M188 367Q202 363 215 374" fill="none" stroke="#b5732a" stroke-width="1.2" opacity=".7"/>'
+  + '<path d="M172 367Q176 350 180 334Q184 350 188 367" fill="none" stroke="#8a5216" stroke-width="1.1" opacity=".8"/>'
+  + '<path d="M144 352Q151 337 170 336" stroke="#fff3cf" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>'
+  + '<path d="M148 362Q150 356 154 352" stroke="#fff3cf" stroke-width="2" fill="none" stroke-linecap="round" opacity=".5"/>'
+  + '<path d="M194 338Q209 340 214 349" stroke="#fde1a2" stroke-width="2" fill="none" stroke-linecap="round" opacity=".55"/>'
+  + '<g fill="#a8681f" opacity=".35"><circle cx="152" cy="346" r=".8"/><circle cx="160" cy="352" r=".7"/><circle cx="148" cy="365" r=".8"/>'
+  + '<circle cx="165" cy="342" r=".6"/><circle cx="163" cy="359" r=".7"/><circle cx="198" cy="347" r=".8"/><circle cx="206" cy="355" r=".7"/>'
+  + '<circle cx="212" cy="364" r=".8"/><circle cx="200" cy="360" r=".6"/><circle cx="208" cy="343" r=".6"/></g>';
+
+// Риба на виході з води (дивиться ліворуч, центр — 0,0): срібна або золота з короною
+const FISH = (gold) => `<path d="M-18 0Q-9-9 5-7L15-12Q12-4 13 0Q12 4 15 12L5 7Q-9 9-18 0Z" fill="url(#fc-fish)"/>
+  <path d="M-12-4Q-2-10 6-7" stroke="${gold ? '#b8860b' : '#5d7180'}" stroke-width="1.6" fill="none" opacity=".7"/>
+  <path d="M-2 6l-4 6 7-4z" fill="${gold ? '#e0a820' : '#8a9caa'}"/><path d="M-1-6l3-6 4 5z" fill="${gold ? '#e0a820' : '#7d909e'}"/>
+  <circle cx="-12" cy="-1.6" r="1.7" fill="#1d2228"/><circle cx="-12.5" cy="-2.2" r=".5" fill="#fff"/>
+  ${gold ? '<path d="M-15-6l1-5 2 3 2-4 2 4 2-3 .4 5z" fill="#ffd84a" stroke="#b8860b" stroke-width=".6"/>' : ''}`;
+
+// Час доби: небо, вода, ліс на тому березі, сонце/місяць [x, y, r, колір]; shade — затемнення переднього плану
+const PAL = {
+  morning: { sky: ['#9fb6d6', '#f4c6b4', '#fde3c2'], water: ['#e6d8cf', '#9fb3c6', '#5d7690'], forest: '#5a6d70', hills: '#8c9fb2', sun: [96, 262, 24, '#ffd6a0'], shade: 0 },
+  day: { sky: ['#5d9bd6', '#9cc8ec', '#d6ecf6'], water: ['#9cc6dc', '#4d88aa', '#2c5b7a'], forest: '#3d5a3a', hills: '#7a99a8', sun: [272, 96, 20, '#fff6d0'], shade: 0 },
+  evening: { sky: ['#3f3a72', '#c8687a', '#f7a85e'], water: ['#e59a6a', '#8a5f7a', '#3d3a5e'], forest: '#2e2a3e', hills: '#6a5578', sun: [232, 284, 30, '#ff7a3c'], shade: 0.14 },
+  night: { sky: ['#0b1230', '#1d2a5a', '#34427a'], water: ['#2a3866', '#1b2650', '#0f1838'], forest: '#0d1426', hills: '#26325a', sun: [262, 108, 15, '#f3ecd0'], shade: 0.32 },
+};
+
+function fortuneCookie(p = {}) {
+  const rnd = seeded(77), pick = seeded(p.n ?? 1), season = SEASONS.includes(p.season) ? p.season : 'summer', gold = !!p.gold;
+  const tod = PAL[p.tod] ? p.tod : 'day', pal = PAL[tod], night = tod === 'night', dusk = night || tod === 'evening';
+  const [sunX, sunY, sunR, sunC] = pal.sun;
+  const lucky = LUCKY.map((list) => list[Math.floor(pick() * list.length)]);
+
+  let stars = '';
+  if (night) for (let j = 0; j < 160; j++) stars += `<circle cx="${f1(-700 + rnd() * 1760)}" cy="${f1(-400 + rnd() * 680)}" r="${f1(0.4 + rnd() * 0.9)}" opacity="${f1(0.4 + rnd() * 0.6)}"/>`;
+
+  // ліс на тому березі — купки крон по всій ширині; той самий ліс віддзеркалюється у воді
+  let forest = '';
+  for (let x = -1400; x < 1760; x += 9 + rnd() * 12) {
+    const r = 7 + rnd() * 9, y = 300 - r * 0.5 - rnd() * 6;
+    forest += rnd() < 0.18
+      ? `<path d="M${f1(x)} ${f1(y - r * 2.4)}L${f1(x + r * 0.7)} 301H${f1(x - r * 0.7)}Z"/>`
+      : `<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="${f1(r)}" ry="${f1(r * 1.1)}"/>`;
+  }
+  forest += '<rect x="-1400" y="292" width="3160" height="10"/>';
+  // дальній ряд лісу — світліший, вищий, щоб берег мав глибину
+  const fr = seeded(31);
+  let farForest = '';
+  for (let x = -1400; x < 1760; x += 12 + fr() * 14) {
+    const r = 8 + fr() * 10, y = 294 - r * 0.6 - fr() * 8;
+    farForest += fr() < 0.2 ? `<path d="M${f1(x)} ${f1(y - r * 2.2)}L${f1(x + r * 0.7)} 300H${f1(x - r * 0.7)}Z"/>`
+      : `<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="${f1(r)}" ry="${f1(r * 1.05)}"/>`;
+  }
+  // купчасті хмари: кілька кіл на пласкій основі, низ у тіні; повільно пливуть
+  const CLOUD = { morning: ['#fff1ea', '#f2c7bc'], day: ['#ffffff', '#dbe8f2'], evening: ['#ffc59a', '#c9727e'], night: ['#36457a', '#26335f'] }[tod];
+  const cr = seeded(17);
+  const cloud = (cx, cy, w) => {
+    let top = '', base = '';
+    const n = 4 + Math.floor(cr() * 3);
+    for (let k = 0; k < n; k++) {
+      const x = cx - w / 2 + (k + 0.5) * (w / n) + (cr() - 0.5) * 6, r = w / n * (0.7 + cr() * 0.6) * (k === 0 || k === n - 1 ? 0.75 : 1.1);
+      top += `<circle cx="${f1(x)}" cy="${f1(cy - r * 0.55)}" r="${f1(r)}"/>`;
+    }
+    base = `<rect x="${f1(cx - w / 2)}" y="${f1(cy - w * 0.12)}" width="${f1(w)}" height="${f1(w * 0.12)}" rx="${f1(w * 0.06)}"/>`;
+    return `<g fill="${CLOUD[1]}" transform="translate(0 3)">${top}${base}</g><g fill="${CLOUD[0]}">${top}${base}</g>`;
+  };
+  const clouds = [[40, 150, 110], [250, 70, 80], [300, 210, 70], [-160, 90, 120], [560, 130, 110], [-420, 190, 90], [820, 80, 100]]
+    .map(([x, y, w]) => cloud(x, y, w)).join('');
+  // чайки вранці й удень: летять через небо, махають крилами
+  const gull = (x, y, d) => `<g transform="translate(${x} ${y})"><path class="fc-wing" d="M-9 0Q-5-5 0 0Q5-5 9 0" style="animation-delay:-${d}s"/></g>`;
+  const gulls = tod === 'day' || tod === 'morning' ? `<g class="fc-gulls" fill="none" stroke="${tod === 'day' ? '#4a5a68' : '#6a5a68'}" stroke-width="1.5" stroke-linecap="round">${gull(0, 180, 0)}${gull(-24, 192, 0.35)}${gull(-44, 174, 0.6)}</g>` : '';
+  // ледь помітні брижі на воді: тонкі світлі риски, ближче — довші
+  const wr2 = seeded(23);
+  let ripples = '';
+  for (let j = 0; j < 60; j++) {
+    const y = 308 + wr2() ** 1.6 * 420, w = 6 + (y - 300) * 0.08 + wr2() * 10;
+    ripples += `<path d="M${f1(-300 + wr2() * 960)} ${f1(y)}h${f1(w)}"/>`;
+  }
+  const hillsD = (() => {
+    let d = 'M-1400 300';
+    for (let x = -1400; x <= 1760; x += 160) d += `Q${x + 80} ${f1(250 + rnd() * 30)} ${x + 160} ${f1(276 + rnd() * 12)}`;
+    return `${d}V300Z`;
+  })();
+
+  // доріжка сонця чи місяця на воді
+  let glints = '';
+  for (let j = 0; j < 12; j++) {
+    const w = 22 - j * 1.4, off = (rnd() - 0.5) * 12;
+    glints += `<path d="M${f1(sunX + off - w)} ${306 + j * 8}h${f1(2 * w)}" stroke-width="${f1(2.6 - j * 0.12)}" style="animation-delay:-${(rnd() * 1.6).toFixed(2)}s"/>`;
+  }
+
+  // кола на воді — гуляє риба; два кільця одне за одним
+  const rings = [[60, 336, 0], [214, 318, 2.4], [-150, 352, 4.6], [470, 340, 1.2], [-420, 330, 3.3], [700, 356, 5.5]]
+    .map(([x, y, d]) => `<g transform="translate(${x} ${y})"><ellipse rx="13" ry="2.8" style="animation-delay:-${d}s"/><ellipse rx="13" ry="2.8" style="animation-delay:-${f1(d + 3.4)}s"/></g>`).join('');
+
+  // очерет і рогіз: купки обабіч кладки (на широкому екрані — ще й далі); листя — тонкі загострені смуги
+  const REED = {
+    spring: ['#7fa64a', '#9cc05a', '#5f8a3a'], summer: ['#4f7f36', '#6a9a40', '#3b6a2c'],
+    autumn: ['#a8904a', '#c2a256', '#8a7438'], winter: ['#c9b98a', '#d8cba0', '#a99a70'],
+  }[season];
+  const reed = (x, y, h, lean, k, tail) => {
+    const tx = x + lean, ty = y - h;
+    let s = `<path d="M${f1(x - 1.8)} ${y}Q${f1(x + lean * 0.3 - 1)} ${f1(y - h * 0.5)} ${f1(tx)} ${f1(ty)}Q${f1(x + lean * 0.3 + 1)} ${f1(y - h * 0.5)} ${f1(x + 1.8)} ${y}Z" fill="${REED[k % 3]}"/>`;
+    if (tail) {
+      const cx = x + lean * 0.8, cy = y - h * 0.8, a = (Math.atan2(lean, h) * 180) / Math.PI;
+      s += `<ellipse cx="${f1(cx)}" cy="${f1(cy)}" rx="2.8" ry="9" transform="rotate(${f1(a)} ${f1(cx)} ${f1(cy)})" fill="${season === 'winter' ? '#8a6a4a' : '#6b4226'}"/>`;
+      if (season === 'winter') s += `<ellipse cx="${f1(cx + lean * 0.02)}" cy="${f1(cy - 8)}" rx="2.6" ry="1.6" fill="#f4f7fb"/>`;
+    }
+    return s;
+  };
+  const clump = (x0, y0, n, seed, dir) => {
+    const r = seeded(seed);
+    let s = '';
+    for (let k = 0; k < n; k++) {
+      const x = x0 + (r() - 0.5) * 70, h = 70 + r() * 110, lean = (r() - 0.5) * 40 + dir * 14;
+      s += reed(x, y0 + r() * 16, h, lean, k, r() < 0.28);
+    }
+    return s;
+  };
+  const reedsL = clump(22, 470, 22, 3, -1) + clump(-210, 455, 18, 4, -1) + clump(-470, 450, 16, 5, 1);
+  const reedsR = clump(380, 476, 20, 6, 1) + clump(560, 458, 18, 7, 1) + clump(820, 452, 16, 8, -1);
+
+  // латаття влітку: листки з вирізом і біла квітка
+  const pad = (x, y, s, flower) => `<g transform="translate(${x} ${y}) scale(${s} ${s * 0.38})"><path d="M0 0L14 -3A15 15 0 1 1 13 4Z" fill="#4f8a3a"/><path d="M0 0L14 -3" stroke="#3a6a2a" stroke-width="1"/></g>`
+    + (flower ? `<g transform="translate(${x - 2} ${y - 4})"><path d="M-6 0Q0-10 6 0Q0 3-6 0Z" fill="#fbf7ee"/><path d="M-3 0Q0-7 3 0Z" fill="#fff"/><circle cy="-1" r="1.6" fill="#f2c94c"/></g>` : '');
+  const lilies = season === 'summer' ? pad(72, 352, 1, true) + pad(98, 362, 0.8, false) + pad(36, 344, 0.7, false) + pad(-120, 360, 1, true) + pad(520, 350, 0.9, true) : '';
+
+  // листя по сезону — для того, що летить і пливе по воді
+  const LEAF = { spring: ['#a6c86a', '#c2da84', '#8fb85a'], summer: ['#5f8f3e', '#78a84c', '#4a7a32'], autumn: ['#e0a830', '#d4782a', '#c9b040'], winter: [] }[season];
+
+  // що летить через увесь кадр за вітром: осінь — листя, зима — сніг, весна — пух; влітку тихо
+  const fall = {
+    autumn: (x, y, j) => `<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="1.8" ry="4" fill="${LEAF[j % 3]}"`,
+    winter: (x, y, j) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(1.3 + (j % 3) * 0.5)}" fill="#fff"`,
+    spring: (x, y) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="1.3" fill="#fffbe6" opacity=".85"`,
+    summer: (x, y, j) => `<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="1.6" ry="4" fill="${LEAF[j % 3]}"`,
+  }[season];
+  let falling = '';
+  const nFall = { autumn: 16, winter: 30, spring: 12, summer: 0 }[season];
+  for (let j = 0; j < nFall; j++) {
+    const x = -200 + rnd() * 760, y = -120 + rnd() * 80;
+    falling += `${fall(x, y, j)} style="animation-duration:${(7 + rnd() * 5).toFixed(1)}s;animation-delay:-${(rnd() * 11).toFixed(1)}s"/>`;
+  }
+  let afloat = '';
+  if (season === 'autumn') for (let j = 0; j < 8; j++) afloat += `${fall(-60 + rnd() * 140 + (j > 4 ? 330 : 0), 318 + rnd() * 60, j)} style="animation-delay:-${(rnd() * 6).toFixed(1)}s"/>`;
+
+  // світлячки — літнього вечора й уночі; ореол — градієнтом, без CSS-фільтрів (фільтр гальмує слабкі телефони)
+  let fireflies = '';
+  if (season === 'summer' && dusk) {
+    for (let j = 0; j < 14; j++) {
+      const x = f1(-20 + rnd() * 400), y = f1(250 + rnd() * 160);
+      fireflies += `<g style="animation-delay:-${(rnd() * 3).toFixed(2)}s;animation-duration:${(2 + rnd() * 2).toFixed(1)}s"><circle cx="${x}" cy="${y}" r="5" fill="url(#fc-ffglow)"/><circle cx="${x}" cy="${y}" r="1.5"/></g>`;
+    }
+  }
+
+  // крихти від розламу
+  let crumbs = '';
+  for (let j = 0; j < 16; j++) {
+    const a = -Math.PI / 2 + (rnd() - 0.5) * 3.6, r = 30 + rnd() * 60;
+    crumbs += `<circle cx="180" cy="360" r="${f1(1.2 + rnd() * 2)}" style="--dx:${f1(Math.cos(a) * r)}px;--dy:${f1(Math.sin(a) * r)}px;animation-delay:${(0.1 + rnd() * 0.08).toFixed(2)}s"/>`;
+  }
+  // бризки там, де риба виринає (FX0) і пірнає (FX1)
+  const FX0 = [300, 362], FX1 = [228, 362];
+  const drops = (cx, cy, at, seed) => {
+    const r = seeded(seed);
+    let s = '';
+    for (let j = 0; j < 10; j++) {
+      const a = -Math.PI / 2 + (r() - 0.5) * 2.4, d = 16 + r() * 26;
+      s += `<circle cx="${cx}" cy="${cy}" r="${f1(1 + r() * 1.4)}" style="--dx:${f1(Math.cos(a) * d)}px;--dy:${f1(Math.sin(a) * d)}px;animation-delay:${(at + r() * 0.06).toFixed(2)}s"/>`;
+    }
+    return s;
+  };
+  const splash = (cx, cy, at) => `<g transform="translate(${cx} ${cy})"><ellipse rx="12" ry="2.8" style="animation-delay:${at}s"/><ellipse rx="12" ry="2.8" style="animation-delay:${f1(at + 0.25)}s"/></g>`;
+
+  // записка: передбачення, щасливі числа дрібно внизу
+  const lines = fortuneLines(fortuneText(p));
+  const slipH = 16 + lines.length * 13 + 20, top = -slipH / 2;
+  const slipText = lines.map((l, k) => `<text y="${f1(top + 17 + k * 13)}">${esc(l)}</text>`).join('');
+  let twinkles = '';
+  for (let j = 0; j < 6; j++) {
+    const a = (j / 6 + 1 / 12) * 2 * Math.PI;
+    twinkles += `<path d="${star(Math.cos(a) * 104, Math.sin(a) * (slipH / 2 + 12), 4, 1.4)}" style="animation-delay:-${(j * 0.27).toFixed(2)}s"/>`;
+  }
+  const rays = gold ? `<g class="fc-rays-in"><g class="fc-rays" fill="url(#fc-ray)">${
+    Array.from({ length: 18 }, (_, k) => `<path d="M177 362L169 172H191L183 362Z" transform="rotate(${k * 20} 180 362)"/>`).join('')}</g></g>` : '';
+
+  // Кладка: дошки вздовж, сходяться до дальнього краю (128…232 на y 392)
+  const PIER = { y: 392, l: 128, r: 232, ny: 1100, nl: -150, nr: 510 };
+  const edgeX = (y, side) => (side < 0 ? PIER.l - (y - PIER.y) * ((PIER.l - PIER.nl) / (PIER.ny - PIER.y)) : PIER.r + (y - PIER.y) * ((PIER.nr - PIER.r) / (PIER.ny - PIER.y)));
+  // дошка k: смуга між швами k і k+1; відтінки чергуються, щоб настил не був одним шматком
+  const plankX = (k, far) => (far ? PIER.l + (k * (PIER.r - PIER.l)) / 8 : PIER.nl + (k * (PIER.nr - PIER.nl)) / 8);
+  let planks = '';
+  for (let k = 0; k < 8; k++) {
+    planks += `<path d="M${f1(plankX(k, true))} ${PIER.y}H${f1(plankX(k + 1, true))}L${f1(plankX(k + 1, false))} ${PIER.ny}H${f1(plankX(k, false))}Z" fill="${['#fff', '#000'][k % 2]}" opacity="${[0.06, 0.07, 0.03, 0.1, 0.05, 0.08, 0.02, 0.09][k]}"/>`;
+  }
+  // палі під кладкою: видно знизу між настилом і водою; з брижами біля води
+  const pile = (y, side) => {
+    const x = edgeX(y, side) + side * -6, w = 5 + (y - PIER.y) * 0.03, h = 10 + (y - PIER.y) * 0.08;
+    return `<rect x="${f1(x - w / 2)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}" fill="${wood[1]}"/><path d="M${f1(x - w)} ${f1(y + h)}h${f1(w * 2)}" stroke="#fff" stroke-width="1" opacity=".35"/>`;
+  };
+  const piles = () => [420, 470, 560, 700, 900].map((y) => pile(y, -1) + pile(y, 1)).join('');
+  let seams = '';
+  for (let k = 1; k < 8; k++) seams += `<path d="M${f1(PIER.l + (k * (PIER.r - PIER.l)) / 8)} ${PIER.y}L${f1(PIER.nl + (k * (PIER.nr - PIER.nl)) / 8)} ${PIER.ny}"/>`;
+  let nails = '';
+  for (const y of [430, 520, 640]) for (let k = 0; k <= 8; k++) {
+    const x = edgeX(y, -1) + (k * (edgeX(y, 1) - edgeX(y, -1))) / 8;
+    nails += `<circle cx="${f1(x + (k === 0 ? 4 : k === 8 ? -4 : 0))}" cy="${y}" r="${f1(0.6 + (y - 392) / 300)}"/>`;
+  }
+  const wood = night ? ['#5a4632', '#3e2f22'] : tod === 'evening' ? ['#9a6a48', '#5e3f2a'] : ['#b48a5e', '#7a5636'];
+
+  // вудилище на рогатці праворуч: від комля (232,660) до кінчика (318,262), волосінь до поплавка (300,352)
+  const B = [232, 660], T = [318, 262];
+  const rodPoly = (() => {
+    const dx = T[0] - B[0], dy = T[1] - B[1], len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len;
+    return `M${f1(B[0] + nx * 3.6)} ${f1(B[1] + ny * 3.6)}L${f1(T[0] + nx * 0.6)} ${f1(T[1] + ny * 0.6)}L${f1(T[0] - nx * 0.6)} ${f1(T[1] - ny * 0.6)}L${f1(B[0] - nx * 3.6)} ${f1(B[1] - ny * 3.6)}Z`;
+  })();
+  const along = (k) => [B[0] + (T[0] - B[0]) * k, B[1] + (T[1] - B[1]) * k];
+  const [rx, ry] = along(0.24), [hx, hy] = along(0.42);
+
+  const layer = (cls) => `<svg class="fc-layer ${cls}" viewBox="0 0 360 640" preserveAspectRatio="xMidYMid meet" aria-hidden="true">`;
+  return `
+${layer('fc-back')}
+  <defs>
+    <linearGradient id="fc-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${pal.sky[0]}"/><stop offset=".65" stop-color="${pal.sky[1]}"/><stop offset="1" stop-color="${pal.sky[2]}"/></linearGradient>
+    <linearGradient id="fc-water" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="760"><stop offset="0" stop-color="${pal.water[0]}"/><stop offset=".35" stop-color="${pal.water[1]}"/><stop offset="1" stop-color="${pal.water[2]}"/></linearGradient>
+    <radialGradient id="fc-sunglow"><stop offset=".3" stop-color="${sunC}" stop-opacity=".6"/><stop offset="1" stop-color="${sunC}" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="-1400" y="-700" width="3160" height="1002" fill="url(#fc-sky)"/>
+  <g fill="#fff6dc">${stars}</g>
+  <circle cx="${sunX}" cy="${sunY}" r="${sunR * 3}" fill="url(#fc-sunglow)"/>
+  <circle cx="${sunX}" cy="${sunY}" r="${sunR}" fill="${sunC}"/>${night ? `<circle cx="${sunX - 5}" cy="${sunY - 4}" r="3.6" fill="#ddd3b0"/><circle cx="${sunX + 5}" cy="${sunY + 5}" r="2.4" fill="#ddd3b0"/>` : ''}
+  <path d="${hillsD}" fill="${pal.hills}" opacity=".7"/>
+  <g fill="${pal.hills}">${farForest}</g>
+  <g fill="${pal.forest}">${forest}</g>
+  ${season === 'winter' ? `<path d="${hillsD}" fill="#f4f7fb" opacity=".35"/>` : ''}
+  <rect x="-1400" y="300" width="3160" height="900" fill="url(#fc-water)"/>
+  <g fill="${pal.forest}" opacity=".32" transform="translate(0 602) scale(1 -1)">${forest}</g>
+  <g stroke="${night ? '#6a7ab0' : '#ffffff'}" stroke-width="1" stroke-linecap="round" opacity="${night ? 0.25 : 0.22}">${ripples}</g>
+  ${season === 'winter' ? '<path d="M-1400 300H1760V306Q900 312 0 305T-1400 308Z" fill="#e8eef6" opacity=".8"/>' : ''}
+</svg>
+${layer('fc-water-fx')}
+  <defs><radialGradient id="fc-ffglow"><stop offset=".3" stop-color="#fff38a" stop-opacity=".8"/><stop offset="1" stop-color="#fff38a" stop-opacity="0"/></radialGradient></defs>
+  <g class="fc-clouds">${clouds}</g>
+  ${gulls}
+  <g class="fc-glints" stroke="${night ? '#f3ecd0' : tod === 'evening' ? '#ffc08a' : '#fffaf0'}" stroke-linecap="round" opacity=".6">${glints}</g>
+  <g class="fc-rings" fill="none" stroke="${night ? '#9fb0de' : '#f4f8fb'}" stroke-width="1">${rings}</g>
+  ${tod === 'morning' ? '<g class="fc-mist" fill="#fff" opacity=".55"><rect x="-1400" y="294" width="1700" height="9" rx="4.5"/><rect x="60" y="308" width="1700" height="7" rx="3.5"/><rect x="-1400" y="322" width="1620" height="6" rx="3"/></g>' : ''}
+  <g class="fc-boat" transform="translate(40 303)"><path d="M-16 0Q0 5 18 0L15-3Q0 1-13-3Z" fill="${pal.forest}"/><circle cx="2" cy="-9" r="2.6" fill="${pal.forest}"/><path d="M0-7v5h5v-5z" fill="${pal.forest}"/><path d="M4-6L26-30" stroke="${pal.forest}" stroke-width=".9"/></g>
+  ${lilies}
+  ${afloat ? `<g class="fc-afloat">${afloat}</g>` : ''}
+  <g class="fc-reeds fc-reeds-l">${reedsL}</g>
+  <g class="fc-reeds fc-reeds-r">${reedsR}</g>
+  ${fireflies ? `<g class="fc-ff" fill="#fff7a0">${fireflies}</g>` : ''}
+</svg>
+${layer('fc-front')}
+  <defs>
+    <linearGradient id="fc-wood" gradientUnits="userSpaceOnUse" x1="0" y1="392" x2="0" y2="760"><stop offset="0" stop-color="${wood[0]}"/><stop offset="1" stop-color="${wood[1]}"/></linearGradient>
+    <linearGradient id="fc-ckl" x1="0" y1="0" x2=".5" y2="1">${gold ? '<stop offset="0" stop-color="#fff4b8"/><stop offset=".55" stop-color="#f3c93e"/><stop offset="1" stop-color="#c4921a"/>' : '<stop offset="0" stop-color="#fcdc96"/><stop offset=".55" stop-color="#eaad50"/><stop offset="1" stop-color="#c88430"/>'}</linearGradient>
+    <linearGradient id="fc-ckr" x1="1" y1="0" x2=".5" y2="1">${gold ? '<stop offset="0" stop-color="#fbe07a"/><stop offset=".55" stop-color="#dcac28"/><stop offset="1" stop-color="#a57a0e"/>' : '<stop offset="0" stop-color="#f0bf68"/><stop offset=".55" stop-color="#d4943c"/><stop offset="1" stop-color="#ad6e24"/>'}</linearGradient>
+    <linearGradient id="fc-ckm" x1="0" y1="0" x2="0" y2="1">${gold ? '<stop offset="0" stop-color="#c9961a"/><stop offset="1" stop-color="#7f5c08"/>' : '<stop offset="0" stop-color="#c47f2c"/><stop offset="1" stop-color="#8c5418"/>'}</linearGradient>
+    <linearGradient id="fc-fish" x1="0" y1="0" x2="0" y2="1">${gold ? '<stop offset="0" stop-color="#ffe680"/><stop offset=".5" stop-color="#f5b82a"/><stop offset="1" stop-color="#d98a10"/>' : '<stop offset="0" stop-color="#7d93a3"/><stop offset=".45" stop-color="#dfe8ee"/><stop offset="1" stop-color="#f6f8f9"/>'}</linearGradient>
+    <linearGradient id="fc-ray" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#fff3b8" stop-opacity=".85"/><stop offset=".6" stop-color="#ffe27a" stop-opacity=".2"/><stop offset="1" stop-color="#ffe27a" stop-opacity="0"/></linearGradient>
+    <radialGradient id="fc-gglow"><stop offset="0" stop-color="#ffe27a"/><stop offset="1" stop-color="#ffe27a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="fc-lamp"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".9"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
+    <clipPath id="fc-l"><rect x="0" y="300" width="180" height="100"/></clipPath>
+    <clipPath id="fc-r"><rect x="180" y="300" width="180" height="100"/></clipPath>
+    <clipPath id="fc-above"><rect x="-1400" y="-700" width="3160" height="1065"/></clipPath>
+  </defs>
+  <g class="fc-splash" fill="none" stroke="${night ? '#c9d4f2' : '#ffffff'}" stroke-width="1.3">${splash(...FX0, 0.36)}${splash(...FX1, 1.22)}</g>
+  <g class="fc-drops" fill="${night ? '#c9d4f2' : '#ffffff'}">${drops(...FX0, 0.36, 21)}${drops(...FX1, 1.22, 22)}</g>
+  <g clip-path="url(#fc-above)"><g class="fc-fish">${FISH(gold)}</g></g>
+  ${gold ? `<g class="fc-fish-sparks" fill="#fff3b0">${[0, 1, 2, 3, 4, 5].map((k) => `<path d="${star(236 + k * 13, 288 + (k % 2) * 16, 3.6, 1.2)}" style="animation-delay:${(0.75 + k * 0.06).toFixed(2)}s"/>`).join('')}</g>` : ''}
+  <path d="M${PIER.l - 2} ${PIER.y + 4}L${PIER.nl - 60} ${PIER.ny}H${PIER.nl + 40}L${PIER.l + 6} ${PIER.y + 2}Z" fill="#0b1626" opacity=".18"/>
+  <path d="M${PIER.r + 2} ${PIER.y + 4}L${PIER.nr + 60} ${PIER.ny}H${PIER.nr - 40}L${PIER.r - 6} ${PIER.y + 2}Z" fill="#0b1626" opacity=".18"/>
+  ${piles()}
+  <path d="M${PIER.l} ${PIER.y}L${PIER.nl} ${PIER.ny}V${PIER.ny + 40}L${PIER.l} ${PIER.y + 3}Z" fill="${wood[1]}"/>
+  <path d="M${PIER.r} ${PIER.y}L${PIER.nr} ${PIER.ny}V${PIER.ny + 40}L${PIER.r} ${PIER.y + 3}Z" fill="${wood[1]}"/>
+  <path d="M${PIER.l} ${PIER.y}H${PIER.r}L${PIER.nr} ${PIER.ny}H${PIER.nl}Z" fill="url(#fc-wood)"/>
+  ${planks}
+  <g stroke="${wood[1]}" stroke-width="1.4" opacity=".7">${seams}</g>
+  <g fill="#2a1d14" opacity=".55">${nails}</g>
+  <path d="M${PIER.l} ${PIER.y}H${PIER.r}" stroke="${wood[1]}" stroke-width="2"/>
+  <rect x="${PIER.l - 5}" y="374" width="7" height="22" rx="1.5" fill="${wood[1]}"/><rect x="${PIER.r - 2}" y="374" width="7" height="22" rx="1.5" fill="${wood[1]}"/>
+  ${season === 'winter' ? `<path d="M${PIER.l} ${PIER.y}H${PIER.r}L${PIER.nr} ${PIER.ny}H${PIER.nl}Z" fill="#f4f7fb" opacity=".35"/><path d="M${PIER.l - 6} 374h9v-2.5h-9zM${PIER.r - 3} 374h9v-2.5h-9z" fill="#f4f7fb"/>` : ''}
+  ${pal.shade ? `<rect x="-1400" y="-700" width="3160" height="1800" fill="#0b1230" opacity="${pal.shade}"/>` : ''}
+  <g class="fc-rod">
+    <path d="M${T[0]} ${T[1]}Q312 300 300 348" stroke="${night ? '#c9d4f2' : '#fbfbf6'}" stroke-width=".8" fill="none" opacity=".75"/>
+    <path d="M${f1(hx)} ${f1(hy + 2)}V${f1(hy + 40)}M${f1(hx)} ${f1(hy + 2)}l-6-8M${f1(hx)} ${f1(hy + 2)}l6-6" stroke="#4a3622" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+    <path d="${rodPoly}" fill="#1f2a30"/>
+    <path d="M${f1(B[0])} ${f1(B[1])}L${f1(along(0.2)[0])} ${f1(along(0.2)[1])}" stroke="#c49a6c" stroke-width="7" stroke-linecap="round"/>
+    <path d="M${f1(B[0])} ${f1(B[1])}L${f1(along(0.2)[0])} ${f1(along(0.2)[1])}" stroke="#e0bd8e" stroke-width="2" stroke-linecap="round" opacity=".6" transform="translate(-1.5 0)"/>
+    ${[0.42, 0.56, 0.68, 0.78, 0.86, 0.93].map((k, i) => { const [x, y] = along(k); return `<circle cx="${f1(x - 2.5)}" cy="${f1(y + 0.5)}" r="${f1(2.6 - i * 0.3)}" fill="none" stroke="#9aa6ad" stroke-width=".9"/>`; }).join('')}
+    <path d="M${f1(T[0])} ${f1(T[1])}L${f1(along(0.86)[0])} ${f1(along(0.86)[1])}" stroke="#d94a2a" stroke-width="1.6" stroke-linecap="round"/>
+    <g transform="translate(${f1(rx + 8)} ${f1(ry)})"><circle r="9" fill="#2c3a44"/><circle r="6" fill="#56707f"/><circle r="2" fill="#c9d3d8"/><path d="M0 0l11 6" stroke="#2c3a44" stroke-width="2.4" stroke-linecap="round"/><circle cx="11" cy="6" r="2.4" fill="#d94a2a"/></g>
+  </g>
+  <g class="fc-float"><g class="fc-bob"><g transform="translate(300 352)">
+    <ellipse cy="3" rx="7" ry="1.6" fill="none" stroke="${night ? '#9fb0de' : '#ffffff'}" stroke-width=".8" opacity=".7"/>
+    <path d="M0-14v-6" stroke="#2a2a2a" stroke-width="1.2"/>
+    <path d="M0-14Q4-8 3.4 0Q0 4-3.4 0Q-4-8 0-14Z" fill="#e8442c"/><path d="M-3.4 0Q0 4 3.4 0L3 1.6Q0 5-3 1.6Z" fill="#fbfbf6"/>
+    ${dusk ? '<circle cy="-21" r="2" fill="#bfff6a"/><circle cy="-21" r="6" fill="#bfff6a" opacity=".25"/>' : ''}
+  </g></g></g>
+  ${dusk ? '<ellipse cx="94" cy="540" rx="60" ry="14" fill="url(#fc-lamp)" opacity=".7"/><circle cx="94" cy="508" r="34" fill="url(#fc-lamp)" opacity=".55"/><g transform="translate(94 512)"><rect x="-7" y="-2" width="14" height="22" rx="2" fill="#ffd27a" opacity=".9"/><path d="M-9-4h18v4h-18zM-9 20h18v4h-18zM-5-10q5-6 10 0" fill="none" stroke="#2a2a2a" stroke-width="2"/><path d="M-9-4h18v3h-18zM-9 20h18v3h-18z" fill="#2a2a2a"/></g>' : ''}
+  <g transform="translate(110 436)"><path d="M0 0h15v18H0z" fill="#3a4c5c"/><path d="M0 0h15v3H0z" fill="#56707f"/><path d="M15 4q5 1 4 7q-1 4-4 4" fill="none" stroke="#3a4c5c" stroke-width="2"/>
+    <path class="fc-steam" d="M5-2q-3-5 0-10t0-10" stroke="#fff8ea" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".7"/>
+    <path class="fc-steam" d="M10-2q3-5 0-10t0-10" stroke="#fff8ea" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".7" style="animation-delay:-1.2s"/></g>
+  <g transform="translate(238 430)">
+    <path class="fc-worm" d="M8 0q-5-9 1-12q6-2 4 6" stroke="#d9817a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="8" cy="0" rx="9" ry="2.6" fill="#7d868e"/><path d="M-1 0v18q9 4 18 0V0q-9 4-18 0z" fill="#b8bec4"/><path d="M-1 6q9 4 18 0v6q-9 4-18 0z" fill="#3f7ab0"/>
+    <path d="M3 9.5l2.5 1.5 3-2 3 2" stroke="#fff" stroke-width="1" fill="none"/></g>
+  <ellipse cx="180" cy="411" rx="62" ry="5" fill="#1a120c" opacity=".35"/>
+  ${rays}
+  ${gold ? `<circle cx="180" cy="356" r="64" fill="url(#fc-gglow)" opacity=".7"/><g class="fc-gold" fill="#fff3b0">${[0, 1, 2, 3, 4, 5, 6, 7].map((k) => `<path d="${star(180 + Math.cos(k * 0.785) * 52, 356 + Math.sin(k * 0.785) * 34, 4, 1.4)}" style="animation-delay:-${(k * 0.2).toFixed(1)}s"/>`).join('')}</g>` : ''}
+  <path d="M128 380h104v29H128z" fill="#2f6f63"/><path d="M134 370h92l6 10H128z" fill="#3f8a7b"/>
+  <path d="M128 380h104" stroke="#6fb3a3" stroke-width="1.2"/><path d="M128 380v29" stroke="#3f8a7b" stroke-width="1.4"/><path d="M232 380v29" stroke="#1f4f46" stroke-width="1.4"/>
+  <path d="M232 386q7 0 7 6t-7 6" fill="none" stroke="#1f4f46" stroke-width="2.4"/><path d="M128 386q-7 0-7 6t7 6" fill="none" stroke="#25594f" stroke-width="2.4"/>
+  <path d="M128 392h104" stroke="#e8782a" stroke-width="3"/><path d="M128 380h104" stroke="#25594f" stroke-width="1"/>
+  <rect x="146" y="381" width="9" height="6" rx="1" fill="#c9d3d0"/><rect x="205" y="381" width="9" height="6" rx="1" fill="#c9d3d0"/>
+  ${season === 'winter' ? '<path d="M134 370h92l2 3H131z" fill="#f4f7fb"/>' : ''}
+  <path d="M140 371h80l4 5H136z" fill="#ece6d6"/><path d="M146 373h30M184 373h32" stroke="#b9b2a2" stroke-width=".8"/>
+  <g class="fc-cookie">
+    <g class="fc-ck-l"><g clip-path="url(#fc-l)">${COOKIE_ART}</g></g>
+    <g class="fc-ck-r"><g clip-path="url(#fc-r)">${COOKIE_ART}</g></g>
+    <path class="fc-crease" d="M180 370Q179 352 180 336" stroke="#7a4612" stroke-width="1" fill="none" opacity=".6"/>
+    <path class="fc-tip" d="M172 368.5l14-1.6 1 6.2-14 1.6z" fill="#fffdf5"/><path class="fc-tip" d="M172 368.5l14-1.6" stroke="#d9cdb2" stroke-width=".6"/>
+  </g>
+  <g class="fc-crumbs" fill="#d9a050">${crumbs}</g>
+  <g class="fc-fall">${falling}</g>
+  <g class="fc-hint"><g class="fc-hint-in">
+    <rect x="48" y="458" width="264" height="36" rx="18" fill="#1a120c" opacity=".78"/>
+    <text x="180" y="482" text-anchor="middle" font-family="system-ui, sans-serif" font-size="17" font-weight="700" fill="#fff6e0">${esc(t('Торкніться, щоб розламати'))}</text>
+  </g></g>
+  <g transform="translate(180 236)"><g class="fc-slip">
+    <g class="fc-twinkles" fill="#fff1c4">${twinkles}</g>
+    <rect x="-88" y="${f1(top)}" width="176" height="${f1(slipH)}" rx="2" fill="#fffdf5"${gold ? ' stroke="#d9a520" stroke-width="2"' : ''}/>
+    <path d="M-88 ${f1(top)}h176" stroke="#e8e0cc" stroke-width="1"/>
+    <g text-anchor="middle" font-family="system-ui, sans-serif" font-size="10.5" font-weight="700" fill="#2a3a44">${slipText}</g>
+    <path d="M-60 ${f1(top + slipH - 19)}h120" stroke="#e2dccb" stroke-width=".8"/>
+    <text y="${f1(top + slipH - 7)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="6.2" font-weight="700" fill="#2f6f63" letter-spacing=".03em">${esc(t('Щасливі числа').toUpperCase())}: <tspan fill="#2a3a44">${esc(lucky.join(' · '))}</tspan></text>
+  </g></g>
+</svg>`;
+}
+
+// ---------- показ ----------
+
+// Звук синтезується тут же, без файлів, і лише після дотику (раніше браузер і не дасть):
+// хрускіт печива, тихий «бульк» поплавка, сплеск риби; золоте — ще й дзвіночки
+export const SOUND_OFF = 'fishing-log:fortune-sound-off';
+let audio = null;
+
+function audioOut() {
+  try { if (localStorage.getItem(SOUND_OFF) === '1') return null; } catch { /* сховище недоступне — звук як за замовчуванням */ }
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  try {
+    audio ??= new Ctx();
+    if (audio.state === 'suspended') audio.resume();
+    const out = audio.createGain();
+    out.gain.value = 0.35;
+    out.connect(audio.destination);
+    return out;
+  } catch { return null; }
+}
+
+/** Шум крізь смуговий фільтр — хрускіт і бризки. */
+function noise(out, at, dur, freq, vol) {
+  const rate = audio.sampleRate, buf = audio.createBuffer(1, Math.ceil(rate * dur), rate), data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) ** 2;
+  const src = audio.createBufferSource(), filter = audio.createBiquadFilter(), g = audio.createGain();
+  src.buffer = buf;
+  filter.type = 'bandpass';
+  filter.frequency.value = freq;
+  filter.Q.value = 0.8;
+  g.gain.value = vol;
+  src.connect(filter).connect(g).connect(out);
+  src.start(at);
+}
+
+/** «Бульк»: синус, що швидко падає тоном, — так звучить крапля чи поплавок. */
+function plop(out, at, f0, f1, vol) {
+  const osc = audio.createOscillator(), g = audio.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(f0, at);
+  osc.frequency.exponentialRampToValueAtTime(f1, at + 0.12);
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(vol, at + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+  osc.connect(g).connect(out);
+  osc.start(at);
+  osc.stop(at + 0.2);
+}
+
+function bell(out, at, freq, vol) {
+  const osc = audio.createOscillator(), g = audio.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(vol, at + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + 1.2);
+  osc.connect(g).connect(out);
+  osc.start(at);
+  osc.stop(at + 1.3);
+}
+
+function crackFeedback(gold) {
+  navigator.vibrate?.(gold ? [18, 60, 14, 900, 30] : [20, 60, 14, 1000, 24]);
+  const out = audioOut();
+  if (!out) return;
+  try {
+    const t0 = audio.currentTime + 0.02;
+    noise(out, t0, 0.09, 2400, 0.9);
+    plop(out, t0 + 0.14, 700, 240, 0.35);
+    noise(out, t0 + 0.36, 0.25, 1500, 0.45);
+    noise(out, t0 + 1.22, 0.35, 900, 0.7);
+    plop(out, t0 + 1.24, 420, 120, 0.6);
+    if (gold) [1318.5, 1568, 1760, 2093].forEach((f, k) => bell(out, t0 + 0.7 + k * 0.11, f, 0.18));
+  } catch { /* без звуку — вібрації досить */ }
+}
+
+/** Програти печиво; params — для перегляду (?gold=1…), інакше випадкові. Повертає проміс закриття. */
+export function playFortune(params = {}) {
+  const p = { ...fortuneParams(), ...params };
+  const el = document.createElement('div');
+  el.className = 'scene scene-fortune';
+  const stage = document.createElement('div');
+  const button = (label, kind, onclick) => Object.assign(document.createElement('button'), { type: 'button', className: `btn ${kind}`, textContent: label, onclick });
+  const bar = document.createElement('div');
+  bar.className = 'scene-bar';
+  let resolve;
+  const done = new Promise((ok) => { resolve = ok; });
+  // «Ще одне» — нове печиво: інше передбачення, інша риба (золота — як випаде)
+  bar.append(button(t('Ще одне'), '', () => { Object.assign(p, fortuneParams(), params); play(); }),
+    button(t('Закрити'), 'primary', () => close()));
+  el.append(stage, bar);
+  const isFinite = (a) => a.effect?.getComputedTiming().endTime !== Infinity;
+  const finite = () => el.getAnimations({ subtree: true }).filter(isFinite);
+  let run = 0;
+  const play = () => {
+    const id = ++run;
+    el.classList.remove('done');
+    el.classList.add('wait');
+    stage.innerHTML = fortuneCookie(p);
+    const cap = document.createElement('p');
+    cap.className = 'scene-cap';
+    // заголовок видно; саме передбачення — на записці, а в підписі — для читача екрана
+    cap.append(...[t(p.gold ? 'Золоте печиво' : 'Печиво з передбаченням'), fortuneText(p)].map((line) => Object.assign(document.createElement('span'), { textContent: line })));
+    stage.append(cap);
+    // стоїть на паузі, доки людина сама не торкнеться — не мультик, а дія
+    stage.getAnimations({ subtree: true }).filter(isFinite).forEach((a) => a.pause());
+    Promise.all(finite().map((a) => a.finished)).then(() => {
+      if (id !== run) return;
+      el.classList.add('done');
+      bar.querySelector('.primary').focus({ preventScroll: true });
+    }, () => {});
+  };
+  const start = () => {
+    el.classList.remove('wait');
+    crackFeedback(p.gold);
+    stage.getAnimations({ subtree: true }).forEach((a) => a.play());
+  };
+  // перший дотик — розлам, наступний — одразу останній кадр; закривається лише кнопкою чи Esc
+  stage.addEventListener('pointerdown', () => (el.classList.contains('wait') ? start() : finite().forEach((a) => a.finish())));
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+    else if ((e.key === 'Enter' || e.key === ' ') && el.classList.contains('wait')) { e.preventDefault(); start(); }
+  };
+  const close = () => {
+    if (el.classList.contains('out')) return;
+    run++;
+    el.classList.add('out');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(() => { el.remove(); resolve(); }, 380);
+  };
+  document.addEventListener('keydown', onKey);
+  document.body.append(el);
+  play();
+  return done;
+}

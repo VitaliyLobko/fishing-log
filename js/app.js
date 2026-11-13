@@ -2178,6 +2178,83 @@ function recordsBox() {
         '', () => tripDetail(top.id)))] : null));
 }
 
+// ---------- печиво з передбаченням ----------
+
+// Печиво при запуску: приблизно раз на шість запусків, не частіше ніж раз на 4 години; вимикається в «Вигляді».
+// Модуль сценки (js/scenes.js) вантажиться лише тоді, коли печиво справді показуємо.
+const FORTUNE_OFF = 'fishing-log:fortune-off';
+const FORTUNE_AT = 'fishing-log:fortune-at';
+const FORTUNE_SOUND_OFF = 'fishing-log:fortune-sound-off'; // той самий ключ, що SOUND_OFF у scenes.js
+const fortuneOn = () => recall(FORTUNE_OFF) !== '1';
+
+/** Передбачення з власного журналу: давно не їздив, уловиста приманка, рекорд, мало приманок, коряга, котушка. */
+function myFortunes() {
+  const out = [];
+  const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+  const trips = [...state.trips].sort((a, b) => collate(b.date, a.date));
+  if (trips[0]) {
+    const days = Math.round((Date.parse(today()) - Date.parse(trips[0].date)) / 864e5);
+    if (days >= 14) out.push(t('Вудки сумують: {n} дн. без виїзду. Вода чекає', { n: fmt.num(days) }));
+  }
+  const baits = new Map();
+  for (const tr of state.trips) for (const c of tr.catches ?? []) {
+    const g = findGear(c.baitId);
+    if (g && active(g)) baits.set(g.id, (baits.get(g.id) ?? 0) + (num(c.n) || 1));
+  }
+  const [bestBait, caught] = [...baits].sort((a, b) => b[1] - a[1])[0] ?? [];
+  if (caught >= 3) out.push(t('Твоя найуловистіша — {name}. Не забудь її сьогодні', { name: gearTitle(findGear(bestBait)) }));
+  const low = state.gear.filter(isLow);
+  if (low.length) out.push(t('Запас «{name}» закінчується. Докупи, поки клює', { name: gearTitle(pickOne(low)) }));
+  const records = [...catchRecords()];
+  if (records.length) {
+    const [sp, { c }] = pickOne(records);
+    out.push(t('Твій рекорд — {sp}, {size}. Сьогодні він нервує', { sp: sp.toLowerCase(), size: fishSize(c) }));
+  }
+  const bySpot = new Map();
+  for (const x of lossEntries()) {
+    const sp = findSpot(findTrip(x.tripId)?.spotId);
+    if (sp) bySpot.set(sp.name, (bySpot.get(sp.name) ?? 0) + x.n);
+  }
+  const [snagSpot, lost] = [...bySpot].sort((a, b) => b[1] - a[1])[0] ?? [];
+  if (lost >= 3) out.push(t('На «{spot}» коряга забрала вже {n} шт. Сьогодні вона відпочиває', { spot: snagSpot, n: fmt.num(lost) }));
+  const good = state.spots.map((s) => ({ s, trips: spotTrips(s.id) })).filter((x) => x.trips.length >= 3)
+    .map((x) => ({ ...x, rate: x.trips.reduce((n, tr) => n + tripCatch(tr), 0) / x.trips.length })).sort((a, b) => b.rate - a.rate)[0];
+  if (good?.rate >= 1) out.push(t('Найкраще клює на «{spot}». Туди й їдь', { spot: good.s.name }));
+  const reel = state.gear.find((g) => groupOf(g) === 'reels' && serviceDue(g));
+  if (reel) out.push(t('Котушка {name} просить мастила. Кажуть, після цього краще клює', { name: gearTitle(reel) }));
+  return out;
+}
+
+function playFortune(params) {
+  return import('./scenes.js').then((m) => {
+    m.setFortuneSource(myFortunes);
+    return m.playFortune(params);
+  }).catch((err) => toast(err.message));
+}
+
+/** При запуску: ?scene=fortune — показати одразу (перегляд); інакше — випадково, якщо ввімкнено. */
+function fortuneOnStart(newsDue) {
+  const q = new URLSearchParams(location.search);
+  if (q.get('scene') === 'fortune') { playFortune(); return; }
+  if (newsDue || !fortuneOn() || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!state.gear.length && !state.trips.length) return;
+  if (Date.now() - Number(recall(FORTUNE_AT) || 0) < 4 * 3600e3 || Math.random() >= 1 / 6) return;
+  remember(FORTUNE_AT, String(Date.now()));
+  setTimeout(() => playFortune(), 500);
+}
+
+function fortuneRow() {
+  const sound = recall(FORTUNE_SOUND_OFF) !== '1';
+  const row = chips([['on', t('Показувати')], ['off', t('Не показувати')]], fortuneOn() ? 'on' : 'off', (v) => { remember(FORTUNE_OFF, v === 'off' ? '1' : ''); render(); });
+  row.classList.add('segmented');
+  const snd = chips([['on', t('Зі звуком')], ['off', t('Без звуку')]], sound ? 'on' : 'off', (v) => { remember(FORTUNE_SOUND_OFF, v === 'off' ? '1' : ''); render(); });
+  snd.classList.add('segmented');
+  const value = fortuneOn() ? [t('інколи при запуску'), sound ? null : t('без звуку')].filter(Boolean).join(' · ') : t('вимкнено');
+  return setRow('fortune', 'fish', t('Печиво з передбаченням'), value, [
+    h('p', { class: 'muted small' }, t('Інколи при запуску — печиво на рибальському ящику: торкніться, і воно розламається.')),
+    row, snd, h('div', { class: 'btn-row' }, btn(t('Розламати зараз'), () => playFortune(), 'primary'))]);
+}
+
 // ---------- наклейки з QR ----------
 
 /** Адреса місця для QR: камера телефона відкриє застосунок одразу на цьому місці. */
@@ -2890,7 +2967,7 @@ function renderSettings() {
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [placesRow(), catsRow(), serviceRow()]),
-    settingsGroup(t('Вигляд'), [themeRow(), backdropRow()]));
+    settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow()]));
 }
 
 // ---------- навігація ----------
@@ -3043,7 +3120,9 @@ try {
 }
 route();
 runShortcut();
+const newsDue = Boolean(recall(SEEN_KEY)) && newer(self.APP_VERSION, recall(SEEN_KEY));
 showNews();
+fortuneOnStart(newsDue);
 setTimeout(backupReminder, 1500);
 sync.onStatus(renderSyncChip);
 sync.preload();

@@ -480,13 +480,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: transparent; font-weight: 650; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 400px) { .chips.segmented button { font-size: 14px; padding: 6px 4px; } }
-/* Перемикач напрямку зі значками: значок і підпис рядком; на вузькому екрані — значок над підписом */
-.dir-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.dir-switch button > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dir-switch .ico { display: inline-flex; flex: none; }
-.dir-switch .ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.dir-switch button.on .ico { color: var(--accent); }
-@media (max-width: 400px) { .dir-switch button { flex-direction: column; gap: 2px; min-height: 52px; font-size: 13px; } }
+/* Перемикач напрямку — як розділи в Shooter's Log: значок над дрібним підписом, вибраний — помаранчевою заливкою */
+.chips.segmented.dir-switch { gap: 2px; padding: 3px; border-radius: 18px; }
+.chips.segmented.dir-switch button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 0; height: 54px; padding: 5px 0;
+  border-radius: 14px; transition: background .15s, color .15s; }
+.chips.segmented.dir-switch button > span:last-child { display: block; max-width: 100%; font-size: 12px; font-weight: 550; line-height: 1.2; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chips.segmented.dir-switch button.on { background: var(--fill); color: var(--on-fill); box-shadow: none; }
+.chips.segmented.dir-switch button.on > span:last-child { font-weight: 750; }
+.chips.segmented.dir-switch .ico { display: grid; }
+.chips.segmented.dir-switch .ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .chips.segmented button.on { background: var(--seg-on); color: var(--text); box-shadow: 0 1px 4px rgb(0 0 0 / .25); }
 .panel .chips.segmented { margin-bottom: 0; }
 
@@ -1071,3 +1074,112 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .bar-track { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .bar-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
 .bar-num { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ---------- Печиво з передбаченням (js/scenes.js) ---------- */
+.scene { position: fixed; inset: 0; z-index: 1300; background: #1a2a3a; animation: fc-fade .3s ease-out both; overflow: hidden; touch-action: manipulation; }
+.scene svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.scene.out { opacity: 0; transition: opacity .35s ease; }
+@keyframes fc-fade { from { opacity: 0; } }
+/* «Ще одне» / «Закрити» — коли все відіграло */
+.scene-bar { position: absolute; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 12px;
+  opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity .3s ease, transform .3s ease, visibility 0s .3s; }
+.scene.done .scene-bar { opacity: 1; visibility: visible; transform: none; transition: opacity .3s ease, transform .3s ease; }
+.scene-bar .btn { min-width: 132px; min-height: 48px; }
+/* підпис над кнопками; передбачення — на записці, у підписі лише заголовок (текст — для читача екрана) */
+.scene-cap { position: absolute; left: 16px; right: 16px; bottom: calc(max(13%, 96px) + env(safe-area-inset-bottom)); margin: 0; text-align: center;
+  font: 700 15px/1.2 system-ui, sans-serif; letter-spacing: .06em; color: #ffe2b0; text-shadow: 0 1px 3px rgb(20 12 6 / .9), 0 0 12px rgb(20 12 6 / .5);
+  animation: fc-cap .6s ease-out 1.8s both; text-wrap: balance; }
+.scene-cap span { display: block; }
+.scene-cap span + span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@keyframes fc-cap { from { opacity: 0; transform: translateY(10px); } }
+@media (max-height: 560px) { .scene-cap { bottom: calc(max(9%, 84px) + env(safe-area-inset-bottom)); } }
+
+/* очікування дотику: печиво похитується, підказка блимає */
+.scene-fortune.wait .fc-cookie { transform-box: view-box; transform-origin: 180px 372px; animation: fc-wobble 1.6s ease-in-out infinite; }
+@keyframes fc-wobble { 0%, 55%, 100% { transform: none; } 66% { transform: rotate(-6deg); } 78% { transform: rotate(5deg); } 89% { transform: rotate(-2deg); } }
+.scene-fortune .fc-hint { opacity: 0; transition: opacity .2s ease; }
+.scene-fortune.wait .fc-hint { opacity: 1; }
+.scene-fortune.wait .fc-hint-in { animation: fc-hint 1.6s ease-in-out infinite; }
+@keyframes fc-hint { 50% { opacity: .6; } }
+
+/* розлам: половинки надламуються, підлітають і лягають на ящик; крихти; записка піднімається */
+.scene-fortune .fc-ck-l { transform-box: view-box; transform-origin: 180px 372px; animation: fc-ckl 1.7s cubic-bezier(.4, 0, .6, 1) .1s both; }
+@keyframes fc-ckl {
+  12% { transform: translate(-3px, 1px) rotate(-4deg); animation-timing-function: cubic-bezier(.25, .6, .35, 1); }
+  42% { transform: translate(-38px, -42px) rotate(-36deg); animation-timing-function: cubic-bezier(.45, 0, .4, 1); }
+  86% { transform: translate(-17px, 4px) rotate(-21deg); animation-timing-function: ease-out; }
+  100% { transform: translate(-17px, 3px) rotate(-20deg); }
+}
+.scene-fortune .fc-ck-r { transform-box: view-box; transform-origin: 180px 372px; animation: fc-ckr 1.7s cubic-bezier(.4, 0, .6, 1) .1s both; }
+@keyframes fc-ckr {
+  12% { transform: translate(3px, 1px) rotate(4deg); animation-timing-function: cubic-bezier(.25, .6, .35, 1); }
+  42% { transform: translate(40px, -38px) rotate(36deg); animation-timing-function: cubic-bezier(.45, 0, .4, 1); }
+  86% { transform: translate(17px, 4px) rotate(21deg); animation-timing-function: ease-out; }
+  100% { transform: translate(17px, 3px) rotate(20deg); }
+}
+.scene-fortune :is(.fc-crease, .fc-tip) { animation: fc-hide .25s ease-out .12s both; }
+@keyframes fc-hide { to { opacity: 0; } }
+.scene-fortune :is(.fc-crumbs, .fc-drops) circle { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-spark .9s cubic-bezier(.15, .7, .3, 1) both; }
+@keyframes fc-spark { 0% { transform: translate(0, 0) scale(.5); opacity: 0; } 6% { opacity: 1; } 60% { opacity: .9; } 100% { transform: translate(var(--dx), calc(var(--dy) + 30px)) scale(.4); opacity: 0; } }
+.scene-fortune .fc-slip { opacity: 0; animation: fc-slip 1.2s cubic-bezier(.25, 1.12, .5, 1) .85s both; }
+@keyframes fc-slip { 0% { transform: translateY(130px) scale(.12, .2) rotate(-8deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: scale(1.5) rotate(-3deg); opacity: 1; } }
+.scene-fortune .fc-twinkles path { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-twinkle 1.6s ease-in-out 1.7s infinite; }
+@keyframes fc-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* клювання: поплавок пірнає, вудилище киває, з води вистрибує риба — бризки там, де вийшла й де пірнула */
+.scene-fortune .fc-bob { animation: fc-bob 2.6s ease-in-out infinite; }
+@keyframes fc-bob { 50% { transform: translateY(1.6px); } }
+.scene-fortune .fc-float { animation: fc-dive 1.9s ease-in-out .12s both; }
+@keyframes fc-dive { 8% { transform: translateY(3px); } 16%, 66% { transform: translateY(15px); opacity: .12; } 82% { transform: translateY(-2px); opacity: 1; } 100% { transform: none; } }
+.scene-fortune .fc-rod { transform-box: view-box; transform-origin: 232px 660px; animation: fc-nod 1.6s ease-in-out .14s both; }
+@keyframes fc-nod { 18% { transform: rotate(-1.4deg); } 40% { transform: rotate(.4deg); } 60% { transform: rotate(-.3deg); } 100% { transform: none; } }
+.scene-fortune .fc-fish { opacity: 0; transform-box: view-box; transform-origin: 0 0; animation: fc-jump .9s linear .36s both; }
+@keyframes fc-jump {
+  0% { transform: translate(300px, 372px) rotate(62deg); opacity: 0; }
+  8% { opacity: 1; }
+  25% { transform: translate(284px, 314px) rotate(34deg); }
+  50% { transform: translate(266px, 290px) rotate(0deg); }
+  75% { transform: translate(248px, 312px) rotate(-34deg); }
+  94% { opacity: 1; }
+  100% { transform: translate(228px, 372px) rotate(-64deg); opacity: 0; }
+}
+.scene-fortune .fc-splash ellipse { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-ring 1s ease-out both; }
+@keyframes fc-ring { 0% { transform: scale(.2); opacity: 0; } 8% { opacity: .95; } 100% { transform: scale(2.2); opacity: 0; } }
+.scene-fortune .fc-fish-sparks path { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-sparkle .9s ease-out both; }
+@keyframes fc-sparkle { 0% { transform: scale(.2); opacity: 0; } 30% { transform: scale(1.3); opacity: 1; } 100% { transform: scale(.6) translateY(-10px); opacity: 0; } }
+
+/* жива природа: очерет гойдається, листя чи сніг падає, туман, кола на воді, човен, пара з чашки */
+.scene-fortune .fc-reeds-l { transform-box: view-box; transform-origin: 0 470px; animation: fc-sway 4.2s ease-in-out infinite alternate; }
+.scene-fortune .fc-reeds-r { transform-box: view-box; transform-origin: 0 476px; animation: fc-sway 3.6s ease-in-out -1.4s infinite alternate-reverse; }
+@keyframes fc-sway { from { transform: skewX(-2.2deg); } to { transform: skewX(2.2deg); } }
+.scene-fortune .fc-fall > * { animation: fc-fall linear infinite; }
+@keyframes fc-fall { to { transform: translate(110px, 720px) rotate(400deg); } }
+.scene-fortune .fc-afloat > * { animation: fc-drift 6s ease-in-out infinite alternate; }
+@keyframes fc-drift { to { transform: translate(10px, 1.5px); } }
+.scene-fortune .fc-mist { animation: fc-drift 9s ease-in-out infinite alternate-reverse; }
+.scene-fortune .fc-glints path { animation: fc-glint 1.6s ease-in-out infinite alternate; }
+@keyframes fc-glint { from { opacity: .2; } to { opacity: 1; } }
+.scene-fortune .fc-rings ellipse { opacity: 0; transform-box: fill-box; transform-origin: center; animation: fc-koi 7s ease-out infinite; }
+@keyframes fc-koi { 0% { transform: scale(.15); opacity: 0; } 3% { opacity: .8; } 30%, 100% { transform: scale(1.6); opacity: 0; } }
+.scene-fortune .fc-boat { animation: fc-row 8s ease-in-out infinite alternate; }
+@keyframes fc-row { to { transform: translate(64px, 303px); } }
+.scene-fortune .fc-clouds { animation: fc-clouds 50s ease-in-out infinite alternate; }
+@keyframes fc-clouds { to { transform: translateX(40px); } }
+.scene-fortune .fc-gulls { animation: fc-gulls 26s linear infinite; }
+@keyframes fc-gulls { from { transform: translate(-80px, 30px); } to { transform: translate(480px, -50px); } }
+.scene-fortune .fc-wing { transform-box: fill-box; transform-origin: 50% 100%; animation: fc-flap .8s ease-in-out infinite alternate; }
+@keyframes fc-flap { to { transform: scaleY(-.5); } }
+.scene-fortune .fc-steam { opacity: 0; animation: fc-steam 2.4s ease-out infinite; }
+@keyframes fc-steam { 20% { opacity: .7; } 100% { transform: translateY(-14px); opacity: 0; } }
+.scene-fortune .fc-worm { transform-box: fill-box; transform-origin: 50% 100%; animation: fc-worm 1.4s ease-in-out infinite alternate; }
+@keyframes fc-worm { to { transform: rotate(14deg); } }
+.scene-fortune .fc-ff > g { opacity: 0; animation: fc-ff ease-in-out infinite; }
+@keyframes fc-ff { 0%, 100% { opacity: 0; } 50% { opacity: 1; transform: translate(6px, -8px); } }
+.scene-fortune .fc-gold path { transform-box: fill-box; transform-origin: center; animation: fc-twinkle 1.6s ease-in-out infinite; }
+.scene-fortune .fc-rays { transform-box: view-box; transform-origin: 180px 362px; animation: fc-spin 60s linear infinite; }
+@keyframes fc-spin { to { transform: rotate(360deg); } }
+.scene-fortune .fc-rays-in { transform-box: view-box; transform-origin: 180px 362px; animation: fc-flare 1.6s ease-out .1s both; }
+@keyframes fc-flare { 0% { transform: scale(.75); opacity: .55; } 30% { transform: scale(1.25); opacity: 1; } 100% { transform: none; opacity: .85; } }
+@media (prefers-reduced-motion: reduce) {
+  .scene-fortune :is(.fc-reeds-l, .fc-reeds-r, .fc-fall > *, .fc-rays, .fc-boat, .fc-mist, .fc-clouds, .fc-gulls) { animation: none; }
+}
