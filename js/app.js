@@ -734,13 +734,12 @@ function gearRow(g) {
       paintGear();
     }, { id: g.id, cls: [picking?.has(g.id) ? 'picked' : '', active(g) ? '' : 'gone', isLow(g) ? 'low' : ''].join(' '), thumb: gearThumb(g) });
   if (picking) return el;
-  // Свайп: вліво — «Списати» (відкриває вибір, нічого не робить сам), вправо — швидка дія; тап — картка
+  // Свайп лише вправо — швидка дія; «Списати» — у картці (вліво дублювало «−1 Втратив»); тап — картка
   const body = h('div', { class: `${el.className} swipe-body`, role: 'button', dataset: { id: g.id } }, ...el.childNodes);
   const quick = quickAction(g);
   return swipeable(h('div', { class: 'gear-card', 'aria-label': gearTitle(g) }, body), {
     onTap: () => gearDetail(g.id),
     onRight: quick.fn, rightLabel: quick.label,
-    onLeft: active(g) ? () => statusSheet(g) : null, leftLabel: active(g) ? t('Списати') : '',
   });
 }
 
@@ -1060,8 +1059,46 @@ function gearDetail(id) {
 const link = (text, onclick) => h('button', { type: 'button', class: 'link-btn', onclick }, text);
 const mountedOn = (g) => state.gear.filter((x) => x.onId === g.id);
 
+/** Довжина вудилища у футах, як у назвах моделей: 1,73 м → 5'8". */
+function feetText(m) {
+  const inches = Math.round(num(m) / 0.0254);
+  return inches ? `${Math.floor(inches / 12)}'${inches % 12}"` : null;
+}
+
+/** Головні характеристики вудилища, котушки й шнура — плитками одразу під фото, а не в згорнутих «Деталях». */
+function specTiles(g) {
+  const tile = (name, value, sub = null) => (value ? h('div', { class: 'spec-tile' }, h('small', {}, name), h('b', {}, value), sub ? h('span', {}, sub) : null) : null);
+  const group = groupOf(g);
+  const tiles = group === 'rods' ? [
+    tile(t('Довжина'), num(g.length) ? `${fmt.num(g.length)} ${t('м')}` : null, feetText(g.length)),
+    tile(t('Тест'), g.test ? `${g.test} ${t('г')}` : null),
+    tile(t('Стрій'), label(ACTIONS, g.action)),
+    tile(t('Тип'), label(ROD_TYPES, g.rodType)),
+    tile(t('Колін'), num(g.pieces) ? fmt.num(g.pieces) : null),
+  ] : group === 'reels' ? [
+    tile(t('Розмір'), g.size),
+    tile(t('Передавальне'), g.ratio),
+    tile(t('Запасних шпуль'), num(g.spools) ? fmt.num(g.spools) : null),
+  ] : group === 'lines' ? [
+    tile(t('PE'), g.pe),
+    tile(t('Діаметр'), num(g.mm) ? `${fmt.num(g.mm)} ${t('мм')}` : null),
+    tile(t('Довжина'), num(g.length) ? `${fmt.num(g.length)} ${t('м')}` : null),
+  ] : [];
+  const list = tiles.filter(Boolean);
+  return list.length ? h('div', { class: 'spec-tiles' }, list) : null;
+}
+
+/** Головні цифри котушки чи шнура одним рядком для «Стоїть»: «1000S · 5.2:1», «PE 0.1 · 0,05 мм · 150 м». */
+function mountSpecs(x) {
+  const group = groupOf(x);
+  if (group === 'reels') return [x.size, x.ratio].filter(Boolean).join(' · ');
+  if (group === 'lines') return [x.pe ? `PE ${x.pe}` : null, num(x.mm) ? `${fmt.num(x.mm)} ${t('мм')}` : null, num(x.length) ? `${fmt.num(x.length)} ${t('м')}` : null].filter(Boolean).join(' · ');
+  return '';
+}
+
 function gearBody(g) {
   const photo = findPhoto(g.photoId);
+  const specs = specTiles(g);
   const host = findGear(g.onId);
   const group = groupOf(g);
   const qty = isQty(g);
@@ -1082,7 +1119,10 @@ function gearBody(g) {
     active(g) ? btn(t('Списати'), () => statusSheet(g)) : btn(t('Повернути в наявні'), () => setStatus(g, 'have', t('Повернуто в наявні'))),
   ];
   return h('div', {},
-    photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) }, h('img', { class: 'item-photo', src: photo.thumb, alt: '' })) : null,
+    // Фото й характеристики поруч на широкому екрані, одне під одним — на телефоні
+    photo || specs ? h('div', { class: `gear-hero${photo && specs ? ' two' : ''}` },
+      photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) }, h('img', { class: 'item-photo', src: photo.thumb, alt: '' })) : null,
+      specs) : null,
     kv([
       [t('Де'), active(g) ? where : null],
       [t('Напрямок'), label(DIRS, dirOf(g)) || t('Універсальне')],
@@ -1100,14 +1140,15 @@ function gearBody(g) {
     h('div', { class: 'btn-row' }, actions.filter(Boolean)),
     catchBox(g),
     chain.length ? box(t('Стоїть'), h('div', { class: 'rows' }, chain.map((x) =>
-      row(gearTitle(x), [catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: gearThumb(x) })))) : null,
+      row(gearTitle(x), [mountSpecs(x) || catOf(x.cat).name, groupOf(x) === 'lines' && x.onDate ? t('намотано {date}', { date: fmt.date(x.onDate) }) : null].filter(Boolean).join(' · '), '', () => gearDetail(x.id), { thumb: gearThumb(x) })))) : null,
     fold('gear-details', t('Деталі'), kv([
       [t('Категорія'), catOf(g.cat).name],
       qty && num(g.low) ? [t('Поріг «мало»'), `${fmt.num(g.low)} ${unitLabel(g)}`] : null,
       [t('Бренд'), g.brand], [t('Модель'), g.model],
-      [t('Тип'), label(ROD_TYPES, g.rodType)], [t('Довжина'), g.length ? `${fmt.num(g.length)} ${t('м')}` : null], [t('Тест'), g.test ? `${g.test} ${t('г')}` : null],
-      [t('Стрій'), label(ACTIONS, g.action)], [t('Колін'), g.pieces], [t('Розмір'), g.size], [t('Передавальне число'), g.ratio], [t('Запасних шпуль'), g.spools],
-      [t('PE'), g.pe], [t('Діаметр'), g.mm ? `${fmt.num(g.mm)} ${t('мм')}` : null],
+      // Характеристики вудилища, котушки й шнура — у плитках угорі; тут лише те, чого плитки не показали
+      ...(specs ? [] : [[t('Тип'), label(ROD_TYPES, g.rodType)], [t('Довжина'), g.length ? `${fmt.num(g.length)} ${t('м')}` : null], [t('Тест'), g.test ? `${g.test} ${t('г')}` : null],
+        [t('Стрій'), label(ACTIONS, g.action)], [t('Колін'), g.pieces], [t('Розмір'), g.size], [t('Передавальне число'), g.ratio], [t('Запасних шпуль'), g.spools],
+        [t('PE'), g.pe], [t('Діаметр'), g.mm ? `${fmt.num(g.mm)} ${t('мм')}` : null]]),
       [t('Ціна'), g.price ? fmt.money(g.price) : null], [t('Куплено'), g.buyDate ? fmt.date(g.buyDate) : null],
       [t('Нотатка'), g.note ? h('span', { class: 'pre' }, g.note) : null],
       [t('Характеристики'), g.specs ? h('span', { class: 'pre' }, g.specs) : null],

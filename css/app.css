@@ -829,6 +829,14 @@ button, a, input, select, textarea, [role="checkbox"] { touch-action: manipulati
 button.row-main { display: flex; flex: 1; flex-direction: column; align-items: stretch; min-width: 0; padding: 0; border: 0; background: none;
   color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .photo-btn { display: block; padding: 0; border: 0; background: none; cursor: zoom-in; }
+/* Картка речі: фото й плитки характеристик — поруч на широкому екрані, одне під одним на телефоні */
+.gear-hero { display: grid; gap: 0 14px; }
+@media (min-width: 600px) { .gear-hero.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+.spec-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 0 0 12px; }
+.spec-tile { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); }
+.spec-tile small { color: var(--muted); font-size: 12px; }
+.spec-tile b { font-size: 17px; line-height: 1.2; overflow-wrap: anywhere; }
+.spec-tile span { color: var(--muted); font-size: 13px; }
 .photo-btn img { display: block; }
 .photo-strip .photo-btn { flex: none; }
 /* Поля — помітна межа (≥3:1 до шторки), а не лише на півтону інший фон */
