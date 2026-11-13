@@ -365,6 +365,17 @@ function inDir(g) {
   const d = dirOf(g);
   return dirFilter === 'camp' ? d === 'camp' : d === dirFilter || d === '';
 }
+/**
+ * Варіанти вибору речі, згруповані за напрямком: хижак, мирна, універсальні, табір.
+ * Напрямок самої речі — першим; одна група — простий список без підписів.
+ */
+function dirOptions(items, toOption, first = '') {
+  const order = [...DIRS.map(([k]) => k), ''].sort((a, b) => (first ? (b === first) - (a === first) : 0));
+  const caption = { predator: 'Хижак', peaceful: 'Мирна', camp: 'Табір', '': 'Універсальні' };
+  const groups = order.map((d) => ({ group: t(caption[d]), options: items.filter((x) => dirOf(x) === d).map(toOption) }))
+    .filter((gr) => gr.options.length);
+  return groups.length > 1 ? groups : items.map(toOption);
+}
 const gearTitle = (g) => g?.name || [g?.brand, g?.model].filter(Boolean).join(' ') || catOf(g?.cat).name;
 
 // ---------- місця ----------
@@ -1347,7 +1358,7 @@ function mountSheet(g, hostGroup) {
   const hosts = state.gear.filter((x) => active(x) && groupOf(x) === hostGroup && x.id !== g.id).sort(byGroup);
   if (!hosts.length) { toast(hostGroup === 'rods' ? t('Спершу додайте вудилище') : t('Спершу додайте котушку')); return; }
   const f = form([
-    { name: 'hostId', label: hostGroup === 'rods' ? t('Вудилище') : t('Котушка'), type: 'select', options: hosts.map((x) => [x.id, `${gearTitle(x)} · ${whereText(x)}`]) },
+    { name: 'hostId', label: hostGroup === 'rods' ? t('Вудилище') : t('Котушка'), type: 'select', options: dirOptions(hosts, (x) => [x.id, `${gearTitle(x)} · ${whereText(x)}`], dirOf(g)) },
     ...(hostGroup === 'reels' ? [{ name: 'date', label: t('Намотано'), type: 'dmy', value: today() }] : []),
   ]);
   const close = sheet(hostGroup === 'rods' ? t('На вудилище') : t('Намотати на котушку'), f.el, {
