@@ -518,6 +518,94 @@ export function selectOptions(options, selected) {
   return options.map((o) => (Array.isArray(o) ? option(o) : o.options.length ? h('optgroup', { label: o.group }, o.options.map(option)) : null));
 }
 
+// Рідне значення <select>: обгортка нижче перехоплює запис, щоб кнопка й сегменти не відставали від коду
+const SELECT_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+
+/**
+ * <select> без системного вікна Android, як у Shooter's Log: короткий список — сегментами, решта — кнопкою зі шторкою.
+ * Сам select прихований і лишається джерелом значення: шле change, а select.value = … з коду теж перемальовує.
+ */
+export function selectPicker(select, title, { half = false } = {}) {
+  const labels = [...select.options].map((o) => o.textContent);
+  const short = !select.querySelector('optgroup') && labels.length >= 2 && labels.length <= 4
+    // на пів рядка вміщаються лише короткі позначки («шт · кг · уп · л»)
+    && labels.every((l) => l.length <= (half ? 4 : 10)) && labels.join('').length <= (half ? 12 : 30);
+  const choose = (value) => {
+    if (value === select.value) return;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  let paint;
+  if (short) {
+    const seg = h('div', { class: 'chips segmented select-seg', role: 'radiogroup', 'aria-label': title });
+    seg.append(...[...select.options].map((o) => h('button', { type: 'button', role: 'radio', dataset: { value: o.value }, onclick: () => choose(o.value) }, o.textContent)));
+    paint = () => seg.querySelectorAll('button').forEach((b) => {
+      const on = b.dataset.value === select.value;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+    select.after(seg);
+  } else {
+    const face = h('button', { type: 'button', class: 'picker', 'aria-haspopup': 'dialog' });
+    paint = () => {
+      const text = select.selectedOptions[0]?.textContent ?? '';
+      face.replaceChildren(h('span', { class: 'picker-main' }, text || '—'), h('span', { class: 'picker-chev', 'aria-hidden': 'true' }));
+      face.setAttribute('aria-label', `${title}: ${text}`);
+    };
+    face.addEventListener('click', () => selectSheet(select, title, choose));
+    select.after(face);
+  }
+  select.hidden = true;
+  Object.defineProperty(select, 'value', {
+    configurable: true,
+    get() { return SELECT_VALUE.get.call(this); },
+    set(v) { SELECT_VALUE.set.call(this, v); paint(); },
+  });
+  select.addEventListener('change', paint);
+  paint();
+  return paint;
+}
+
+/** Шторка вибору: групи select — підписами, вибране підсвічене й прокручене на видноту; довгий список — з пошуком. */
+function selectSheet(select, title, choose) {
+  const item = (o) => {
+    const on = o.value === select.value;
+    return h('button', { type: 'button', class: `row pick-row${on ? ' on' : ''}`, 'aria-pressed': String(on), onclick: () => { close(); choose(o.value); } },
+      h('span', { class: 'row-main' }, h('span', { class: 'row-title' }, o.textContent || '—')),
+      on ? h('span', { class: 'pick-check', 'aria-hidden': 'true' }) : null);
+  };
+  // Підряд ідучі варіанти без групи — одним блоком; група — підпис і свій блок
+  const parts = [];
+  let loose = [];
+  const flush = () => { if (loose.length) parts.push(h('div', { class: 'rows' }, loose.map(item))); loose = []; };
+  for (const child of select.children) {
+    if (child.tagName === 'OPTGROUP') {
+      flush();
+      const opts = [...child.children].filter((o) => !o.hidden);
+      if (opts.length) parts.push(h('div', { class: 'picker-cap' }, child.label), h('div', { class: 'rows' }, opts.map(item)));
+    } else if (!child.hidden) loose.push(child);
+  }
+  flush();
+  const list = h('div', { class: 'picker-list' }, parts);
+  let search = null;
+  if (select.options.length > 12) {
+    search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук'), 'aria-label': t('Пошук'), autocomplete: 'off', enterkeyhint: 'search' });
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      list.querySelectorAll('.pick-row').forEach((r) => { r.hidden = Boolean(q) && !r.textContent.toLowerCase().includes(q); });
+      // Підпис групи ховається разом з її рядками
+      list.querySelectorAll('.picker-cap').forEach((cap) => {
+        const rows = cap.nextElementSibling;
+        const any = [...rows.children].some((r) => !r.hidden);
+        cap.hidden = !any;
+        rows.hidden = !any;
+      });
+    });
+  }
+  const close = sheet(title, h('div', {}, search ? h('div', { class: 'picker-search' }, search) : null, list));
+  requestAnimationFrame(() => list.querySelector('.pick-row.on')?.scrollIntoView({ block: 'center' }));
+}
+
 /**
  * Проста форма. fields: [{ name, label, type, value, options, required, step, min, list, hint, half }]
  * half — поле на пів рядка: два такі поля поспіль стають в одну строку.
@@ -553,6 +641,7 @@ export function form(fields) {
     el.append(h(f.type === 'chips' ? 'div' : 'label', { class: `field ${f.wide ? 'wide' : ''} ${f.half ? 'half' : ''}` },
       f.label ? h('span', { class: 'field-label' }, f.label) : null, input,
       f.hint ? h('small', { class: 'muted' }, f.hint) : null));
+    if (f.type === 'select') selectPicker(input, f.label, { half: f.half });
   }
   const values = () => {
     const out = {};

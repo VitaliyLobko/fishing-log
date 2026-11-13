@@ -1075,6 +1075,27 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .bar-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
 .bar-num { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
 
+/* ---------- Списки вибору без системного вікна Android (ui.js selectPicker), як у Shooter's Log ---------- */
+.picker { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--muted) 72%, var(--line)); background: var(--bg); color: var(--text); text-align: left; cursor: pointer; }
+.picker:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.picker:active { filter: brightness(1.18); }
+.picker-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-chev { flex: none; width: 8px; height: 8px; margin: 0 4px 4px 0; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); }
+.field.invalid .picker { border-color: var(--shoot); outline: 1px solid var(--shoot); outline-offset: -1px; }
+.field .select-seg { margin: 0; }
+/* пошук не їде вгору, коли шторка прокручена до вибраного */
+.picker-search { position: sticky; top: -4px; z-index: 1; margin: -4px 0 0; padding: 4px 0 8px; background: var(--surface); }
+.picker-search .gear-search { margin: 0; }
+.picker-cap { margin: 16px 2px 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.picker-list > .picker-cap:first-child { margin-top: 4px; }
+.picker-list .rows + .rows { margin-top: 6px; }
+.pick-row { min-height: 48px; }
+.pick-row .row-title { font-weight: 550; }
+.pick-row.on { border-color: var(--accent); background: var(--accent-soft); }
+.pick-row.on .row-title { font-weight: 700; }
+.pick-check { flex: none; width: 7px; height: 13px; margin: 0 6px 3px 0; border-right: 2.5px solid var(--accent); border-bottom: 2.5px solid var(--accent); transform: rotate(45deg); }
+
 /* ---------- ШІ-помічник: нова річ з посилання на магазин ---------- */
 .link-fill { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .link-row { display: flex; align-items: center; gap: 8px; }
