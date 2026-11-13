@@ -2346,7 +2346,6 @@ function recordsBox() {
 // Печиво при запуску: приблизно раз на шість запусків, не частіше ніж раз на 4 години; вимикається в «Вигляді».
 // Модуль сценки (js/scenes.js) вантажиться лише тоді, коли печиво справді показуємо.
 const FORTUNE_OFF = 'fishing-log:fortune-off';
-const FORTUNE_AT = 'fishing-log:fortune-at';
 const FORTUNE_SOUND_OFF = 'fishing-log:fortune-sound-off'; // той самий ключ, що SOUND_OFF у scenes.js
 const fortuneOn = () => recall(FORTUNE_OFF) !== '1';
 
@@ -2401,8 +2400,8 @@ function fortuneOnStart(newsDue) {
   if (q.get('scene') === 'fortune') { playFortune(); return; }
   if (newsDue || !fortuneOn() || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (!state.gear.length && !state.trips.length) return;
-  if (Date.now() - Number(recall(FORTUNE_AT) || 0) < 4 * 3600e3 || Math.random() >= 1 / 6) return;
-  remember(FORTUNE_AT, String(Date.now()));
+  // Як у Shooter's Log: ≈ раз на 6 запусків, без паузи між показами
+  if (Math.random() >= 1 / 6) return;
   setTimeout(() => playFortune(), 500);
 }
 
