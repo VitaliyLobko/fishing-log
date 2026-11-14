@@ -73,6 +73,17 @@ function row(title, sub, right, onclick, { id = null, cls = '', thumb = null } =
     right !== null && right !== undefined && right !== '' ? h('span', { class: 'row-qty' }, right) : null);
 }
 
+/**
+ * Факти картки рядками з розділювачами: [підпис, значення, onclick?]. З onclick — увесь рядок кнопка зі «›»
+ * (палець влучає в рядок 44+ px, а не в підкреслене слово); порожні значення пропускаються.
+ */
+function facts(rows) {
+  const list = rows.filter((r) => r && r[1] !== null && r[1] !== undefined && r[1] !== '');
+  if (!list.length) return null;
+  return h('div', { class: 'facts' }, list.map(([k, v, onclick]) => h(onclick ? 'button' : 'div', { type: onclick ? 'button' : null, class: 'fact', onclick },
+    h('span', { class: 'fact-k' }, k), h('span', { class: 'fact-v' }, v), onclick ? h('span', { class: 'fact-go', 'aria-hidden': 'true' }, '›') : null)));
+}
+
 function kv(pairs) {
   return h('dl', { class: 'kv' }, pairs.filter((p) => p && p[1] !== null && p[1] !== undefined && p[1] !== '')
     .map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
@@ -1326,7 +1337,6 @@ function gearDetail(id) {
   });
 }
 
-const link = (text, onclick) => h('button', { type: 'button', class: 'link-btn', onclick }, text);
 const mountedOn = (g) => state.gear.filter((x) => x.onId === g.id);
 
 /** Довжина вудилища у футах, як у назвах моделей: 1,73 м → 5'8". */
@@ -1407,20 +1417,22 @@ function gearBody(g) {
     active(g) ? btn(t('Списати'), () => statusSheet(g)) : btn(t('Повернути в наявні'), () => setStatus(g, 'have', t('Повернуто в наявні')), 'primary'),
   ];
   const where = !active(g) ? null
-    : host ? link(t('на «{name}»', { name: gearTitle(host) }), () => gearDetail(host.id))
-      : g.placeId ? link(pathOf(g.placeId), () => placeDetail(g.placeId)) : t('без місця');
+    : host ? [t('Де лежить'), t('на «{name}»', { name: gearTitle(host) }), () => gearDetail(host.id)]
+      : g.placeId ? [t('Де лежить'), pathOf(g.placeId), () => placeDetail(g.placeId)] : [t('Де лежить'), t('без місця')];
+  // Бренд і модель, що вже стоять у назві картки, — не повторювати
+  const inTitle = (x) => x && norm(gearTitle(g)).includes(norm(x));
   return h('div', { class: 'gear-sheet' },
     // Фото й характеристики поруч на широкому екрані, одне під одним — на телефоні
     photo || specs ? h('div', { class: `gear-hero${photo && specs ? ' two' : ''}` },
       photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) }, h('img', { class: 'item-photo', src: photo.thumb, alt: '' })) : null,
       specs) : null,
     qty ? stockBox(g) : null,
-    // Головне — одразу видно списком; місце й колір натискаються
-    kv([
-      [t('Де лежить'), where],
+    // Головне — одразу видно списком; місце й колір — рядки на всю ширину зі «›»
+    facts([
+      where,
       [t('Що це'), [catOf(g.cat).name, label(DIRS, dirOf(g)) || t('Універсальне')].join(' · ')],
-      [t('Колір'), g.color ? link(g.color, () => searchFor(g.color)) : null],
-      [t('Бренд'), g.brand], [t('Модель'), g.model],
+      g.color ? [t('Колір'), g.color, () => searchFor(g.color)] : null,
+      [t('Бренд'), inTitle(g.brand) ? null : g.brand], [t('Модель'), inTitle(g.model) ? null : g.model],
       // Характеристики вудилища, котушки й шнура — у плитках угорі; тут лише те, чого плитки не показали
       ...(specs ? [] : [[t('Тип'), label(ROD_TYPES, g.rodType)], [t('Довжина'), g.length ? `${fmt.num(g.length)} ${t('м')}` : null], [t('Тест'), g.test ? `${g.test} ${t('г')}` : null],
         [t('Стрій'), label(ACTIONS, g.action)], [t('Колін'), g.pieces], [t('Розмір'), g.size], [t('Передавальне число'), g.ratio], [t('Запасних шпуль'), g.spools],
@@ -1706,7 +1718,7 @@ function placeBody(p) {
   const kids = state.places.filter((x) => x.parentId === p.id).sort((a, b) => collate(a.name, b.name));
   const items = state.gear.filter((g) => active(g) && placeOf(g) === p.id).sort(byGroup);
   return h('div', {},
-    kv([[t('Шлях'), p.parentId ? pathOf(p.parentId) : null], [t('Нотатка'), p.note ? h('span', { class: 'pre' }, p.note) : null]]),
+    facts([p.parentId ? [t('Усередині'), pathOf(p.parentId), () => placeDetail(p.parentId)] : null, [t('Нотатка'), p.note ? h('span', { class: 'pre' }, p.note) : null]]),
     h('div', { class: 'btn-row' },
       btn(t('+ Річ сюди'), () => gearForm(null, { preset: { placeId: p.id } }), 'primary'),
       btn(t('+ Вкладене місце'), () => placeForm(null, { parentId: p.id }))),
@@ -2075,15 +2087,14 @@ function spotBody(s) {
     tile(t('Риб'), fmt.num(fish), kg ? `${fmt.num(Math.round(kg * 10) / 10)} ${t('кг')}` : null),
     tile(t('За виїзд'), fmt.num(Math.round((fish / trips.length) * 10) / 10), blank ? t('без улову: {n}', { n: fmt.num(blank) }) : t('завжди з уловом')),
     cost ? tile(t('Витрати, грн'), fmt.num(Math.round(cost)), fish ? t('{s} грн за рибину', { s: fmt.num(Math.round(cost / fish)) }) : null) : null) : null;
-  const chip = (ico, text, onclick = null, cls = '') => h(onclick ? 'button' : 'span', { type: onclick ? 'button' : null, class: `meta-chip ${cls}`.trim(), onclick },
-    ico ? icon(ico) : null, h('span', {}, text));
-  const meta = [
-    s.kind ? chip('drop', label(SPOT_KINDS, s.kind)) : null,
-    spotPrice(s) ? chip('tag', spotPrice(s)) : null,
-    s.depth ? chip(null, t('глибини {d} м', { d: s.depth })) : null,
-    ...(s.access ?? []).map((k) => chip(null, label(ACCESS, k))),
-    hasPlace(s) ? null : chip('pin', t('позначити на карті'), () => spotForm(s), 'link'),
-  ].filter(Boolean);
+  const meta = facts([
+    [t('Тип'), s.kind ? label(SPOT_KINDS, s.kind) : null],
+    [t('Риболовля'), spotPrice(s) || null],
+    [t('Глибини'), s.depth ? `${s.depth} ${t('м')}` : null],
+    [t('Як дістатися'), (s.access ?? []).map((k) => label(ACCESS, k)).join(', ')],
+    hasPlace(s) ? null : [t('На карті'), t('не позначено'), () => spotForm(s)],
+    [t('Нотатка'), s.note ? h('span', { class: 'pre' }, s.note) : null],
+  ]);
   const open = (url) => window.open(url, '_blank', 'noopener');
   const species = spotSpecies(trips);
   const caught = [...species].sort((a, b) => b[1].n - a[1].n || collate(a[0], b[0]));
@@ -2120,13 +2131,12 @@ function spotBody(s) {
   return h('div', { class: 'gear-sheet spot-sheet' },
     photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) },
       h('img', { class: 'item-photo spot-photo', src: photo.thumb, alt: '' })) : null,
-    meta.length ? h('div', { class: 'meta-chips' }, meta) : null,
     hasPlace(s) ? spotMiniMap(s) : null,
     h('div', { class: 'btn-row spot-acts' },
       hasPlace(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
       btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
+    meta,
     tiles,
-    s.note ? h('p', { class: 'pre spot-note' }, s.note) : null,
     caught.length || unseen.length ? box(t('Хто ловиться'), h('div', {},
       caught.length ? bars(caught.map(([sp, x]) => ({ label: sp, n: x.n, text: [fmt.num(x.n), x.best ? fishSize(x.best).split(' · ')[0] : null].filter(Boolean).join(' · ') }))) : null,
       unseen.length ? h('p', { class: 'muted small' }, t('Водиться, ще не ловив: {list}', { list: unseen.join(', ') })) : null)) : null,
@@ -2333,10 +2343,10 @@ function tripBody(tr) {
   const catches = tr.catches ?? [];
   const photos = (tr.photoIds ?? []).filter(findPhoto);
   return h('div', {},
-    kv([
+    facts([
       // Дата — у назві картки; тут лише години, коли вписані
       [t('Коли'), [tr.from, tr.to].filter(Boolean).join('–') || null],
-      [t('Водойма'), s ? link(s.name, () => spotDetail(s.id)) : t('Без водойми')],
+      s ? [t('Водойма'), s.name, () => spotDetail(s.id)] : [t('Водойма'), t('Без водойми')],
       [t('Як ловив'), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', ')],
       [t('Чим ловив'), (tr.gearIds ?? []).map(findGear).filter(Boolean).map(gearTitle).join(', ')],
       [t('Вода'), tr.waterT !== null && tr.waterT !== undefined && tr.waterT !== '' ? `${fmt.num(tr.waterT)} °C` : null],
