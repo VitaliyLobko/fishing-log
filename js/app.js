@@ -591,6 +591,8 @@ function sectionLook(d) {
     empty.hidden = shown > 0;
   });
   const icons = h('div', { class: 'icon-groups' }, search, empty, groups);
+  // Шторка порівнює .chips за value: без нього зміна лише значка чи кольору не питала «Вийти без збереження?»
+  for (const row of icons.querySelectorAll('.chips')) Object.defineProperty(row, 'value', { get: () => d.icon });
   const colors = h('div', { class: 'chips color-pick', role: 'group', 'aria-label': t('Колір') },
     [['', null, 'Без кольору'], ...SECTION_COLORS].map(([k, hex, name]) => {
       const b = h('button', { type: 'button', class: k === (d.color ?? '') ? 'on' : '', 'aria-pressed': String(k === (d.color ?? '')), 'aria-label': t(name), title: t(name),
@@ -598,6 +600,7 @@ function sectionLook(d) {
       if (hex) b.style.setProperty('--c', hex); else b.classList.add('none');
       return b;
     }));
+  Object.defineProperty(colors, 'value', { get: () => d.color ?? '' });
   const paint = () => {
     const hex = sectionColor(d.color);
     iconValue.replaceChildren(secIco(d.icon, hex), h('span', {}, t(ICON_NAMES[d.icon] ?? '')));
@@ -1702,7 +1705,7 @@ const itemsAt = (id) => state.gear.filter((g) => active(g) && placeOf(g) === id)
 
 /** Заголовок місця: значок, назва, скільки речей усередині (з вкладеними) і кнопка картки — наклейка, NFC, змінити. */
 function placeHead(p) {
-  const head = sectionHead('boxes', p.name, countIn(p.id));
+  const head = sectionHead(p.icon || 'boxes', p.name, countIn(p.id), 0, null, sectionColor(p.color));
   head.append(Object.assign(h('button', {
     type: 'button', class: 'icon-btn sec-edit place-head-card', 'aria-label': t('Картка місця «{name}»', { name: p.name }),
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); placeDetail(p.id); },
@@ -1762,11 +1765,14 @@ function placeForm(p = null, { parentId = null, onSaved = null } = {}) {
     { name: 'parentId', label: t('Усередині'), type: 'select', options: placeOptions(p ? subtree(p.id) : new Set()).map(([id, n]) => [id, id ? n : t('— верхній рівень —')]), value: p?.parentId ?? parentId ?? '' },
     { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 2, value: p?.note },
   ]);
-  const close = sheet(p ? t('Змінити місце') : t('Нове місце'), f.el, {
+  // Значок і колір — як у розділів снастей; без вибору — ящик
+  const d = { icon: p?.icon ?? 'boxes', color: p?.color ?? null };
+  const noteField = f.inputs.note.closest('.field');
+  const close = sheet(p ? t('Змінити місце') : t('Нове місце'), h('div', {}, f.el, sectionLook(d), h('div', { class: 'form' }, noteField)), {
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
       if (invalidField(f)) return;
       const v = f.values();
-      const rec = { ...(p ?? { id: db.uid(), created: Date.now() }), ...v, parentId: v.parentId || null };
+      const rec = { ...(p ?? { id: db.uid(), created: Date.now() }), ...v, parentId: v.parentId || null, icon: d.icon, color: d.color || null };
       close();
       // Нове вкладене місце має бути видно одразу — розгортаємо гілку з ним
       for (let x = findPlace(rec.parentId), i = 0; x && i < 20; x = findPlace(x.parentId), i += 1) remember(placeOpenKey(x.id), '1');
