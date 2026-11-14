@@ -56,7 +56,7 @@
   --line: #cfe0e3;
   --line-soft: #deeaec;
   --text: #15303a;
-  --muted: #52707a;
+  --muted: #4b6873;
   /* темний помаранчевий — лише для тексту; кнопки й вибране — яскравий, як у темній, з темним текстом */
   --accent: #c2410c;
   --accent-2: #9a3412;
@@ -69,7 +69,7 @@
   --shoot: #a5321f;
   --half: #7c7f22;
   --warn: #7a5600;
-  --clean: #2a7fa6;
+  --clean: #23729a;
   --on-accent: #fff;
   --shadow: 0 1px 2px rgb(20 35 45 / .06), 0 6px 16px rgb(20 35 45 / .06);
   color-scheme: light;
@@ -98,7 +98,7 @@
 
 /* Стрічка вибору (тема, фон) — як у Shooter's Log: вибраний посередині в рамці, сусіди видні й гаснуть до країв, «‹ ›» по боках */
 .bg-wheel { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px; margin: 0 -8px; }
-.bg-nav { width: 28px; height: 56px; padding: 0; border: 0; background: none; color: var(--muted); font: 600 26px system-ui, sans-serif; cursor: pointer; }
+.bg-nav { width: 44px; height: 56px; padding: 0; border: 0; background: none; color: var(--muted); font: 600 26px system-ui, sans-serif; cursor: pointer; }
 .bg-picks { position: relative; display: flex; gap: 10px; padding-block: 4px 6px; overflow-x: auto; scroll-snap-type: x mandatory;
   scrollbar-width: none; overscroll-behavior-x: contain; mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
 .bg-picks::-webkit-scrollbar { display: none; }
@@ -198,7 +198,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .app-icon { width: 30px; height: 30px; flex: none; border-radius: 8px; object-fit: cover; }
 .sync-chip {
-  min-height: 32px;
+  min-height: 44px;
   padding: 4px 12px;
   border-radius: 16px;
   border: 1px solid var(--line);
@@ -222,8 +222,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .gear {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   color: var(--muted);
   border: 1px solid var(--line);
@@ -326,6 +326,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-height: 48px;
   padding: 10px 12px;
   text-align: left;
   background: var(--surface);
@@ -376,7 +377,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .about-head { display: flex; align-items: center; gap: 12px; }
 .about-head h3 { margin: 0 0 2px; }
 .about-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
-.panel.about .about-links a { padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--text);
+.panel.about .about-links a { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--text);
   font-size: 13px; font-weight: 600; text-decoration: none; }
 
 .panel {
@@ -436,8 +437,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.with-ico .ico { display: grid; }
 
 .icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex: none;
   border: 0;
   border-radius: 50%;
@@ -447,7 +448,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
 .chips button {
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 14px;
   border-radius: 18px;
   border: 1px solid var(--line);
@@ -720,7 +721,8 @@ a.set-link .set-head { cursor: pointer; }
 .row .thumb { width: 48px; height: 48px; border-radius: 10px; }
 .row.slot { cursor: default; }
 .row.slot .row-main { cursor: pointer; }
-.row.slot .btn { min-height: 36px; padding: 6px 10px; }
+.row.slot .btn { min-height: 44px; padding: 6px 10px; }
+.row.slot .row-main { min-height: 44px; }
 /* Розхідник, якого мало, і батарея, що надто довго заряджена — жовта смуга зліва */
 .row.low { box-shadow: inset 3px 0 0 var(--warn); }
 .row.low .row-qty { color: var(--warn); }
@@ -773,7 +775,7 @@ a.set-link .set-head { cursor: pointer; }
 }
 
 /* Фото у формі (як у shooting-log): плитка-прев'ю, «Знайти фото», «Вставити», «З галереї» */
-.btn.mini { min-height: 34px; padding: 6px 12px; font-size: 13px; border-radius: 10px; }
+.btn.mini { min-height: 44px; padding: 6px 12px; font-size: 13px; border-radius: 10px; }
 .photo-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 12px; }
 .photo-pick-hint { flex-basis: 100%; margin: -4px 0 0; }
 .photo-pick-thumb { flex: none; width: 96px; height: 96px; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px;
@@ -782,7 +784,8 @@ a.set-link .set-head { cursor: pointer; }
 .photo-pick-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .photo-pick-acts { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
 .photo-pick-icons { display: flex; gap: 8px; }
-.specs-find { display: flex; margin: -4px 0 8px; }
+.specs-find { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 8px; grid-column: 1 / -1; }
+.specs-find .btn { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
 
 /* Пошук снастей і дерево місць */
 .gear-search { width: 100%; margin: 0 0 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; }
@@ -794,7 +797,6 @@ a.set-link .set-head { cursor: pointer; }
 .place-inner > .rows + .gear-groups, .place-inner > .gear-groups + .rows { margin-top: 6px; }
 .place-note { margin: 0 0 6px 8px; }
 .place-empty { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px 8px; padding: 4px 4px 4px 12px; border-radius: 12px; background: var(--surface); }
-.place-head-card { width: 44px; height: 44px; }
 .pick-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); }
 
 /* «Вода»: хвилі під картками (за замовчуванням), картки м'якші — без рамки, з тінню */
@@ -965,7 +967,7 @@ button.about-avatar { padding: 0; border: 0; }
 .box .gear-card .swipe-body { box-shadow: none; }
 
 /* Розділи: олівець у заголовку й вибір значка — як групи в Хобі-плані */
-.sec-edit { display: grid; flex: none; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--muted); cursor: pointer; }
+.sec-edit { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--muted); cursor: pointer; }
 .sec-edit:hover { color: var(--accent-2); }
 .sec-edit svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .icon-pick button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; }
@@ -1017,7 +1019,7 @@ button.about-avatar { padding: 0; border: 0; }
 .spec-tile b { color: var(--text); font-variant-numeric: tabular-nums; }
 /* Чипи: місце, категорія, напрямок, колір. Натискні — з акцентною іконкою, висота під палець */
 .meta-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
-.meta-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 40px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
+.meta-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 44px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
   background: var(--surface-2); color: var(--text); font: 600 14px/1.25 system-ui, sans-serif; text-align: left; }
 .meta-chip > span:last-child { overflow-wrap: anywhere; }
 button.meta-chip { cursor: pointer; transition: background-color .15s, border-color .15s; }
