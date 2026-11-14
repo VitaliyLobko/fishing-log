@@ -745,7 +745,9 @@ function catchBox(g) {
     list.length > 5 ? h('p', { class: 'muted small' }, t('Ще записів: {n}', { n: list.length - 5 })) : null));
 }
 
-function gearRow(g) {
+/** here — список уже всередині місця речі: рядок «де лежить» зайвий (крім «на вудилищі»). */
+function gearRow(g, opts) {
+  const here = opts?.here && active(g) && !g.onId;
   const qty = isQty(g);
   const fish = caughtCount(g);
   const title = gearTitle(g);
@@ -753,10 +755,10 @@ function gearRow(g) {
   const bm = [g.brand, g.model].filter(Boolean).join(' ');
   const specs = [sizeText(g), weightText(g), bm && !norm(title).includes(norm(g.model || g.brand)) ? bm : null, g.color].filter(Boolean).join(' · ');
   const sub = [specs ? h('span', { class: 'row-line' }, specs) : null,
-    h('span', { class: 'row-line row-place' }, active(g) ? icon('pin') : null, h('span', {}, active(g) ? whereText(g) : t(STATUS[g.status])))];
+    here ? null : h('span', { class: 'row-line row-place' }, active(g) ? icon('pin') : null, h('span', {}, active(g) ? whereText(g) : t(STATUS[g.status])))];
   const side = qty || fish ? h('span', { class: 'row-side' }, qty ? h('b', {}, qtyText(g)) : null,
     fish ? h('span', { class: 'fish-count', title: t('Упіймано на неї') }, icon('fish'), fmt.num(fish)) : null) : '';
-  const el = row(title, sub, side,
+  const el = row(title, sub.some(Boolean) ? sub : null, side,
     () => {
       if (!picking) { gearDetail(g.id); return; }
       if (!picking.delete(g.id)) picking.add(g.id);
@@ -1493,38 +1495,49 @@ function removeGear(g) {
 
 // ---------- місця ----------
 
-// Розгорнуті гілки дерева місць — на пристрої; за замовчуванням видно лише верхній рівень
-const OPEN_KEY = 'fishing-log:places-open';
-function openPlaces() {
-  try { return new Set(JSON.parse(recall(OPEN_KEY) || '[]')); } catch { return new Set(); }
+// Розгорнуті місця — на пристрої, як розділи «Снастей»; за замовчуванням усе згорнуте
+const placeOpenKey = (id) => `fishing-log:open:place-${id}`;
+const placeIsOpen = (id) => recall(placeOpenKey(id)) === '1';
+const hasKids = (id) => state.places.some((x) => x.parentId === id);
+const kidsOf = (id) => state.places.filter((p) => (p.parentId ?? null) === id).sort((a, b) => collate(a.name, b.name));
+const itemsAt = (id) => state.gear.filter((g) => active(g) && placeOf(g) === id).sort(byGroup);
+
+/** Заголовок місця: значок, назва, скільки речей усередині (з вкладеними) і кнопка картки — наклейка, NFC, змінити. */
+function placeHead(p) {
+  const head = sectionHead('boxes', p.name, countIn(p.id));
+  head.append(Object.assign(h('button', {
+    type: 'button', class: 'icon-btn sec-edit place-head-card', 'aria-label': t('Картка місця «{name}»', { name: p.name }),
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); placeDetail(p.id); },
+  }), { innerHTML: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>' }));
+  return head;
 }
-function setOpenPlaces(set) {
-  remember(OPEN_KEY, JSON.stringify([...set]));
+
+/** Місце групою: розгорнули — вкладені місця (так само групами) і речі, що лежать саме тут. */
+function placeFold(p, depth = 0) {
+  const ids = subtree(p.id);
+  const has = state.gear.filter((g) => active(g) && ids.has(placeOf(g))).map((g) => g.id);
+  return fold(`place-${p.id}`, placeHead(p), () => {
+    const kids = depth < 20 ? kidsOf(p.id) : [];
+    const items = itemsAt(p.id);
+    return h('div', { class: 'place-inner' },
+      p.note ? h('p', { class: 'muted small place-note' }, p.note) : null,
+      kids.length ? h('div', { class: 'gear-groups sub-groups' }, kids.map((k) => placeFold(k, depth + 1))) : null,
+      items.length ? h('div', { class: 'rows' }, items.map((g) => gearRow(g, { here: true }))) : null,
+      kids.length || items.length ? null : h('div', { class: 'place-empty' }, h('span', { class: 'muted small' }, t('Порожньо')),
+        btn(t('+ Річ сюди'), () => gearForm(null, { preset: { placeId: p.id } }), 'quiet mini')));
+  }, '', has);
+}
+
+/** Розгорнути чи згорнути всі місця, де щось є. */
+function setPlacesOpen(ids, open) {
+  ids.forEach((id) => remember(placeOpenKey(id), open ? '1' : ''));
   render();
 }
-const hasKids = (id) => state.places.some((x) => x.parentId === id);
 
-/** Рядки дерева: стрілка (згорнути/розгорнути) окремою кнопкою, тап по рядку — картка місця. */
-function placeRows(parentId, depth, open = openPlaces()) {
-  return state.places.filter((p) => (p.parentId ?? null) === parentId).sort((a, b) => collate(a.name, b.name)).flatMap((p) => {
-    const kids = hasKids(p.id);
-    const isOpen = kids && open.has(p.id);
-    const toggle = kids
-      ? h('button', {
-        type: 'button', class: 'tree-toggle', 'aria-expanded': String(isOpen),
-        'aria-label': t(isOpen ? 'Згорнути «{name}»' : 'Розгорнути «{name}»', { name: p.name }),
-        onclick: () => { if (!open.delete(p.id)) open.add(p.id); setOpenPlaces(open); },
-      }, h('span', { class: 'tree-chev', 'aria-hidden': 'true' }, '›'))
-      : h('span', { class: 'tree-toggle', 'aria-hidden': 'true' });
-    const item = h('div', { class: 'tree-item' }, toggle, row(p.name, p.note || null, fmt.num(countIn(p.id)), () => placeDetail(p.id), { id: p.id }));
-    item.style.setProperty('--depth', depth);
-    return [item, ...(isOpen && depth < 20 ? placeRows(p.id, depth + 1, open) : [])];
-  });
-}
-
-/** Перемикач угорі вкладки «Покупки»: покупки чи місця зберігання; «+» додає те, що вибрано. */
+/** Перемикач угорі вкладки: місця зберігання чи покупки; «+» додає те, що вибрано, вкладка пам'ятає вибір. */
+const SHOP_SEG = 'fishing-log:shop-seg';
 function shopSwitch() {
-  const sw = chips([['shop', t('Покупки')], ['places', t('Місця зберігання')]], tab, (v) => goTab(`#${v}`));
+  const sw = chips([['places', t('Місця зберігання')], ['shop', t('Покупки')]], tab, (v) => goTab(`#${v}`));
   sw.classList.add('segmented');
   return sw;
 }
@@ -1536,13 +1549,12 @@ function renderPlaces() {
       empty(t('Ще немає місць'), t('Місця — це де лежать снасті: «Гараж → Шафа → Ящик Plano №2». Вкладайте одне в одне скільки завгодно.'),
         [btn(t('Додати'), () => placeForm(), 'primary add'), importBtn()]));
   }
-  const parents = state.places.filter((p) => hasKids(p.id)).map((p) => p.id);
-  const open = openPlaces();
-  const allOpen = parents.length > 0 && parents.every((id) => open.has(id));
+  const full = state.places.filter((p) => hasKids(p.id) || countIn(p.id)).map((p) => p.id);
+  const allOpen = full.length > 0 && full.every(placeIsOpen);
   return h('div', {}, shopSwitch(),
-    parents.length ? h('div', { class: 'btn-row tree-tools' }, btn(allOpen ? t('Згорнути все') : t('Розгорнути все'), () => setOpenPlaces(new Set(allOpen ? [] : parents)), 'quiet')) : null,
-    h('div', { class: 'rows' }, placeRows(null, 0, open)),
-    loose.length ? box(`${t('Без місця')} · ${loose.length}`, h('div', { class: 'rows' }, loose.sort(byGroup).map(gearRow))) : null,
+    full.length > 1 ? h('div', { class: 'btn-row tree-tools' }, btn(allOpen ? t('Згорнути все') : t('Розгорнути все'), () => setPlacesOpen(full, !allOpen), 'quiet')) : null,
+    h('div', { class: 'gear-groups' }, kidsOf(null).map((p) => placeFold(p)),
+      loose.length ? fold('place-none', sectionHead('other', t('Без місця'), loose.length), () => h('div', { class: 'rows' }, loose.sort(byGroup).map((g) => gearRow(g, { here: true }))), '', loose.map((g) => g.id)) : null),
     h('div', { class: 'btn-row' }, btn(t('Друк наклейок'), () => labelsSheet(state.places))));
 }
 
@@ -1559,11 +1571,7 @@ function placeForm(p = null, { parentId = null, onSaved = null } = {}) {
       const rec = { ...(p ?? { id: db.uid(), created: Date.now() }), ...v, parentId: v.parentId || null };
       close();
       // Нове вкладене місце має бути видно одразу — розгортаємо гілку з ним
-      if (rec.parentId) {
-        const open = openPlaces();
-        for (let x = findPlace(rec.parentId), i = 0; x && i < 20; x = findPlace(x.parentId), i += 1) open.add(x.id);
-        remember(OPEN_KEY, JSON.stringify([...open]));
-      }
+      for (let x = findPlace(rec.parentId), i = 0; x && i < 20; x = findPlace(x.parentId), i += 1) remember(placeOpenKey(x.id), '1');
       await save({ places: { put: [rec] } }, [rec.id]);
       onSaved?.(rec);
     }, 'primary')],
@@ -1591,7 +1599,7 @@ function placeBody(p) {
       btn(t('+ Річ сюди'), () => gearForm(null, { preset: { placeId: p.id } }), 'primary'),
       btn(t('+ Вкладене місце'), () => placeForm(null, { parentId: p.id }))),
     kids.length ? box(t('Усередині'), h('div', { class: 'rows' }, kids.map((k) => row(k.name, k.note || null, fmt.num(countIn(k.id)), () => placeDetail(k.id))))) : null,
-    items.length ? box(`${t('Речі')} · ${items.length}`, h('div', { class: 'rows' }, items.map(gearRow)))
+    items.length ? box(`${t('Речі')} · ${items.length}`, h('div', { class: 'rows' }, items.map((g) => gearRow(g, { here: true }))))
       : kids.length ? null : h('p', { class: 'muted' }, t('Тут поки порожньо. «+ Річ сюди» — додавати одну за одною, місце підставиться саме.')));
 }
 
@@ -3289,6 +3297,9 @@ function render() {
   $('fab').classList.remove('away');
   // Місця зберігання — друга половина вкладки «Покупки»
   const navTab = tab === 'places' ? 'shop' : tab;
+  // Вкладка внизу відкриває ту половину, де були востаннє; спершу — місця
+  if (navTab === 'shop') remember(SHOP_SEG, tab);
+  document.querySelector('.tabs a[data-tab="shop"]').setAttribute('href', `#${recall(SHOP_SEG) === 'shop' ? 'shop' : 'places'}`);
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === navTab));
   // Налаштування — не в нижньому меню, а шестернею вгорі (як у Shooter's Log); у них — «Назад» туди, звідки прийшли
   const gearBtn = $('settings-btn');
