@@ -578,7 +578,7 @@ function sectionLook(d) {
 }
 
 /**
- * «Змінити порядок»: розділи рядками — тягнути за ⋮⋮ або стрілками (без перетягування теж можна, для клавіатури й читалки).
+ * «Змінити порядок»: розділи рядками — тягнути за ⋮⋮.
  * «Готово» зберігає, «Скасувати» — як було.
  */
 function sectionOrder() {
@@ -586,12 +586,6 @@ function sectionOrder() {
   const counts = new Map();
   for (const g of state.gear) if (active(g)) counts.set(groupOf(g), (counts.get(groupOf(g)) ?? 0) + 1);
   const list = h('div', { class: 'rows sec-order', role: 'list', 'aria-label': t('Порядок розділів') });
-  const swap = (i, j, focus) => {
-    if (j < 0 || j >= secOrder.length) return;
-    [secOrder[i], secOrder[j]] = [secOrder[j], secOrder[i]];
-    draw();
-    list.children[j]?.querySelector(focus)?.focus();
-  };
   // Перетягування: рядок їде за пальцем, сусіди міняються місцями, щойно палець перейшов їхню середину
   const drag = (row, e) => {
     e.preventDefault();
@@ -619,13 +613,11 @@ function sectionOrder() {
     document.addEventListener('pointerup', up);
     document.addEventListener('pointercancel', up);
   };
-  const draw = () => list.replaceChildren(...secOrder.map((key, i) => {
+  const draw = () => list.replaceChildren(...secOrder.map((key) => {
     const x = byKey.get(key);
     const row = h('div', { class: 'row sec-order-row', role: 'listitem', dataset: { key } });
     const grip = h('button', { type: 'button', class: 'sec-grip', 'aria-label': t('Перетягнути «{name}»', { name: x.name }), onpointerdown: (e) => drag(row, e) }, icon('grip'));
-    row.append(grip, sectionHead(x.icon, x.name, counts.get(key) ?? 0, 0, null, sectionColor(x.color)),
-      toolBtn('up', t('«{name}» вище', { name: x.name }), () => swap(i, i - 1, '.up'), `up${i ? '' : ' hide'}`),
-      toolBtn('down', t('«{name}» нижче', { name: x.name }), () => swap(i, i + 1, '.down'), `down${i < secOrder.length - 1 ? '' : ' hide'}`));
+    row.append(grip, sectionHead(x.icon, x.name, counts.get(key) ?? 0, 0, null, sectionColor(x.color)));
     return row;
   }));
   draw();
@@ -638,7 +630,7 @@ function sectionOrder() {
   const acts = () => h('div', { class: 'btn-row' }, btn(t('Скасувати'), () => { secOrder = null; render(); }), btn(t('Готово'), done, 'primary'));
   // Смуга не липне: інакше ховається під шапку; «Готово» ще й під списком — щоб не гортати назад
   return h('div', {},
-    h('div', { class: 'pick-bar order-bar' }, h('span', {}, t('Тягніть за ⋮⋮ або стрілками')), acts()),
+    h('div', { class: 'pick-bar order-bar' }, h('span', {}, t('Тягніть розділ за ⋮⋮')), acts()),
     list, acts());
 }
 
@@ -931,7 +923,7 @@ function paintGear() {
       }),
       gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), () => h('div', { class: 'rows' }, gone.map(gearRow)), '', gone.map((g) => g.id)) : null,
       h('div', { class: 'btn-row' }, btn(t('+ Розділ'), () => sectionForm(null), 'quiet'),
-        btn([icon('grip'), t('Змінити порядок')], () => { secOrder = sections().map((x) => x.key); render(); }, 'quiet with-ico')));
+        btn([icon('grip'), t('Змінити порядок')], () => { secOrder = sections().map((x) => x.key); render(); window.scrollTo(0, 0); }, 'quiet with-ico')));
   // «Потребує уваги» — лише в огляді: під час пошуку й вибору воно заважає
   gearList.replaceChildren(bar ?? '', query || picking ? '' : serviceDueBox() ?? '', body);
   if (thumbIo) dropGoneThumbs();
