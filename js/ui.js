@@ -924,6 +924,7 @@ const TOOL_ICON = {
   fish: '<path d="M3 12c2.5-4 6-5.5 9.5-5.5 3 0 5.2 1.6 6.5 3.5l2-2v8l-2-2c-1.3 1.9-3.5 3.5-6.5 3.5C9 17.5 5.5 16 3 12z"/><circle cx="8" cy="11" r=".8"/>',
   tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.4"/>',
   drop: '<path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11z"/>',
+  car: '<path d="M4 16v-4l2-5h12l2 5v4M4 16h16M4 16v2.5M20 16v2.5M4 12h16"/><circle cx="7.5" cy="14" r=".9"/><circle cx="16.5" cy="14" r=".9"/>',
   paste: '<path d="M9 3.5h6v3H9z"/><path d="M9 5H5.5v15.5h13V5H15"/><path d="M9 12h6M9 16h4"/>',
   qr: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M14 14h2v2h-2zM18 14h2M14 18h2v2M18 18h2v2h-2"/>',
   move: '<path d="M5 12h14M15 8l4 4-4 4"/><path d="M9 5H5v14h4"/>',

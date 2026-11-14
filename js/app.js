@@ -4,6 +4,7 @@ import * as db from './db.js';
 import * as sync from './sync.js';
 import * as bot from './bot.js';
 import * as nfc from './nfc.js';
+import { loadLeaflet, makeMap, pinIcon, UA } from './map.js';
 import { t, lang, collate, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
@@ -1634,6 +1635,8 @@ function parseCoords(text) {
 }
 
 const coordsText = (s) => (hasCoords(s) ? `${Number(s.lat).toFixed(5)}, ${Number(s.lon).toFixed(5)}` : '');
+// Під'їзд — де лишити авто; маршрут веде сюди, бо точка на воді часто без дороги
+const parkOf = (s) => (hasCoords({ lat: s?.pLat, lon: s?.pLon }) ? { lat: s.pLat, lon: s.pLon } : null);
 
 const SPOT_KINDS = [['river', 'Річка'], ['lake', 'Озеро'], ['pond', 'Ставок'], ['reservoir', 'Водосховище'], ['quarry', 'Кар’єр'], ['canal', 'Канал'], ['sea', 'Море, лиман'], ['other', 'Інше']];
 const ACCESS = [['car', 'Авто до води'], ['walk', 'Пішки'], ['shore', 'З берега'], ['boat', 'З човна'], ['ice', 'По льоду']];
@@ -1655,7 +1658,11 @@ function spotTrips(spotId) {
 const spotPrice = (s) => (s.pay === 'paid' ? (num(s.price) ? t('путівка {s}', { s: fmt.money(s.price) }) : t('платно')) : s.pay === 'free' ? t('безкоштовно') : null);
 // Google Maps — посиланням у новій вкладці: сам застосунок координати нікуди не шле
 const mapUrl = (s) => `https://www.google.com/maps/search/?api=1&query=${Number(s.lat)},${Number(s.lon)}`;
-const routeUrl = (s) => `https://www.google.com/maps/dir/?api=1&destination=${Number(s.lat)},${Number(s.lon)}`;
+const routeUrl = (s) => {
+  const to = parkOf(s) ?? s;
+  return `https://www.google.com/maps/dir/?api=1&destination=${Number(to.lat)},${Number(to.lon)}`;
+};
+const hasPlace = (s) => hasCoords(s) || Boolean(parkOf(s));
 
 function spotRow(s) {
   const trips = spotTrips(s.id);
@@ -1676,25 +1683,118 @@ function renderSpots() {
       [btn(t('Додати'), () => spotForm(), 'primary add')]);
 }
 
+/** Де зараз телефон: { lat, lon } або null (з підказкою, чому ні). */
+function myPosition() {
+  if (!navigator.geolocation) { toast(t('Телефон не дає місце')); return Promise.resolve(null); }
+  toast(t('Шукаю місце…'));
+  return new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+    (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+    () => { toast(t('Не вдалося визначити місце — дозвольте доступ до геолокації')); resolve(null); },
+    { enableHighAccuracy: true, timeout: 15000 }));
+}
+
+const MAP_LAYER = 'fishing-log:map-layer';
+const mapLayer = () => (recall(MAP_LAYER) === 'osm' ? 'osm' : 'sat');
+
+/** Карта на весь екран: торкання ставить вибрану точку — водойму чи під'їзд; шпильки можна перетягувати. */
+async function mapPicker(start, onDone) {
+  let L;
+  try { L = await loadLeaflet(); } catch { toast(t('Карта не завантажилась — перевірте інтернет')); return; }
+  const pts = { water: start.water ?? null, park: start.park ?? null };
+  let mode = pts.water && !pts.park ? 'park' : 'water';
+  const tip = h('p', { class: 'muted small map-tip' });
+  const hint = () => { tip.textContent = mode === 'water' ? t('Торкніться води, де ловите') : t('Торкніться місця, де лишаєте авто'); };
+  const modes = chips([['water', [icon('drop'), h('span', {}, t('Водойма'))]], ['park', [icon('car'), h('span', {}, t('Під’їзд'))]]], mode, (v) => { mode = v; hint(); });
+  modes.classList.add('segmented', 'map-modes');
+  const setMode = (v) => { mode = v; modes.value = v; modes.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.value === v)); hint(); };
+  hint();
+  const el = h('div', { class: 'map-box' });
+  let map = null;
+  const layers = chips([['sat', t('Супутник')], ['osm', t('Схема')]], mapLayer(), (v) => { map?.setLayer(v); remember(MAP_LAYER, v); });
+  layers.classList.add('segmented', 'map-layers');
+  const markers = {};
+  const put = (kind, at) => {
+    pts[kind] = { lat: at.lat, lon: at.lng ?? at.lon };
+    const ll = [pts[kind].lat, pts[kind].lon];
+    if (markers[kind]) { markers[kind].setLatLng(ll); return; }
+    markers[kind] = L.marker(ll, { icon: pinIcon(L, kind), draggable: true, keyboard: false })
+      .on('dragend', (e) => { const p = e.target.getLatLng(); pts[kind] = { lat: p.lat, lon: p.lng }; })
+      .addTo(map);
+  };
+  const clear = btn(t('Прибрати точку'), () => {
+    markers[mode]?.remove();
+    delete markers[mode];
+    pts[mode] = null;
+  }, 'quiet mini');
+  const me = btn([icon('pin'), t('Я тут')], async () => {
+    const pos = await myPosition();
+    if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
+  }, 'mini');
+  const close = sheet(t('Водойма на карті'), h('div', { class: 'map-picker' }, modes, tip, el,
+    h('div', { class: 'map-tools' }, layers, h('div', { class: 'btn-row' }, me, clear))), {
+    full: true,
+    dirty: false,
+    onClose: () => map?.remove(),
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Готово'), () => { close(); onDone({ ...pts }); }, 'primary')],
+  });
+  // Карта міряє себе при створенні — тож коли шторка вже на екрані
+  requestAnimationFrame(() => {
+    const c = pts.water ?? pts.park;
+    map = makeMap(L, el, c ? { lat: c.lat, lon: c.lon, zoom: 15, layer: mapLayer() } : { lat: UA.lat, lon: UA.lon, zoom: UA.zoom, layer: mapLayer() });
+    for (const k of ['water', 'park']) if (pts[k]) put(k, pts[k]);
+    if (pts.water && pts.park) map.fitBounds([[pts.water.lat, pts.water.lon], [pts.park.lat, pts.park.lon]], { padding: [48, 48], maxZoom: 17 });
+    map.on('click', (e) => {
+      put(mode, e.latlng);
+      // Поставили воду, а під'їзду ще немає — одразу пропонуємо його
+      if (mode === 'water' && !pts.park) setMode('park');
+    });
+    setTimeout(() => map.invalidateSize(), 250);
+  });
+}
+
+/** Мала карта в картці водойми: вода й під'їзд; торкання — відкрити в Google Maps. */
+function spotMiniMap(s) {
+  const pk = parkOf(s);
+  const a = hasCoords(s) ? { lat: Number(s.lat), lon: Number(s.lon) } : pk;
+  const el = h('div', { class: 'map-mini' });
+  const wrap = h('button', {
+    type: 'button', class: 'map-mini-btn', 'aria-label': t('Відкрити «{name}» у Google Maps', { name: s.name }),
+    onclick: () => window.open(mapUrl(a), '_blank', 'noopener'),
+  }, el);
+  loadLeaflet().then((L) => requestAnimationFrame(() => {
+    if (!el.isConnected) return;
+    const map = makeMap(L, el, { lat: a.lat, lon: a.lon, zoom: 14, layer: mapLayer(), interactive: false });
+    if (hasCoords(s)) L.marker([a.lat, a.lon], { icon: pinIcon(L, 'water'), interactive: false, keyboard: false }).addTo(map);
+    if (pk) L.marker([pk.lat, pk.lon], { icon: pinIcon(L, 'park'), interactive: false, keyboard: false }).addTo(map);
+    if (hasCoords(s) && pk) map.fitBounds([[a.lat, a.lon], [pk.lat, pk.lon]], { padding: [36, 36], maxZoom: 16 });
+    setTimeout(() => map.invalidateSize(), 250);
+  })).catch(() => wrap.remove());
+  return wrap;
+}
+
 function spotForm(s = null, { onSaved = null } = {}) {
   const f = form([
     { name: 'name', label: t('Назва'), value: s?.name, required: true, placeholder: t('напр. Дніпро, Козачий острів') },
     { name: 'kind', label: t('Тип'), type: 'chips', options: SPOT_KINDS.map(([k, l]) => [k, t(l)]), value: s?.kind ?? '' },
-    { name: 'coords', label: t('Координати'), value: coordsText(s), placeholder: '50.45012, 30.52341', hint: t('Можна вставити посилання з Google Maps') },
+    { name: 'coords', label: t('Водойма на карті'), value: coordsText(s), placeholder: '50.45012, 30.52341', hint: t('Точка на воді — для погоди. Можна вставити координати чи посилання з Google Maps') },
+    { name: 'park', label: t('Під’їзд'), value: coordsText(parkOf(s)), placeholder: '50.44870, 30.51920', hint: t('Де лишити авто — сюди будується маршрут') },
     { name: 'pay', label: t('Риболовля'), type: 'chips', options: PAY.map(([k, l]) => [k, t(l)]), value: s?.pay ?? '' },
     { name: 'price', label: t('Путівка, грн'), type: 'number', value: s?.price, half: true },
     { name: 'depth', label: t('Глибини, м'), value: s?.depth, half: true, placeholder: t('напр. 2–6') },
     { name: 'note', label: t('Нотатка'), type: 'textarea', rows: 3, value: s?.note, placeholder: t('де лишити машину, ями, коряжник, хто сторожує') },
   ]);
-  const here = btn([icon('pin'), t('Звідси')], () => {
-    if (!navigator.geolocation) { toast(t('Телефон не дає місце')); return; }
-    toast(t('Шукаю місце…'));
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { f.inputs.coords.value = `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`; toast(t('Місце знайдено')); },
-      () => toast(t('Не вдалося визначити місце — дозвольте доступ до геолокації')),
-      { enableHighAccuracy: true, timeout: 15000 });
+  const here = (input) => btn([icon('pin'), t('Звідси')], async () => {
+    const pos = await myPosition();
+    if (pos) { input.value = `${pos.lat.toFixed(5)}, ${pos.lon.toFixed(5)}`; toast(t('Місце знайдено')); }
   }, 'mini');
-  f.inputs.coords.closest('.field').after(h('div', { class: 'specs-find' }, here));
+  const onMap = btn([icon('map'), t('Вибрати на карті')], () => mapPicker(
+    { water: parseCoords(f.inputs.coords.value), park: parseCoords(f.inputs.park.value) },
+    ({ water, park }) => {
+      f.inputs.coords.value = water ? `${water.lat.toFixed(5)}, ${water.lon.toFixed(5)}` : '';
+      f.inputs.park.value = park ? `${park.lat.toFixed(5)}, ${park.lon.toFixed(5)}` : '';
+    }), 'mini');
+  f.inputs.coords.closest('.field').after(h('div', { class: 'specs-find' }, onMap, here(f.inputs.coords)));
+  f.inputs.park.closest('.field').after(h('div', { class: 'specs-find' }, here(f.inputs.park)));
   // Ціна путівки — лише коли платно
   const fitPrice = () => { f.inputs.price.closest('.field').hidden = f.inputs.pay.value !== 'paid'; };
   f.inputs.pay.addEventListener('click', fitPrice);
@@ -1711,11 +1811,13 @@ function spotForm(s = null, { onSaved = null } = {}) {
       const v = f.values();
       const c = v.coords ? parseCoords(v.coords) : null;
       if (v.coords && !c) { fieldError(f.inputs.coords, t('Не схоже на координати')); return; }
+      const pk = v.park ? parseCoords(v.park) : null;
+      if (v.park && !pk) { fieldError(f.inputs.park, t('Не схоже на координати')); return; }
       const id = s?.id ?? db.uid();
       let photo;
       try { photo = await photoChanges(s, pick.value(), id); } catch (err) { toast(err.message); return; }
       const rec = {
-        ...(s ?? { id, created: Date.now() }), name: v.name, kind: v.kind || null, note: v.note, lat: c?.lat ?? null, lon: c?.lon ?? null,
+        ...(s ?? { id, created: Date.now() }), name: v.name, kind: v.kind || null, note: v.note, lat: c?.lat ?? null, lon: c?.lon ?? null, pLat: pk?.lat ?? null, pLon: pk?.lon ?? null,
         pay: v.pay || null, price: v.pay === 'paid' ? v.price : null, depth: v.depth, access: access.value(), species: fishHere.value(), photoId: photo.photoId,
       };
       close();
@@ -1810,7 +1912,7 @@ function spotBody(s) {
     spotPrice(s) ? chip('tag', spotPrice(s)) : null,
     s.depth ? chip(null, t('глибини {d} м', { d: s.depth })) : null,
     ...(s.access ?? []).map((k) => chip(null, label(ACCESS, k))),
-    hasCoords(s) ? null : chip('pin', t('додати координати'), () => spotForm(s), 'link'),
+    hasPlace(s) ? null : chip('pin', t('позначити на карті'), () => spotForm(s), 'link'),
   ].filter(Boolean);
   const open = (url) => window.open(url, '_blank', 'noopener');
   const species = spotSpecies(trips);
@@ -1849,9 +1951,9 @@ function spotBody(s) {
     photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) },
       h('img', { class: 'item-photo spot-photo', src: photo.thumb, alt: '' })) : null,
     meta.length ? h('div', { class: 'meta-chips' }, meta) : null,
+    hasPlace(s) ? spotMiniMap(s) : null,
     h('div', { class: 'btn-row spot-acts' },
-      hasCoords(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
-      hasCoords(s) ? btn([icon('map'), t('На карті')], () => open(mapUrl(s))) : null,
+      hasPlace(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
       btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
     tiles,
     s.note ? h('p', { class: 'pre spot-note' }, s.note) : null,
@@ -1870,7 +1972,8 @@ function spotBody(s) {
     losses.length ? box(t('Що тут обриваю · {n}', { n: fmt.num(lostTotal) }), h('div', { class: 'rows' }, losses.slice(0, 6).map((x) => row(gearTitle(x.g),
       [weightText(x.g), x.g.color].filter(Boolean).join(' · ') || null, `−${fmt.num(x.n)}`, () => gearDetail(x.g.id), { thumb: gearThumb(x.g) })))) : null,
     trips.length ? fold('spot-trips', `${t('Виїзди')} · ${trips.length}`, () => h('div', { class: 'rows' }, trips.map(tripRow))) : null,
-    hasCoords(s) ? h('p', { class: 'muted small' }, t('Координати {c} — для погоди у виїздах і маршруту.', { c: coordsText(s) })) : null);
+    hasPlace(s) ? h('p', { class: 'muted small' }, [hasCoords(s) ? t('Водойма: {c} — для погоди у виїздах.', { c: coordsText(s) }) : null,
+      parkOf(s) ? t('Під’їзд: {c} — маршрут веде сюди.', { c: coordsText(parkOf(s)) }) : null].filter(Boolean).join(' ')) : null);
 }
 
 // ---------- погода й місяць ----------
@@ -3243,7 +3346,7 @@ function aboutPanel() {
     more(t('З чого почати'), h('ol', { class: 'ex-rules' },
       h('li', {}, t('«Місця» → «+»: гараж, шафа, ящик — вкладайте одне в одне.')),
       h('li', {}, t('Відкрийте місце й додавайте речі кнопкою «+ Річ сюди» — місце підставиться саме. «Зберегти й ще» — наступна одразу.')),
-      h('li', {}, t('Приманкам і оснастці поставте поріг «мало» — що закінчується, з’явиться в «Покупки» → «Докупити».')),
+      h('li', {}, t('Приманкам і оснастці поставте поріг «мало» — що закінчується, з’явиться в «Склад» → «Покупки» → «Докупити».')),
       h('li', {}, t('«Місця» → «Друк наклейок»: QR на ящик відкриває його вміст камерою телефона.')),
       nfc.supported() ? h('li', {}, t('NFC-мітка: у картці речі значок NFC записує на мітку посилання. Торкнулися мітки телефоном — відкрилася ця річ.')) : null,
       h('li', {}, t('На риболовлі — «Виїзди» → «+»: улов, «−1 Втратив…»; погода підтягнеться сама, якщо в водойми є координати.')),
@@ -3295,7 +3398,7 @@ function render() {
   if (thumbIo) dropGoneThumbs();
   $('fab').hidden = !view.fab || Boolean($('view').querySelector('.empty .btn.add'));
   $('fab').classList.remove('away');
-  // Місця зберігання — друга половина вкладки «Покупки»
+  // Місця зберігання — друга половина вкладки «Склад»
   const navTab = tab === 'places' ? 'shop' : tab;
   // Вкладка внизу відкриває ту половину, де були востаннє; спершу — місця
   if (navTab === 'shop') remember(SHOP_SEG, tab);
