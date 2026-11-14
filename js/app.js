@@ -1056,7 +1056,8 @@ const GROUP_ICONS = {
   boots: '<path d="M7 3h6v11l6 2.5V20H7z"/><path d="M7 17h12M7 7h6"/>',
   spoon: '<circle cx="12" cy="2.6" r="1"/><path d="M12 3.6c3 2 4.2 5 3.6 8.2-.5 2.8-2 4.2-3.6 4.2s-3.1-1.4-3.6-4.2C7.8 8.6 9 5.6 12 3.6z"/><path d="M12 16v3.4a1.8 1.8 0 0 1-3.6 0"/><path d="M12.6 7c.9 1 1.3 2.3 1 3.8"/>',
   keepnet: '<ellipse cx="12" cy="5" rx="5" ry="1.6"/><path d="M7 5v14M17 5v14"/><path d="M7 10c0 .9 2.2 1.6 5 1.6s5-.7 5-1.6M7 14.5c0 .9 2.2 1.6 5 1.6s5-.7 5-1.6M7 19c0 .9 2.2 1.6 5 1.6s5-.7 5-1.6"/>',
-  rodpod: '<path d="M3 20h18M7 20V10M17 20V12"/><path d="M5.5 8.5 7 10l1.5-1.5M15.5 10.5 17 12l1.5-1.5"/><path d="M2 15 22 6"/>',
+  // Род-под збоку: рама на ніжках, ззаду чашка під комель, спереду рогатка, вудилище лежить на обох
+  rodpod: '<path d="M3.5 20.5 6 16h12l2.5 4.5"/><path d="M7.5 16v-3.4M16.5 16V8.6"/><path d="M6 11.3c0 1 .7 1.5 1.5 1.5S9 12.3 9 11.3M15 7.1l1.5 1.5L18 7.1"/><path d="M2 13.6 22 4.6"/>',
   // Звичайні речі — з Lucide v0.460.0 (https://lucide.dev), як у Хобі-плані; рибальське вище — своє, у Lucide такого немає.
   // ISC License. Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT).
   // All other copyright (c) for Lucide are held by Lucide Contributors 2022. Permission to use, copy, modify,
