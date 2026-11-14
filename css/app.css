@@ -1384,3 +1384,31 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .map-box .leaflet-bar { border: 1px solid var(--line); box-shadow: var(--shadow); }
 .leaflet-container { font: inherit; }
 .leaflet-control-attribution { font-size: 10px; }
+
+/* Розділи свого кольору — значок у кольорі, плитка з відтінком; вибір значка й кольору — згорнутими рядками */
+.sec-ico.tinted { color: var(--c); background: color-mix(in srgb, var(--c) 18%, var(--surface-2)); }
+.pick-folds { margin: 4px 0 12px; }
+.pick-fold > summary { gap: 10px; color: var(--text); font-size: 15px; }
+.pick-fold .pick-title { flex: none; }
+.pick-value { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; color: var(--muted); font-weight: 600; }
+.pick-value .sec-ico { width: 32px; height: 32px; border-radius: 10px; }
+.pick-value .sec-ico svg { width: 20px; height: 20px; }
+.swatch-dot { width: 18px; height: 18px; flex: none; border-radius: 50%; background: var(--c); }
+.icon-pick button { color: var(--c, var(--accent-2)); }
+.chips.icon-pick button.on { background: color-mix(in srgb, var(--c, var(--accent)) 20%, var(--surface)); border-color: var(--c, var(--accent)); color: var(--c, var(--accent-2)); }
+.color-pick button { width: 44px; height: 44px; padding: 0; border: 2px solid transparent; border-radius: 50%; background: var(--c); }
+.chips.color-pick button.on { background: var(--c); border-color: var(--surface); box-shadow: 0 0 0 2px var(--text); }
+.color-pick button.none, .chips.color-pick button.none.on { background: var(--surface-2); border: 1px dashed var(--muted); }
+.chips.color-pick button.none.on { box-shadow: 0 0 0 2px var(--text); }
+.btn.with-ico { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
+/* «Змінити порядок»: ⋮⋮ — тягнути, стрілки — без перетягування */
+.sec-order { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.order-bar { position: static; }
+.sec-order-row { gap: 4px; padding: 6px 6px 6px 2px; background: var(--surface); }
+.sec-order-row .sec-head { gap: 8px; }
+.sec-order-row .sec-ico { width: 36px; height: 36px; }
+.sec-grip { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--muted); cursor: grab; touch-action: none; }
+.sec-grip .ico svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
+.sec-order-row .icon-btn.tool.hide { visibility: hidden; }
+.sec-order-row.dragging { position: relative; z-index: 2; box-shadow: 0 10px 28px rgb(0 0 0 / .35); outline: 2px solid var(--accent); cursor: grabbing; }

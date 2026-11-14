@@ -537,12 +537,112 @@ async function photoChanges(g, change, ownerId) {
 
 let query = '';
 let picking = null; // Set id — режим «Вибрати» для перенесення кількох речей
+let secOrder = null; // ключі розділів — режим «Змінити порядок»
 
 // ---------- розділи: як групи в «Заняттях» Хобі-плану ----------
 
-const saveSections = (list) => save({ prefs: { put: [{ ...prefs(), sections: list.map(({ key, name, icon, qty }) => ({ key, name, icon, ...(qty ? { qty } : {}) })) }] } });
+const saveSections = (list) => save({ prefs: { put: [{ ...prefs(), sections: list.map(({ key, name, icon, qty, color }) => ({ key, name, icon, ...(qty ? { qty } : {}), ...(color ? { color } : {}) })) }] } });
 
-/** Розділ: назва, значок, порядок, категорії (вбудовані — перейменувати, свої — ще й видалити), свій — видалити весь. */
+/** Позначити вибрану кнопку в групі-перемикачі. */
+function markPicked(group, picked) {
+  group.querySelectorAll('button').forEach((b) => { const on = b === picked; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+}
+
+/** Значок і колір розділу — згорнутими рядками з поточним значенням, як у Хобі-плані; d змінюється на місці. */
+function sectionLook(d) {
+  const iconValue = h('span', { class: 'pick-value' });
+  const colorValue = h('span', { class: 'pick-value' });
+  const icons = h('div', { class: 'chips icon-pick', role: 'group', 'aria-label': t('Значок') }, SECTION_ICONS.map((k) => {
+    const b = h('button', { type: 'button', class: k === d.icon ? 'on' : '', 'aria-pressed': String(k === d.icon), 'aria-label': t(ICON_NAMES[k] ?? k), title: t(ICON_NAMES[k] ?? k),
+      onclick: () => { d.icon = k; markPicked(icons, b); paint(); } });
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[k]}</svg>`;
+    return b;
+  }));
+  const colors = h('div', { class: 'chips color-pick', role: 'group', 'aria-label': t('Колір') },
+    [['', null, 'Без кольору'], ...SECTION_COLORS].map(([k, hex, name]) => {
+      const b = h('button', { type: 'button', class: k === (d.color ?? '') ? 'on' : '', 'aria-pressed': String(k === (d.color ?? '')), 'aria-label': t(name), title: t(name),
+        onclick: () => { d.color = k || null; markPicked(colors, b); paint(); } });
+      if (hex) b.style.setProperty('--c', hex); else b.classList.add('none');
+      return b;
+    }));
+  const paint = () => {
+    const hex = sectionColor(d.color);
+    iconValue.replaceChildren(secIco(d.icon, hex), h('span', {}, t(ICON_NAMES[d.icon] ?? '')));
+    colorValue.replaceChildren(hex ? h('span', { class: 'swatch-dot' }) : '', h('span', {}, t(SECTION_COLORS.find(([k]) => k === d.color)?.[2] ?? 'Без кольору')));
+    colorValue.style.setProperty('--c', hex ?? 'transparent');
+    icons.style.setProperty('--c', hex ?? 'var(--accent-2)');
+  };
+  paint();
+  const row = (title, value, body) => h('details', { class: 'ex-more pick-fold' }, h('summary', {}, h('span', { class: 'pick-title' }, title), value), body);
+  return h('div', { class: 'pick-folds' }, row(t('Значок'), iconValue, icons), row(t('Колір'), colorValue, colors));
+}
+
+/**
+ * «Змінити порядок»: розділи рядками — тягнути за ⋮⋮ або стрілками (без перетягування теж можна, для клавіатури й читалки).
+ * «Готово» зберігає, «Скасувати» — як було.
+ */
+function sectionOrder() {
+  const byKey = new Map(sections().map((x) => [x.key, x]));
+  const counts = new Map();
+  for (const g of state.gear) if (active(g)) counts.set(groupOf(g), (counts.get(groupOf(g)) ?? 0) + 1);
+  const list = h('div', { class: 'rows sec-order', role: 'list', 'aria-label': t('Порядок розділів') });
+  const swap = (i, j, focus) => {
+    if (j < 0 || j >= secOrder.length) return;
+    [secOrder[i], secOrder[j]] = [secOrder[j], secOrder[i]];
+    draw();
+    list.children[j]?.querySelector(focus)?.focus();
+  };
+  // Перетягування: рядок їде за пальцем, сусіди міняються місцями, щойно палець перейшов їхню середину
+  const drag = (row, e) => {
+    e.preventDefault();
+    // Слухаємо документ, а не ⋮⋮: перестановка рядка в DOM знімає з нього захоплення вказівника
+    row.classList.add('dragging');
+    const move = (ev) => {
+      for (const other of list.children) {
+        if (other === row) continue;
+        const r = other.getBoundingClientRect();
+        const mid = r.top + r.height / 2;
+        const before = other.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING;
+        if (before && ev.clientY > mid) { other.after(row); break; }
+        if (!before && ev.clientY < mid) { other.before(row); break; }
+      }
+    };
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      row.classList.remove('dragging');
+      secOrder = [...list.children].map((x) => x.dataset.key);
+      draw();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  };
+  const draw = () => list.replaceChildren(...secOrder.map((key, i) => {
+    const x = byKey.get(key);
+    const row = h('div', { class: 'row sec-order-row', role: 'listitem', dataset: { key } });
+    const grip = h('button', { type: 'button', class: 'sec-grip', 'aria-label': t('Перетягнути «{name}»', { name: x.name }), onpointerdown: (e) => drag(row, e) }, icon('grip'));
+    row.append(grip, sectionHead(x.icon, x.name, counts.get(key) ?? 0, 0, null, sectionColor(x.color)),
+      toolBtn('up', t('«{name}» вище', { name: x.name }), () => swap(i, i - 1, '.up'), `up${i ? '' : ' hide'}`),
+      toolBtn('down', t('«{name}» нижче', { name: x.name }), () => swap(i, i + 1, '.down'), `down${i < secOrder.length - 1 ? '' : ' hide'}`));
+    return row;
+  }));
+  draw();
+  const done = async () => {
+    const next = secOrder.map((k) => byKey.get(k)).filter(Boolean);
+    secOrder = null;
+    await saveSections(next);
+    toast(t('Порядок збережено'));
+  };
+  const acts = () => h('div', { class: 'btn-row' }, btn(t('Скасувати'), () => { secOrder = null; render(); }), btn(t('Готово'), done, 'primary'));
+  // Смуга не липне: інакше ховається під шапку; «Готово» ще й під списком — щоб не гортати назад
+  return h('div', {},
+    h('div', { class: 'pick-bar order-bar' }, h('span', {}, t('Тягніть за ⋮⋮ або стрілками')), acts()),
+    list, acts());
+}
+
+/** Розділ: назва, значок, колір, категорії (вбудовані — перейменувати, свої — ще й видалити), свій — видалити весь. */
 function sectionForm(x) {
   const isNew = !x;
   const d = x ? { ...x } : { key: `s-${db.uid()}`, name: '', icon: 'star', qty: false };
@@ -550,25 +650,8 @@ function sectionForm(x) {
     { name: 'name', label: t('Назва'), value: d.name, required: true, placeholder: t('напр. Човен і мотор') },
     ...(d.builtin ? [] : [{ name: 'qty', label: t('Рахувати'), type: 'select', value: d.qty ? '1' : '', options: [['', t('Поштучно')], ['1', t('Кількістю')]] }]),
   ]);
-  const icons = h('div', { class: 'chips icon-pick', role: 'group', 'aria-label': t('Значок') }, SECTION_ICONS.map((k) => {
-    const b = h('button', { type: 'button', class: k === d.icon ? 'on' : '', 'aria-pressed': String(k === d.icon), 'aria-label': k,
-      onclick: () => { d.icon = k; icons.querySelectorAll('button').forEach((x2) => { const on = x2 === b; x2.classList.toggle('on', on); x2.setAttribute('aria-pressed', String(on)); }); } });
-    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[k]}</svg>`;
-    return b;
-  }));
+  const look = sectionLook(d);
   const list = sections();
-  const at = list.findIndex((y) => y.key === d.key);
-  const move = (dir) => async () => {
-    // Уже введену назву (і «рахувати») не губимо: переставляємо разом зі змінами
-    const v = f.values();
-    const next = list.map((y) => (y.key === d.key ? { ...y, name: v.name || y.name, ...(d.builtin ? {} : { qty: v.qty === '1' }) } : y));
-    const j = at + dir;
-    if (at < 0 || j < 0 || j >= next.length) return;
-    [next[at], next[j]] = [next[j], next[at]];
-    close();
-    await saveSections(next);
-    sectionForm(sections().find((y) => y.key === d.key));
-  };
   const cats = allCats().filter((c) => c.group === d.key);
   // Після зміни категорії — те саме вікно зі свіжим списком
   const reopen = () => { close(); sectionForm(sections().find((y) => y.key === d.key)); };
@@ -580,15 +663,14 @@ function sectionForm(x) {
       c.builtin ? null : toolBtn('delete', t('Видалити «{name}»', { name: c.name }), () => dropCat(c, reopen), 'danger')))) : h('p', { class: 'muted small' }, t('Ще немає категорій.')),
     h('div', { class: 'btn-row' }, btn(t('+ Категорія'), () => catNameForm(null, d.key, reopen)))));
   const close = sheet(isNew ? t('Новий розділ') : t('Розділ'), h('div', {},
-    f.el, h('div', { class: 'field-label' }, t('Значок')), icons,
-    isNew ? null : h('div', { class: 'btn-row' }, btn(t('↑ Вище'), move(-1)), btn(t('↓ Нижче'), move(1))),
+    f.el, look,
     catRows,
     !isNew && !d.builtin ? h('div', { class: 'btn-row' }, btn(t('Видалити розділ'), () => removeSection(d), 'danger')) : null,
     d.builtin ? h('p', { class: 'muted small' }, t('Вбудований розділ можна перейменувати й переставити, але не видалити: на ньому тримаються поля вудилищ, котушок і шнурів.')) : null), {
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
       if (invalidField(f)) return;
       const v = f.values();
-      const rec = { ...d, name: v.name, qty: d.builtin ? undefined : v.qty === '1' };
+      const rec = { ...d, name: v.name, qty: d.builtin ? undefined : v.qty === '1', color: d.color || undefined };
       const next = isNew ? [...list, rec] : list.map((y) => (y.key === d.key ? rec : y));
       close();
       await saveSections(next);
@@ -794,10 +876,16 @@ function shownGear() {
 }
 
 /** Заголовок розділу: значок, назва, праворуч — кількість і «мало». */
-function sectionHead(iconKey, label, n, low = 0, onEdit = null) {
-  const ico = h('span', { class: 'sec-ico', 'aria-hidden': 'true' });
+/** Значок розділу в плитці; color — розділ свого кольору. */
+function secIco(iconKey, color = null) {
+  const ico = h('span', { class: color ? 'sec-ico tinted' : 'sec-ico', 'aria-hidden': 'true' });
   ico.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[iconKey] ?? GROUP_ICONS.other}</svg>`;
-  return h('span', { class: 'sec-head' }, ico, h('span', { class: 'sec-name' }, label),
+  if (color) ico.style.setProperty('--c', color);
+  return ico;
+}
+
+function sectionHead(iconKey, label, n, low = 0, onEdit = null, color = null) {
+  return h('span', { class: 'sec-head' }, secIco(iconKey, color), h('span', { class: 'sec-name' }, label),
     low ? h('span', { class: 'sec-low' }, t('мало: {n}', { n: low })) : null,
     h('span', { class: 'sec-count' }, fmt.num(n)),
     // Олівець у заголовку — змінити розділ; розділ при цьому не згортається
@@ -811,6 +899,8 @@ let gearList = null;
 
 function paintGear() {
   if (!gearList?.isConnected) return;
+  // «+» у режимі порядку лише заважає — ховається, render() поверне
+  if (secOrder) { gearList.replaceChildren(sectionOrder()); $('fab').hidden = true; return; }
   const list = shownGear();
   const bar = picking ? h('div', { class: 'pick-bar' },
     h('span', {}, t('Вибрано: {n}', { n: picking.size })),
@@ -835,12 +925,13 @@ function paintGear() {
       only ? (only.key === 'lures' ? lureBody(list) : h('div', { class: 'rows' }, list.map(gearRow))) : sections().map((x) => {
         const items = list.filter((g) => groupOf(g) === x.key);
         // Порожній свій розділ теж видно — щоб змінити чи видалити, як порожні групи в Хобі-плані
-        return items.length || !x.builtin ? fold(`gear-${x.key}`, sectionHead(x.icon, x.name, items.length, items.filter(isLow).length, () => sectionForm(x)),
+        return items.length || !x.builtin ? fold(`gear-${x.key}`, sectionHead(x.icon, x.name, items.length, items.filter(isLow).length, () => sectionForm(x), sectionColor(x.color)),
           items.length ? () => (x.key === 'lures' ? lureBody(items) : h('div', { class: 'rows' }, items.map(gearRow)))
             : h('p', { class: 'muted small' }, t('Порожній: категорію розділу вибирають у картці речі, олівець — змінити розділ.')), '', items.map((g) => g.id)) : null;
       }),
       gone.length ? fold('gear-gone', sectionHead('gone', t('Списані'), gone.length), () => h('div', { class: 'rows' }, gone.map(gearRow)), '', gone.map((g) => g.id)) : null,
-      h('div', { class: 'btn-row' }, btn(t('+ Розділ'), () => sectionForm(null), 'quiet')));
+      h('div', { class: 'btn-row' }, btn(t('+ Розділ'), () => sectionForm(null), 'quiet'),
+        btn([icon('grip'), t('Змінити порядок')], () => { secOrder = sections().map((x) => x.key); render(); }, 'quiet with-ico')));
   // «Потребує уваги» — лише в огляді: під час пошуку й вибору воно заважає
   gearList.replaceChildren(bar ?? '', query || picking ? '' : serviceDueBox() ?? '', body);
   if (thumbIo) dropGoneThumbs();
@@ -858,7 +949,7 @@ function lureBody(items) {
   const used = new Set(items.map((g) => g.cat));
   return h('div', { class: 'gear-groups sub-groups' }, allCats().filter((c) => used.has(c.id)).map((c) => {
     const its = items.filter((g) => g.cat === c.id).sort(lureSort);
-    return fold(`lures-${c.id}`, sectionHead('lures', c.name, its.length, its.filter(isLow).length), () => h('div', { class: 'rows' }, modelRows(its)), '', its.map((g) => g.id));
+    return fold(`lures-${c.id}`, sectionHead('lures', c.name, its.length, its.filter(isLow).length, null, sectionColor(sectionOf('lures')?.color)), () => h('div', { class: 'rows' }, modelRows(its)), '', its.map((g) => g.id));
   }));
 }
 
@@ -920,8 +1011,28 @@ const GROUP_ICONS = {
   light: '<path d="M9 21h6M10 17h4v4h-4zM12 3a6 6 0 0 1 4 10.5c-.7.6-1 1.6-1 2.5H9c0-.9-.3-1.9-1-2.5A6 6 0 0 1 12 3z"/>',
   tool: '<path d="M14.5 3.5a5 5 0 0 0-5.6 6.7L3.5 15.6v4.9h4.9l5.4-5.4a5 5 0 0 0 6.7-5.6l-3 3-3.5-.5-.5-3.5z"/>',
   star: '<path d="M12 3l2.8 5.8 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 3 1.1-6.2L3 9.7l6.2-.9z"/>',
+  float: '<path d="M12 2.5v4M9.5 6.5h5L13.5 12h-3zM10.5 12L12 20l1.5-8"/><path d="M4 20.5h16"/>',
+  net: '<path d="M4 5h16a8 8 0 0 1-16 0z"/><path d="M8 5l4 8 4-8M6 9h12"/><path d="M12 13v8"/>',
+  knife: '<path d="M4 20l8.5-8.5M12.5 11.5L20 4c.5 3-1 6.5-4 9.5l-1.5 1.5z"/>',
+  fire: '<path d="M12 3c1.2 3 4.5 4.6 4.5 9a4.5 4.5 0 0 1-9 0c0-2 1-3.4 2.2-4.4.1 1.9 1 3 2.3 3 0-3-1.2-5 0-7.6z"/><path d="M5 21h14"/>',
+  backpack: '<path d="M7 8a5 5 0 0 1 10 0v12H7zM9.5 8V6a2.5 2.5 0 0 1 5 0v2M7 13h10M10 13v2h4v-2"/>',
 };
 const SECTION_ICONS = Object.keys(GROUP_ICONS).filter((k) => k && k !== 'gone');
+const ICON_NAMES = {
+  rods: 'Вудилище', reels: 'Котушка', lines: 'Шнур', lures: 'Приманка', tackle: 'Гачок', feeder: 'Годівниця', boxes: 'Ящик', camp: 'Намет',
+  clothes: 'Одяг', other: 'Інше', fish: 'Риба', boat: 'Човен', bag: 'Сумка', light: 'Ліхтар', tool: 'Інструмент', star: 'Зірка',
+  float: 'Поплавок', net: 'Підсак', knife: 'Ніж', fire: 'Вогнище', backpack: 'Рюкзак',
+};
+
+// Кольори розділів — веселкою, як у Хобі-плані; середні тони читаються і в темній, і в світлій темі
+const SECTION_COLORS = [
+  ['red', '#e5534b', 'Червоний'], ['orange', '#ef8a3c', 'Помаранчевий'], ['amber', '#d6a01a', 'Бурштиновий'],
+  ['lime', '#86b42c', 'Салатовий'], ['green', '#3fa45b', 'Зелений'], ['teal', '#1aa39a', 'Бірюзовий'],
+  ['sky', '#2b9fd8', 'Блакитний'], ['blue', '#4f7fe0', 'Синій'], ['purple', '#9a62d8', 'Фіолетовий'],
+  ['pink', '#e05a9a', 'Рожевий'], ['brown', '#a0704f', 'Коричневий'], ['slate', '#7c8a96', 'Сірий'],
+];
+const sectionColor = (key) => SECTION_COLORS.find(([k]) => k === key)?.[1] ?? null;
+
 
 function renderGear() {
   const all = state.gear.filter(active);
