@@ -2222,6 +2222,22 @@ function spotSpecies(trips) {
   return map;
 }
 
+/** Хижі види — для значка поруч з назвою; решта — мирна, свої види без значка напрямку. */
+const PREDATORS = ['Щука', 'Окунь', 'Судак', 'Жерех', 'Сом', 'Головень', 'Чехоня', 'Форель'];
+const fishDir = (sp) => (PREDATORS.some((x) => t(x) === sp) ? 'predator' : SPECIES.some((x) => t(x) === sp) ? 'peaceful' : 'fish');
+const fishName = (sp) => h('span', { class: 'fish-name' }, icon(fishDir(sp)), h('span', {}, sp));
+
+/** Хто ловиться: пійманих — смужками, «водиться, ще не ловив» — пунктирними плашками, хижі першими. */
+function speciesBox(caught, unseen) {
+  const rank = { predator: 0, peaceful: 1, fish: 2 };
+  const rest = [...unseen].sort((a, b) => rank[fishDir(a)] - rank[fishDir(b)]);
+  return box(caught.length ? t('Хто ловиться') : t('Хто водиться'), h('div', {},
+    caught.length ? bars(caught.map(([sp, x]) => ({ label: fishName(sp), n: x.n, text: [fmt.num(x.n), x.best ? fishSize(x.best).split(' · ')[0] : null].filter(Boolean).join(' · ') }))) : null,
+    rest.length ? [
+      h('div', { class: 'field-label' }, caught.length ? t('Водиться, ще не ловив · {n}', { n: fmt.num(rest.length) }) : t('Ще не ловив тут жодної')),
+      h('div', { class: 'fish-tags' }, rest.map((sp) => h('span', { class: `fish-tag ${fishDir(sp)}` }, icon(fishDir(sp)), sp)))] : null));
+}
+
 function spotBody(s) {
   const photo = findPhoto(s.photoId);
   const trips = spotTrips(s.id);
@@ -2285,9 +2301,7 @@ function spotBody(s) {
       btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
     meta,
     tiles,
-    caught.length || unseen.length ? box(t('Хто ловиться'), h('div', {},
-      caught.length ? bars(caught.map(([sp, x]) => ({ label: sp, n: x.n, text: [fmt.num(x.n), x.best ? fishSize(x.best).split(' · ')[0] : null].filter(Boolean).join(' · ') }))) : null,
-      unseen.length ? h('p', { class: 'muted small' }, t('Водиться, ще не ловив: {list}', { list: unseen.join(', ') })) : null)) : null,
+    caught.length || unseen.length ? speciesBox(caught, unseen) : null,
     baits.length ? box(t('Уловисті приманки тут'), h('div', { class: 'rows' }, baits.map((x) => row(x.name,
       x.g ? [catOf(x.g.cat).name, weightText(x.g), !active(x.g) ? t('вже немає') : isQty(x.g) ? t('є {n}', { n: qtyText(x.g) }) : null].filter(Boolean).join(' · ') : t('вписано в улові'),
       h('span', { class: 'fish-count' }, icon('fish'), fmt.num(x.n)), x.g ? () => gearDetail(x.g.id) : null,

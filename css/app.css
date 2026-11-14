@@ -1502,3 +1502,13 @@ button.fact .fact-v { color: var(--accent-2); font-weight: 600; }
 button.fact:active { background: var(--seg-on); }
 button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
 .fact-go { color: var(--muted); font-size: 20px; line-height: 1; }
+
+/* Хто ловиться: значок хижак/мирна біля назви; ще не піймані — пунктирні плашки */
+.fish-name { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: middle; }
+.fish-name > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.fish-name .ico, .fish-tag .ico { display: grid; flex: none; color: var(--accent-2); }
+.fish-name .ico svg, .fish-tag .ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.fish-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.fish-tag { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 12px 4px 9px; border: 1px dashed var(--muted); border-radius: 17px; color: var(--text); font-size: 14px; }
+.fish-tag .ico { color: var(--muted); }
+.box .bars + .field-label { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
