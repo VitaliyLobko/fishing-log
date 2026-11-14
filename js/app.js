@@ -5,7 +5,7 @@ import * as sync from './sync.js';
 import * as bot from './bot.js';
 import * as nfc from './nfc.js';
 import { loadLeaflet, makeMap, pinIcon, UA } from './map.js';
-import { t, lang, locale, collate, applyStatic } from './i18n.js';
+import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
 import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
@@ -280,7 +280,8 @@ const CATS = [
   ['leader', 'Повідці', 'tackle'], ['tackle', 'Інша оснастка', 'tackle'],
   // четвертий елемент — виняток із правила групи: род-под у «Фідері», але поштучно
   ['cage', 'Годівниця', 'feeder'], ['groundbait', 'Прикормка / каша', 'feeder'], ['additive', 'Ароматика й добавки', 'feeder'],
-  ['hookbait', 'Насадка', 'feeder'], ['rodpod', 'Род-под / підставки', 'feeder', 'unit'],
+  ['hookbait', 'Насадка', 'feeder'], ['makukha', 'Макуха', 'feeder'], ['makush', 'Макушатник', 'feeder'],
+  ['rodpod', 'Род-под / підставки', 'feeder', 'unit'],
   ['box', 'Коробка / ящик', 'boxes'],
   // Табір — усе, що береться на риболовлю з ночівлею: поштучно, як ящики
   ['tent', 'Намет', 'camp'], ['sleepbag', 'Спальник', 'camp'], ['mat', 'Каремат', 'camp'], ['chair', 'Крісло / стілець', 'camp'],
@@ -340,7 +341,7 @@ const catOptions = () => sections().map((x) => ({ group: x.name, options: allCat
 
 const STATUS = { have: 'В наявності', lost: 'Втрачено', broken: 'Зламано', sold: 'Продано', gift: 'Подаровано' };
 const ACTIONS = [['', '—'], ['xfast', 'Екстрашвидкий'], ['fast', 'Швидкий'], ['mod', 'Середній'], ['slow', 'Повільний']];
-const ROD_TYPES = [['', '—'], ['spin', 'Спінінг'], ['feeder', 'Фідер'], ['float', 'Поплавок'], ['fly', 'Нахлист'], ['other', 'Інше']];
+const ROD_TYPES = [['', '—'], ['spin', 'Спінінг'], ['feeder', 'Фідер'], ['float', 'Поплавок'], ['donka', 'Донка'], ['fly', 'Нахлист'], ['other', 'Інше']];
 const label = (list, k) => (k ? t(list.find(([x]) => x === k)?.[1] ?? '') : '');
 // Поля, що показуються лише для своєї групи
 const GROUP_FIELDS = {
@@ -366,7 +367,7 @@ function inferDir(g) {
   if (c.group === 'lures' || g.cat === 'jighead') return 'predator';
   if (c.group === 'feeder') return 'peaceful';
   if (c.group === 'camp') return 'camp';
-  if (c.group === 'rods') return ['spin', 'fly'].includes(g.rodType) ? 'predator' : ['feeder', 'float'].includes(g.rodType) ? 'peaceful' : '';
+  if (c.group === 'rods') return ['spin', 'fly'].includes(g.rodType) ? 'predator' : ['feeder', 'float', 'donka'].includes(g.rodType) ? 'peaceful' : '';
   return '';
 }
 // Усе з розділу «Табір і туризм» — табір, що б не стояло в полі
@@ -562,12 +563,34 @@ function markPicked(group, picked) {
 function sectionLook(d) {
   const iconValue = h('span', { class: 'pick-value' });
   const colorValue = h('span', { class: 'pick-value' });
-  const icons = h('div', { class: 'chips icon-pick', role: 'group', 'aria-label': t('Значок') }, SECTION_ICONS.map((k) => {
-    const b = h('button', { type: 'button', class: k === d.icon ? 'on' : '', 'aria-pressed': String(k === d.icon), 'aria-label': t(ICON_NAMES[k] ?? k), title: t(ICON_NAMES[k] ?? k),
-      onclick: () => { d.icon = k; markPicked(icons, b); paint(); } });
-    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[k]}</svg>`;
-    return b;
-  }));
+  // Групи з підзаголовками й пошук за назвою; назва групи теж шукається: «табір» показує всю групу
+  const groups = ICON_GROUPS.map(([title, keys]) => {
+    const el = h('div', { class: 'icon-group' }, h('div', { class: 'field-label' }, t(title)),
+      h('div', { class: 'chips icon-pick', role: 'group', 'aria-label': t(title) }, keys.map((k) => {
+        const b = h('button', { type: 'button', class: k === d.icon ? 'on' : '', 'aria-pressed': String(k === d.icon), 'aria-label': t(ICON_NAMES[k] ?? k), title: t(ICON_NAMES[k] ?? k),
+          onclick: () => { d.icon = k; markPicked(icons, b); paint(); } });
+        b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[k]}</svg>`;
+        b.dataset.find = norm(t(ICON_NAMES[k] ?? k));
+        return b;
+      })));
+    el.dataset.find = norm(t(title));
+    return el;
+  });
+  const empty = h('p', { class: 'muted small', hidden: true }, t('Нічого не знайдено'));
+  const search = h('input', { type: 'search', class: 'icon-search', placeholder: t('Пошук: човен, ліхтар, щука…'), 'aria-label': t('Пошук значка'), enterkeyhint: 'search', autocomplete: 'off' });
+  search.addEventListener('input', () => {
+    const q = norm(search.value.trim());
+    let shown = 0;
+    for (const g of groups) {
+      const whole = !q || g.dataset.find.includes(q);
+      let inGroup = 0;
+      for (const b of g.querySelectorAll('button')) { b.hidden = !(whole || b.dataset.find.includes(q)); if (!b.hidden) inGroup += 1; }
+      g.hidden = !inGroup;
+      shown += inGroup;
+    }
+    empty.hidden = shown > 0;
+  });
+  const icons = h('div', { class: 'icon-groups' }, search, empty, groups);
   const colors = h('div', { class: 'chips color-pick', role: 'group', 'aria-label': t('Колір') },
     [['', null, 'Без кольору'], ...SECTION_COLORS].map(([k, hex, name]) => {
       const b = h('button', { type: 'button', class: k === (d.color ?? '') ? 'on' : '', 'aria-pressed': String(k === (d.color ?? '')), 'aria-label': t(name), title: t(name),
@@ -822,10 +845,10 @@ function catchBox(g) {
   const best = list.filter(({ c }) => (num(c.n) || 1) === 1 && num(c.weight)).sort((a, b) => num(b.c.weight) - num(a.c.weight))[0];
   return box([t('Уловистість'), h('span', { class: 'fish-count' }, icon('fish'), fmt.num(total))], h('div', {},
     kv([...[...bySpecies].sort((a, b) => b[1] - a[1]).map(([s, n]) => [s, fmt.num(n)]),
-      best ? [t('Найбільша'), `${best.c.species} ${fmt.num(best.c.weight)} ${t('кг')} · ${fmt.date(best.tr.date)}`] : null]),
+      best ? [t('Найбільша'), `${best.c.species} ${fmt.num(best.c.weight)} ${t('кг')} · ${fmt.date(catchDate(best.tr, best.c))}`] : null]),
     h('div', { class: 'rows' }, list.slice(0, 5).map(({ tr, c }) => row(
       `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
-      [fmt.date(tr.date), tripTitle(tr), c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null].filter(Boolean).join(' · '),
+      [fmt.date(catchDate(tr, c)), tripTitle(tr), c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null].filter(Boolean).join(' · '),
       '', () => tripDetail(tr.id)))),
     list.length > 5 ? h('p', { class: 'muted small' }, t('Ще записів: {n}', { n: list.length - 5 })) : null));
 }
@@ -1019,12 +1042,63 @@ const GROUP_ICONS = {
   knife: '<path d="M4 20l8.5-8.5M12.5 11.5L20 4c.5 3-1 6.5-4 9.5l-1.5 1.5z"/>',
   fire: '<path d="M12 3c1.2 3 4.5 4.6 4.5 9a4.5 4.5 0 0 1-9 0c0-2 1-3.4 2.2-4.4.1 1.9 1 3 2.3 3 0-3-1.2-5 0-7.6z"/><path d="M5 21h14"/>',
   backpack: '<path d="M7 8a5 5 0 0 1 10 0v12H7zM9.5 8V6a2.5 2.5 0 0 1 5 0v2M7 13h10M10 13v2h4v-2"/>',
+  pike: '<path d="M5.2 12C8 9.2 12.6 8 17.4 8.7l4.3 1.4-4.1 1.9 3.6 1.8C17 15.6 9.4 15.4 5.2 12z"/><path d="M5.2 12 2.2 8.9l.9 3.1-.9 3.1z"/><path d="M8 10.1 7.3 7.4l3.5 1.5M8 13.9l-.7 2.7 3.5-1.5"/><circle cx="15.6" cy="10.1" r=".6"/>',
+  sinker: '<path d="M12 3v3"/><path d="M12 6c-3 3.2-4.6 6.2-4.6 8.8a4.6 4.6 0 0 0 9.2 0C16.6 12.2 15 9.2 12 6z"/>',
+  makukha: '<path d="M4 9l8-4 8 4-8 4z"/><path d="M4 9v7l8 4 8-4V9M12 13v7"/><path d="M7.5 14.5v1.5M16.5 14.5v1.5"/>',
+  sonar: '<path d="M4 4h16v12H4zM9 20h6M12 16v4"/><path d="M6.5 12.5c1.8-2.6 3.6-2.6 5.4-.6s3.6 1.8 5.6-1.6"/>',
+  bucket: '<path d="M5 9h14l-1.6 11H6.6z"/><path d="M5 9c0-3 3.1-5 7-5s7 2 7 5"/>',
+  thermos: '<path d="M8.5 8h7v12a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1z"/><path d="M10 3h4v5h-4zM8.5 12h7"/>',
+  chair: '<path d="M7 3v9h11"/><path d="M8 12l9 8M17 12l-9 8"/>',
+  hat: '<path d="M5 16a7 7 0 0 1 14 0"/><path d="M4 16h16v3.5H4z"/><circle cx="12" cy="6.2" r="1.6"/>',
+  boots: '<path d="M7 3h6v11l6 2.5V20H7z"/><path d="M7 17h12M7 7h6"/>',
+  // Звичайні речі — з Lucide v0.460.0 (https://lucide.dev), як у Хобі-плані; рибальське вище — своє, у Lucide такого немає.
+  // ISC License. Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT).
+  // All other copyright (c) for Lucide are held by Lucide Contributors 2022. Permission to use, copy, modify,
+  // and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above
+  // copyright notice and this permission notice appear in all copies. THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR
+  // DISCLAIMS ALL WARRANTIES.
+  worm: '<path d="m19 12-1.5 3"/><path d="M19.63 18.81 22 20"/><path d="M6.47 8.23a1.68 1.68 0 0 1 2.44 1.93l-.64 2.08a6.76 6.76 0 0 0 10.16 7.67l.42-.27a1 1 0 1 0-2.73-4.21l-.42.27a1.76 1.76 0 0 1-2.63-1.99l.64-2.08A6.66 6.66 0 0 0 3.94 3.9l-.7.4a1 1 0 1 0 2.55 4.34z"/>',
+  umbrella: '<path d="M22 12a10.06 10.06 1 0 0-20 0Z"/><path d="M12 12v8a2 2 0 0 0 4 0"/><path d="M12 2v1"/>',
+  firstaid: '<path d="M12 11v4"/><path d="M14 13h-4"/><path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M18 6v14"/><path d="M6 6v14"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
+  map: '<path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/>',
+  glasses: '<circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/>',
+  car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+  anchor: '<path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/>',
+  battery: '<path d="M15 7h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2"/><path d="M6 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h1"/><path d="m11 7-3 5h4l-3 5"/><line x1="22" x2="22" y1="11" y2="13"/>',
+  torch: '<path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"/><line x1="6" x2="18" y1="6" y2="6"/><line x1="12" x2="12" y1="12" y2="12"/>',
+  pot: '<path d="M2 12h20"/><path d="M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8"/><path d="m4 8 16-4"/><path d="m8.86 6.78-.45-1.81a2 2 0 0 1 1.45-2.43l1.94-.48a2 2 0 0 1 2.43 1.46l.45 1.8"/>',
+  coffee: '<path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/>',
+  axe: '<path d="m14 12-8.5 8.5a2.12 2.12 0 1 1-3-3L11 9"/><path d="M15 13 9 7l4-4 6 6h3a8 8 0 0 1-7 7z"/>',
+  compass: '<path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/>',
+  binoculars: '<path d="M10 10h4"/><path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3"/><path d="M20 21a2 2 0 0 0 2-2v-3.851c0-1.39-2-2.962-2-4.829V8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v11a2 2 0 0 0 2 2z"/><path d="M 22 16 L 2 16"/><path d="M4 21a2 2 0 0 1-2-2v-3.851c0-1.39 2-2.962 2-4.829V8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2z"/><path d="M9 7V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3"/>',
+  camping: '<circle cx="4" cy="4" r="2"/><path d="m14 5 3-3 3 3"/><path d="m14 10 3-3 3 3"/><path d="M17 14V2"/><path d="M17 14H7l-5 8h20Z"/><path d="M8 14v8"/><path d="m9 14 5 8"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  snow: '<line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/>',
+  waves: '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>',
+  thermo: '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>',
+  sailboat: '<path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/>',
+  bike: '<circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/>',
+  caravan: '<path d="M18 19V9a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v8a2 2 0 0 0 2 2h2"/><path d="M2 9h3a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2"/><path d="M22 17v1a1 1 0 0 1-1 1H10v-9a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v9"/><circle cx="8" cy="19" r="2"/>',
+  camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
 };
-const SECTION_ICONS = Object.keys(GROUP_ICONS).filter((k) => k && k !== 'gone');
+// Значки розділу групами з підзаголовками, як у Хобі-плані; ключі вже збережених розділів не міняти
+const ICON_GROUPS = [
+  ['Снасті', ['rods', 'reels', 'lines', 'lures', 'tackle', 'sinker', 'float', 'feeder', 'makukha', 'worm', 'net', 'sonar', 'fish', 'pike']],
+  ['Табір і похід', ['camp', 'camping', 'fire', 'backpack', 'bag', 'chair', 'umbrella', 'light', 'torch', 'pot', 'coffee', 'thermos', 'bucket', 'knife', 'axe', 'firstaid', 'map', 'compass', 'binoculars']],
+  ['Одяг', ['clothes', 'hat', 'boots', 'glasses']],
+  ['Погода й вода', ['sun', 'snow', 'waves', 'thermo']],
+  ['Транспорт', ['boat', 'sailboat', 'car', 'caravan', 'bike', 'anchor', 'battery']],
+  ['Інше', ['boxes', 'tool', 'camera', 'star', 'other']],
+];
 const ICON_NAMES = {
   rods: 'Вудилище', reels: 'Котушка', lines: 'Шнур', lures: 'Приманка', tackle: 'Гачок', feeder: 'Годівниця', boxes: 'Ящик', camp: 'Намет',
   clothes: 'Одяг', other: 'Інше', fish: 'Риба', boat: 'Човен', bag: 'Сумка', light: 'Ліхтар', tool: 'Інструмент', star: 'Зірка',
   float: 'Поплавок', net: 'Підсак', knife: 'Ніж', fire: 'Вогнище', backpack: 'Рюкзак',
+  pike: 'Щука', sinker: 'Грузило', makukha: 'Макуха', sonar: 'Ехолот', bucket: 'Відро', thermos: 'Термос', chair: 'Крісло',
+  umbrella: 'Парасоля', firstaid: 'Аптечка', map: 'Карта', hat: 'Шапка', boots: 'Чоботи', glasses: 'Окуляри', car: 'Авто',
+  anchor: 'Якір', battery: 'Акумулятор', worm: 'Черв’як', torch: 'Ліхтарик', pot: 'Казанок', coffee: 'Кава', axe: 'Сокира',
+  compass: 'Компас', binoculars: 'Бінокль', camping: 'Кемпінг', sun: 'Сонце', snow: 'Зима', waves: 'Хвилі', thermo: 'Термометр',
+  sailboat: 'Вітрильник', bike: 'Велосипед', caravan: 'Будинок на колесах', camera: 'Камера',
 };
 
 // Кольори розділів — веселкою, як у Хобі-плані; середні тони читаються і в темній, і в світлій темі
@@ -2182,7 +2256,7 @@ async function loadTripWeather(tripId, { quiet = false } = {}) {
 
 // ---------- виїзди ----------
 
-const KINDS = [['spin', 'Спінінг'], ['feeder', 'Фідер'], ['float', 'Поплавок'], ['fly', 'Нахлист'], ['other', 'Інше']];
+const KINDS = [['spin', 'Спінінг'], ['feeder', 'Фідер'], ['float', 'Поплавок'], ['donka', 'Донка'], ['makush', 'Макушатник'], ['fly', 'Нахлист'], ['other', 'Інше']];
 const SPECIES = ['Щука', 'Окунь', 'Судак', 'Жерех', 'Сом', 'Головень', 'Короп', 'Карась', 'Лящ', 'Плітка', 'Краснопірка', 'Лин', 'Синець', 'Густера', 'Чехоня', 'Йорж', 'Форель'];
 const allSpecies = () => [...new Set([...SPECIES.map((x) => t(x)), ...(prefs().species ?? [])])];
 
@@ -2204,11 +2278,31 @@ const tripLosses = (tripId) => tripLog('losses', tripId);
 const tripSpends = (tripId) => tripLog('spends', tripId);
 const tripTitle = (tr) => findSpot(tr.spotId)?.name ?? t('Без водойми');
 
+// Виїзд на кілька днів: date — перший день, dateTo — останній (порожньо — один день)
+const tripEnd = (tr) => (tr.dateTo && tr.dateTo > tr.date ? tr.dateTo : tr.date);
+const daySpan = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 864e5) + 1;
+const tripDays = (tr) => daySpan(tr.date, tripEnd(tr));
+const daysText = (n) => `${fmt.num(n)} ${plural(n, [t('день'), t('дні'), t('днів')])}`;
+const dayLabel = (iso) => new Date(`${iso}T12:00`).toLocaleDateString(locale(), { weekday: 'short', day: '2-digit', month: '2-digit' });
+/** Коли впіймав: день улову, якщо виїзд на кілька днів і день у його межах, інакше — перший день. */
+const catchDate = (tr, c) => (c.date && c.date >= tr.date && c.date <= tripEnd(tr) ? c.date : tr.date);
+
+/** «14.11.2026», на кілька днів — «14–16.11.2026», через місяць — «30.11–02.12.2026». */
+function tripWhen(tr) {
+  const a = fmt.date(tr.date);
+  const end = tripEnd(tr);
+  if (end === tr.date) return a;
+  const b = fmt.date(end);
+  if (tr.date.slice(0, 7) === end.slice(0, 7)) return `${a.slice(0, 2)}–${b}`;
+  if (tr.date.slice(0, 4) === end.slice(0, 4)) return `${a.slice(0, 5)}–${b}`;
+  return `${a}–${b}`;
+}
+
 function tripRow(tr) {
   const n = tripCatch(tr);
   const lost = tripLosses(tr.id).reduce((s, x) => s + (num(x.n) || 1), 0);
   return row(tripTitle(tr),
-    [fmt.date(tr.date), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', '), shortWeather(tr.weather)].filter(Boolean).join(' · '),
+    [tripWhen(tr), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', '), shortWeather(tr.weather)].filter(Boolean).join(' · '),
     h('span', { class: 'row-side' }, n ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(n)) : h('span', { class: 'muted small' }, t('без улову')),
       lost ? h('span', { class: 'muted small' }, `−${fmt.num(lost)}`) : null),
     () => tripDetail(tr.id), { id: tr.id, thumb: findPhoto(tr.photoIds?.[0]) ? thumbImg(tr.photoIds[0]) : null });
@@ -2271,13 +2365,40 @@ function tripForm(tr = null, preset = {}) {
   const byDate = [...state.trips].sort((a, b) => collate(b.date, a.date));
   const last = byDate[0];
   const spotOpts = () => [['', '—'], ...[...state.spots].sort((a, b) => collate(a.name, b.name)).map((s) => [s.id, s.name])];
-  // «Коли» — дата й години одним рядком
+  // «Коли» — дата й години одним рядком; «По» — лише для виїзду на кілька днів
   const when = form([
     { name: 'date', label: t('Дата'), type: 'dmy', value: tr?.date ?? today(), required: true, half: true },
     { name: 'from', label: t('З'), type: 'time', value: tr?.from ?? '', half: true },
     { name: 'to', label: t('До'), type: 'time', value: tr?.to ?? '', half: true },
+    { name: 'dateTo', label: t('По'), type: 'dmy', value: tr && tripDays(tr) > 1 ? tr.dateTo : '', half: true },
   ]);
   when.el.classList.add('when3');
+  const daysNote = h('span', { class: 'days-note' });
+  const paintDays = () => {
+    const { date, dateTo } = when.values();
+    const n = typeof date === 'string' && typeof dateTo === 'string' && date && dateTo > date ? daySpan(date, dateTo) : 0;
+    daysNote.textContent = n ? daysText(n) : '';
+  };
+  const oneDay = h('button', { type: 'button', class: 'btn mini quiet', onclick: () => setMulti(false) }, t('Один день'));
+  const multi = h('div', { class: 'form multi-day' }, when.inputs.dateTo.closest('.field'), h('div', { class: 'days-side' }, daysNote, oneDay));
+  const moreDays = h('button', {
+    type: 'button', class: 'btn mini quiet days-add',
+    onclick: () => {
+      const { date } = when.values();
+      if (typeof date === 'string' && date) when.inputs.dateTo.value = fmt.date(addDays(date, 1));
+      setMulti(true);
+      when.inputs.dateTo.focus();
+    },
+  }, t('＋ Кілька днів'));
+  function setMulti(on) {
+    multi.hidden = !on;
+    moreDays.hidden = on;
+    if (!on) when.inputs.dateTo.value = '';
+    paintDays();
+  }
+  when.inputs.date.addEventListener('input', paintDays);
+  when.inputs.dateTo.addEventListener('input', paintDays);
+  setMulti(Boolean(when.inputs.dateTo.value));
   const f = form([
     { name: 'spotId', label: t('Водойма'), type: 'select', options: spotOpts(), value: tr?.spotId ?? preset.spotId ?? last?.spotId ?? '' },
     { name: 'waterT', label: t('Вода, °C'), type: 'number', value: tr?.waterT, half: true },
@@ -2296,25 +2417,19 @@ function tripForm(tr = null, preset = {}) {
   const rods = state.gear.filter((g) => active(g) && ['rods'].includes(groupOf(g))).sort(byGroup);
   const recentRods = byDate.flatMap((x) => x.gearIds ?? []);
   const used = gearChips(rods, tr?.gearIds ?? preset.gearIds ?? [], recentRods, t('Вудилище'), t('Чим ловив'));
-  // «Вода й витрати» — рідко: згорнуто, у заголовку — що вписано
-  const extraSum = h('span', { class: 'fold-sum' });
-  const paintExtra = () => {
-    const v = [f.inputs.waterT.value.trim() && `${f.inputs.waterT.value.trim()} °C`, f.inputs.cost.value.trim() && `${f.inputs.cost.value.trim()} ${t('грн')}`].filter(Boolean);
-    extraSum.textContent = v.length ? v.join(' · ') : t('не вказано');
-  };
-  f.inputs.waterT.addEventListener('input', paintExtra);
-  f.inputs.cost.addEventListener('input', paintExtra);
-  paintExtra();
-  const extra = formFold([t('Вода й витрати'), extraSum], h('div', { class: 'form' }, field('waterT'), field('cost')));
+  // Вода — про водойму в цей день, тому одразу під нею; «Інші витрати» — окремо, перед нотаткою
+  const waterRow = h('div', { class: 'form' }, field('waterT'));
+  const costRow = h('div', { class: 'form' }, field('cost'));
   const close = sheet(tr ? t('Змінити виїзд') : t('Новий виїзд'), h('div', { class: 'blocks-form' },
-    when.el, spotRow,
+    when.el, moreDays, multi, spotRow, waterRow,
     h('div', { class: 'field-label' }, t('Як ловив')), kinds.el,
     rods.length ? [h('div', { class: 'field-label' }, t('Чим ловив')), used.el] : null,
-    extra, noteField), {
+    costRow, noteField), {
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
       if (invalidField(when) || invalidField(f)) return;
       const v = { ...when.values(), ...f.values() };
-      const rec = { ...(tr ?? { id: db.uid(), created: Date.now(), catches: [], photoIds: [] }), ...v, spotId: v.spotId || null, kinds: kinds.value(), gearIds: used.value() };
+      if (v.dateTo && v.dateTo < v.date) { fieldError(when.inputs.dateTo, t('Раніше за початок виїзду')); return; }
+      const rec = { ...(tr ?? { id: db.uid(), created: Date.now(), catches: [], photoIds: [] }), ...v, dateTo: v.dateTo > v.date ? v.dateTo : null, spotId: v.spotId || null, kinds: kinds.value(), gearIds: used.value() };
       // Інша дата, година чи водойма — стара погода вже не про цей виїзд
       const w = rec.weather;
       if (w && (w.date !== rec.date || w.spotId !== rec.spotId || w.hour !== Number((rec.from || '08').slice(0, 2)))) rec.weather = null;
@@ -2328,7 +2443,7 @@ function tripForm(tr = null, preset = {}) {
 
 function tripDetail(id) {
   const build = () => { const tr = findTrip(id); return tr ? tripBody(tr) : null; };
-  sheet(() => { const tr = findTrip(id); return tr ? `${tripTitle(tr)} · ${fmt.date(tr.date)}` : ''; }, build(), {
+  sheet(() => { const tr = findTrip(id); return tr ? `${tripTitle(tr)} · ${tripWhen(tr)}` : ''; }, build(), {
     live: build,
     full: true,
     tools: [toolBtn('edit', t('Змінити'), () => tripForm(findTrip(id))), toolBtn('delete', t('Видалити'), () => removeTrip(findTrip(id)), 'danger')],
@@ -2344,8 +2459,10 @@ function tripBody(tr) {
   const photos = (tr.photoIds ?? []).filter(findPhoto);
   return h('div', {},
     facts([
-      // Дата — у назві картки; тут лише години, коли вписані
-      [t('Коли'), [tr.from, tr.to].filter(Boolean).join('–') || null],
+      // Дата — у назві картки; тут години, а для кількох днів — скільки днів і коли почав та закінчив
+      [t('Коли'), tripDays(tr) > 1
+        ? [daysText(tripDays(tr)), tr.from ? t('початок о {time}', { time: tr.from }) : null, tr.to ? t('кінець о {time}', { time: tr.to }) : null].filter(Boolean).join(' · ')
+        : [tr.from, tr.to].filter(Boolean).join('–') || null],
       s ? [t('Водойма'), s.name, () => spotDetail(s.id)] : [t('Водойма'), t('Без водойми')],
       [t('Як ловив'), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', ')],
       [t('Чим ловив'), (tr.gearIds ?? []).map(findGear).filter(Boolean).map(gearTitle).join(', ')],
@@ -2369,11 +2486,13 @@ function tripBody(tr) {
       ]) : [kv([[t('Фаза місяця'), moonText(tr.date)]]),
         h('p', { class: 'muted small' }, hasCoords(s) ? t('Погода ще не завантажена.') : t('Додайте водоймі координати — погода підтягнеться сама.'))],
       hasCoords(s) ? h('div', { class: 'btn-row' }, btn(w ? t('Оновити погоду') : t('Завантажити погоду'), () => loadTripWeather(tr.id), 'quiet')) : null,
-      w ? h('p', { class: 'muted small' }, t('Open-Meteo, на {h}:00', { h: String(w.hour).padStart(2, '0') })) : null)),
+      w ? h('p', { class: 'muted small' }, tripDays(tr) > 1
+        ? t('Open-Meteo, {d} на {h}:00', { d: fmt.date(w.date).slice(0, 5), h: String(w.hour).padStart(2, '0') })
+        : t('Open-Meteo, на {h}:00', { h: String(w.hour).padStart(2, '0') })) : null)),
     box([t('Улов'), catches.length ? fmt.num(tripCatch(tr)) : null, tripKg(tr) ? `${fmt.num(Math.round(tripKg(tr) * 100) / 100)} ${t('кг')}` : null].filter(Boolean).join(' · '), h('div', {},
       catches.length ? h('div', { class: 'rows' }, catches.map((c) => row(
         `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
-        [c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null, c.length ? `${fmt.num(c.length)} ${t('см')}` : null, baitText(c), c.released ? t('відпустив') : t('забрав')].filter(Boolean).join(' · '),
+        [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null, c.length ? `${fmt.num(c.length)} ${t('см')}` : null, baitText(c), c.released ? t('відпустив') : t('забрав')].filter(Boolean).join(' · '),
         '', () => catchForm(tr, c), { thumb: c.photoId ? thumbImg(c.photoId) : null }))) : h('p', { class: 'muted small' }, t('Без улову — теж запис.')),
       h('div', { class: 'btn-row' }, btn(t('+ Улов'), () => catchForm(tr), 'primary')))),
     box(t('Втрати й витрати'), h('div', {},
@@ -2458,7 +2577,7 @@ function gearPickSheet(title, sorted, onPick) {
 }
 
 function catchForm(tr, c = null) {
-  const baits = state.gear.filter((g) => active(g) && ['lures', 'feeder'].includes(groupOf(g)) && g.cat !== 'rodpod').sort(byGroup);
+  const baits = state.gear.filter((g) => active(g) && ['lures', 'feeder'].includes(groupOf(g)) && !['rodpod', 'makush'].includes(g.cat)).sort(byGroup);
   const f = form([
     { name: 'species', label: t('Риба'), value: c?.species, required: true, list: 'species-list', placeholder: t('Щука') },
     { name: 'n', label: t('Скільки'), type: 'number', value: c?.n ?? 1, half: true },
@@ -2484,6 +2603,11 @@ function catchForm(tr, c = null) {
   let released = c?.released ?? true;
   const rel = chips([['1', t('Відпустив')], ['0', t('Забрав')]], released ? '1' : '0', (v) => { released = v === '1'; });
   rel.classList.add('segmented');
+  // Виїзд на кілька днів — у який день упіймав; нова рибина — сьогодні, якщо сьогодні в межах виїзду
+  const days = tripDays(tr) > 1 ? Array.from({ length: tripDays(tr) }, (_, i) => addDays(tr.date, i)) : [];
+  let day = c ? catchDate(tr, c) : days.includes(today()) ? today() : (tr.catches ?? []).map((x) => catchDate(tr, x)).pop() ?? tr.date;
+  const dayChips = days.length ? chips(days.map((d) => [d, dayLabel(d)]), day, (v) => { day = v; }) : null;
+  if (dayChips && days.length <= 4) dayChips.classList.add('segmented');
   const pick = photoPicker(findPhoto(c?.photoId), { query: () => f.inputs.species.value.trim() });
   // Довжина й фото — на березі рідко: згорнуто, у заголовку — що вже є
   const moreSum = h('span', { class: 'fold-sum' });
@@ -2496,7 +2620,9 @@ function catchForm(tr, c = null) {
   const more = formFold([t('Довжина й фото'), moreSum], h('div', {}, h('div', { class: 'form' }, lengthField), pick.el));
   more.open = Boolean(c?.length || c?.photoId);
   const close = sheet(c ? t('Змінити улов') : t('Новий улов'), h('div', { class: 'blocks-form' },
-    f.el, h('p', { class: 'muted small form-note' }, t('Вага для кількох — разом')), baitBlock, rel, more), {
+    f.el, h('p', { class: 'muted small form-note' }, t('Вага для кількох — разом')),
+    dayChips ? [h('div', { class: 'field-label' }, t('День')), dayChips] : null,
+    baitBlock, rel, more), {
     tools: c ? [toolBtn('delete', t('Видалити'), () => confirmSheet(t('Видалити улов «{name}»?', { name: c.species }), t('Скасувати не можна.'), t('Видалити'), async () => {
       close();
       await save(joinChanges(c.photoId ? dropPhotos([c.photoId]) : {}, { trips: { put: [{ ...findTrip(tr.id), catches: (findTrip(tr.id).catches ?? []).filter((x) => x.id !== c.id) }] } }));
@@ -2507,7 +2633,7 @@ function catchForm(tr, c = null) {
       let photo;
       try { photo = await photoChanges(c, pick.value(), tr.id); } catch (err) { toast(err.message); return; }
       close();
-      const rec = { ...(c ?? { id: db.uid() }), ...v, n: Math.max(1, num(v.n) || 1), baitId: v.baitId || null, bait: v.baitId ? '' : v.bait, released, photoId: photo.photoId };
+      const rec = { ...(c ?? { id: db.uid() }), ...v, n: Math.max(1, num(v.n) || 1), baitId: v.baitId || null, bait: v.baitId ? '' : v.bait, released, photoId: photo.photoId, date: days.length ? day : null };
       const prev = catchRecords().get(v.species);
       const now = findTrip(tr.id);
       const catches = c ? (now.catches ?? []).map((x) => (x.id === c.id ? rec : x)) : [...(now.catches ?? []), rec];
@@ -2540,7 +2666,7 @@ function addTripPhoto(tr) {
 }
 
 function removeTrip(tr) {
-  confirmSheet(t('Видалити виїзд {date}?', { date: fmt.date(tr.date) }), t('Улов і фото виїзду буде видалено. Втрати снастей залишаться в їхній історії.'), t('Видалити'), async () => {
+  confirmSheet(t('Видалити виїзд {date}?', { date: tripWhen(tr) }), t('Улов і фото виїзду буде видалено. Втрати снастей залишаться в їхній історії.'), t('Видалити'), async () => {
     const photos = [...(tr.photoIds ?? []), ...(tr.catches ?? []).map((c) => c.photoId)].filter(Boolean);
     await save(joinChanges(dropPhotos(photos), { trips: { del: [tr.id] } }));
     toast(t('Видалено'));
@@ -2685,8 +2811,11 @@ function seasonBox() {
   const kg = trips.reduce((s, x) => s + tripKg(x), 0);
   const onTrips = trips.reduce((s, x) => s + tripCost(x).total, 0);
   const gear = purchases().filter((x) => x.date.startsWith(year)).reduce((s, x) => s + x.amount, 0);
+  const days = trips.reduce((s, x) => s + tripDays(x), 0);
   return fold('season', t('Сезон {y}: {n} виїздів · {f} риб', { y: year, n: trips.length, f: fmt.num(fish) }), h('div', {},
     kv([
+      // Лише коли є виїзди на кілька днів — інакше днів стільки ж, скільки виїздів
+      days > trips.length ? [t('Днів на воді'), fmt.num(days)] : null,
       [t('Улов'), [fmt.num(fish), kg ? `${fmt.num(Math.round(kg * 10) / 10)} ${t('кг')}` : null].filter(Boolean).join(' · ')],
       [t('На виїздах'), onTrips ? fmt.money(onTrips) : '—'],
       [t('Покупки снастей'), gear ? fmt.money(gear) : '—'],
@@ -2722,9 +2851,9 @@ function recordsBox() {
   if (!best.length && !top) return null;
   return fold('records', `${t('Рекорди')} · ${best.length}`, h('div', {},
     best.length ? h('div', { class: 'rows' }, best.map(([sp, { c, tr }]) => row(`${sp} — ${fishSize(c)}`,
-      [fmt.date(tr.date), tripTitle(tr), baitText(c)].filter(Boolean).join(' · '), '', () => tripDetail(tr.id)))) : null,
+      [fmt.date(catchDate(tr, c)), tripTitle(tr), baitText(c)].filter(Boolean).join(' · '), '', () => tripDetail(tr.id)))) : null,
     top ? [h('div', { class: 'field-label' }, t('Найкращий виїзд сезону')),
-      h('div', { class: 'rows' }, row(`${tripTitle(top)} · ${fmt.date(top.date)}`,
+      h('div', { class: 'rows' }, row(`${tripTitle(top)} · ${tripWhen(top)}`,
         [t('риб: {n}', { n: fmt.num(tripCatch(top)) }), tripKg(top) ? `${fmt.num(Math.round(tripKg(top) * 10) / 10)} ${t('кг')}` : null].filter(Boolean).join(' · '),
         '', () => tripDetail(top.id)))] : null));
 }
@@ -2743,7 +2872,7 @@ function myFortunes() {
   const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
   const trips = [...state.trips].sort((a, b) => collate(b.date, a.date));
   if (trips[0]) {
-    const days = Math.round((Date.parse(today()) - Date.parse(trips[0].date)) / 864e5);
+    const days = Math.round((Date.parse(today()) - Date.parse(trips.map(tripEnd).sort().pop())) / 864e5);
     if (days >= 14) out.push(t('Вудки сумують: {n} дн. без виїзду. Вода чекає', { n: fmt.num(days) }));
   }
   const baits = new Map();

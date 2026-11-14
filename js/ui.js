@@ -227,7 +227,8 @@ export function sheet(title, body, { actions = [], onClose, live, tools = [], le
     actions.length ? h('footer', { class: 'sheet-actions' }, actions) : null);
   if (dirty === null && actions.length) {
     const body = panel.querySelector('.sheet-body');
-    const snap = () => [...body.querySelectorAll('input, select, textarea, .chips')]
+    // Поле пошуку (значок розділу) — не дані форми: набраний запит не тримає шторку
+    const snap = () => [...body.querySelectorAll('input:not([type=search]), select, textarea, .chips')]
       .map((el) => (el.matches('.chips') ? String(el.value) : el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value)).join('\u0001');
     // знімок — коли форма вже домальована; зміни з коду (автопідстановка) без дотику людини не рахуються
     let base = null, touched = false;

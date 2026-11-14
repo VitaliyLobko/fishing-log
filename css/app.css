@@ -518,6 +518,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field .time-field { display: flex; align-items: center; text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
 .field .time-field:empty, .field .time-field.blank { color: var(--muted); }
 .field input:focus, .field select:focus, .field textarea:focus, .field .time-field:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* Циферблат часу — як у shooting-log: JS перенесли ще в 0.1.0, а стилі ні, тож години стояли голим рядком кнопок */
+.tp-now { display: flex; justify-content: center; align-items: center; gap: 2px; margin: 0 0 14px; font-size: 40px; font-weight: 800; }
+.tp-part { padding: 0 10px; border: 0; border-radius: 12px; background: var(--surface-2); color: var(--muted); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
+.tp-part.on { background: var(--accent-soft); color: var(--accent-2); }
+.tp-dial { position: relative; width: min(300px, 100%); aspect-ratio: 1; margin: 0 auto 4px; border-radius: 50%; background: var(--surface-2); touch-action: none; user-select: none; }
+.tp-num { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text); font: inherit; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
+.tp-num.inner { width: 36px; height: 36px; margin: -18px 0 0 -18px; font-size: 14px; color: var(--muted); }
+.tp-num.on { background: var(--fill); color: var(--on-fill); }
+.tp-hand { position: absolute; left: 50%; bottom: 50%; width: 2px; margin-left: -1px; background: var(--fill); transform-origin: 50% 100%; }
+.tp-center { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--fill); }
 .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0 0 12px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
@@ -1396,6 +1406,12 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .pick-value .sec-ico svg { width: 20px; height: 20px; }
 .swatch-dot { width: 18px; height: 18px; flex: none; border-radius: 50%; background: var(--c); }
 .icon-pick button { color: var(--c, var(--accent-2)); }
+/* Значки групами з підзаголовками й пошуком — як у Хобі-плані */
+.icon-groups { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.icon-group .field-label { margin: 0 0 6px; }
+.icon-group[hidden], .icon-pick button[hidden] { display: none; }
+.icon-search { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--muted) 72%, var(--line)); border-radius: 10px; background: var(--bg); }
+.icon-groups > p { margin: 0; }
 .chips.icon-pick button.on { background: color-mix(in srgb, var(--c, var(--accent)) 20%, var(--surface)); border-color: var(--c, var(--accent)); color: var(--c, var(--accent-2)); }
 .color-pick button { width: 44px; height: 44px; padding: 0; border: 2px solid transparent; border-radius: 50%; background: var(--c); }
 .chips.color-pick button.on { background: var(--c); border-color: var(--surface); box-shadow: 0 0 0 2px var(--text); }
@@ -1440,6 +1456,12 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .chips button.add { border-style: dashed; background: transparent; color: var(--accent-2); }
 .form-fold > summary .fold-sum { margin-left: auto; padding-left: 10px; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .form.trio { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.blocks-form > .with-add + .form, .blocks-form > .chips + .form { margin-top: 14px; }
+/* Виїзд на кілька днів: «По», поруч — скільки днів і «Один день» */
+.blocks-form > .days-add { margin-top: 8px; }
+.blocks-form > .multi-day { margin-top: 10px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); align-items: end; }
+.days-side { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.days-note { font-weight: 600; color: var(--text); white-space: nowrap; }
 .blocks-form > .form-note { margin: 4px 0 0; }
 .blocks-form > .chips.segmented { margin-top: 12px; }
 /* Чип приманки: мініатюра, назва, колір дрібно */
