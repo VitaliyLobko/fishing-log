@@ -1199,6 +1199,7 @@ function gearDetail(id) {
   const build = () => { const g = findGear(id); return g ? gearBody(g) : null; };
   sheet(() => gearTitle(findGear(id)), build(), {
     live: build,
+    full: true,
     tools: [nfc.supported() ? toolBtn('nfc', t('NFC-мітка'), () => nfcWriteSheet(itemUrl(findGear(id)), gearTitle(findGear(id)))) : null,
       toolBtn('copy', t('Копіювати'), () => copyGear(findGear(id))), toolBtn('edit', t('Змінити'), () => gearForm(findGear(id))),
       toolBtn('delete', t('Видалити'), () => removeGear(findGear(id)), 'danger')],
@@ -1521,16 +1522,24 @@ function placeRows(parentId, depth, open = openPlaces()) {
   });
 }
 
+/** Перемикач угорі вкладки «Покупки»: покупки чи місця зберігання; «+» додає те, що вибрано. */
+function shopSwitch() {
+  const sw = chips([['shop', t('Покупки')], ['places', t('Місця зберігання')]], tab, (v) => goTab(`#${v}`));
+  sw.classList.add('segmented');
+  return sw;
+}
+
 function renderPlaces() {
   const loose = state.gear.filter((g) => active(g) && !placeOf(g));
   if (!state.places.length) {
-    return empty(t('Ще немає місць'), t('Місця — це де лежать снасті: «Гараж → Шафа → Ящик Plano №2». Вкладайте одне в одне скільки завгодно.'),
-      [btn(t('Додати'), () => placeForm(), 'primary add'), importBtn()]);
+    return h('div', {}, shopSwitch(),
+      empty(t('Ще немає місць'), t('Місця — це де лежать снасті: «Гараж → Шафа → Ящик Plano №2». Вкладайте одне в одне скільки завгодно.'),
+        [btn(t('Додати'), () => placeForm(), 'primary add'), importBtn()]));
   }
   const parents = state.places.filter((p) => hasKids(p.id)).map((p) => p.id);
   const open = openPlaces();
   const allOpen = parents.length > 0 && parents.every((id) => open.has(id));
-  return h('div', {},
+  return h('div', {}, shopSwitch(),
     parents.length ? h('div', { class: 'btn-row tree-tools' }, btn(allOpen ? t('Згорнути все') : t('Розгорнути все'), () => setOpenPlaces(new Set(allOpen ? [] : parents)), 'quiet')) : null,
     h('div', { class: 'rows' }, placeRows(null, 0, open)),
     loose.length ? box(`${t('Без місця')} · ${loose.length}`, h('div', { class: 'rows' }, loose.sort(byGroup).map(gearRow))) : null,
@@ -1565,6 +1574,7 @@ function placeDetail(id) {
   const build = () => { const p = findPlace(id); return p ? placeBody(p) : null; };
   sheet(() => findPlace(id)?.name, build(), {
     live: build,
+    full: true,
     tools: [toolBtn('qr', t('Наклейка'), () => printLabels([findPlace(id)])),
       nfc.supported() ? toolBtn('nfc', t('NFC-мітка'), () => nfcWriteSheet(placeUrl(findPlace(id)), findPlace(id).name)) : null,
       toolBtn('edit', t('Змінити'), () => placeForm(findPlace(id))),
@@ -1718,6 +1728,7 @@ function spotDetail(id) {
   const build = () => { const s = findSpot(id); return s ? spotBody(s) : null; };
   sheet(() => findSpot(id)?.name, build(), {
     live: build,
+    full: true,
     tools: [toolBtn('edit', t('Змінити'), () => spotForm(findSpot(id))), toolBtn('delete', t('Видалити'), () => removeSpot(findSpot(id)), 'danger')],
   });
 }
@@ -1975,6 +1986,7 @@ function tripDetail(id) {
   const build = () => { const tr = findTrip(id); return tr ? tripBody(tr) : null; };
   sheet(() => { const tr = findTrip(id); return tr ? `${tripTitle(tr)} · ${fmt.date(tr.date)}` : ''; }, build(), {
     live: build,
+    full: true,
     tools: [toolBtn('edit', t('Змінити'), () => tripForm(findTrip(id))), toolBtn('delete', t('Видалити'), () => removeTrip(findTrip(id)), 'danger')],
   });
 }
@@ -2216,6 +2228,7 @@ function packDetail(id) {
   const build = () => { const p = findPack(id); return p ? packBody(p) : null; };
   sheet(() => findPack(id)?.name, build(), {
     live: build,
+    full: true,
     tools: [toolBtn('edit', t('Змінити'), () => packForm(findPack(id))),
       toolBtn('delete', t('Видалити'), () => confirmSheet(t('Видалити «{name}»?', { name: findPack(id).name }), t('Речі нікуди не дінуться — зникне лише список.'), t('Видалити'), () => save({ packs: { del: [id] } })), 'danger')],
   });
@@ -2694,13 +2707,6 @@ function lossBox() {
 }
 
 // ---------- свої категорії ----------
-
-/** Місця зберігання — окрема сторінка (дерево, QR-наклейки); у налаштуваннях — рядок-посилання з кількістю. */
-function placesRow() {
-  return h('a', { class: 'set-row set-link', href: '#places', dataset: { key: 'places' } },
-    h('span', { class: 'set-head' }, toolIcon('pin'), h('span', { class: 'set-title' }, t('Місця зберігання')),
-      h('span', { class: 'set-val' }, state.places.length ? fmt.num(state.places.length) : ''), h('span', { class: 'set-chev', 'aria-hidden': 'true' }, '›')));
-}
 
 function catsRow() {
   const own = prefs().cats ?? [];
@@ -3245,6 +3251,7 @@ function renderShop() {
   const lost = lossBox();
   const nothing = !state.gear.some(isLow) && !state.wishes.length && !lost;
   return h('div', { class: 'settings' },
+    shopSwitch(),
     restockBox(),
     wishBox(),
     lost,
@@ -3257,7 +3264,7 @@ function renderSettings() {
   return h('div', { class: 'settings' },
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
-    settingsGroup(t('Снасті'), [placesRow(), catsRow(), serviceRow(), aiRow()]),
+    settingsGroup(t('Снасті'), [catsRow(), serviceRow(), aiRow()]),
     settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow(), scenesRow()].filter(Boolean)));
 }
 
@@ -3280,15 +3287,16 @@ function render() {
   if (thumbIo) dropGoneThumbs();
   $('fab').hidden = !view.fab || Boolean($('view').querySelector('.empty .btn.add'));
   $('fab').classList.remove('away');
-  document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
+  // Місця зберігання — друга половина вкладки «Покупки»
+  const navTab = tab === 'places' ? 'shop' : tab;
+  document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === navTab));
   // Налаштування — не в нижньому меню, а шестернею вгорі (як у Shooter's Log); у них — «Назад» туди, звідки прийшли
   const gearBtn = $('settings-btn');
-  gearBtn.classList.toggle('active', tab === 'settings' || tab === 'places');
+  gearBtn.classList.toggle('active', tab === 'settings');
   if (tab === 'settings' && !gearBtn.dataset.on) { gearBtn.classList.remove('play'); void gearBtn.offsetWidth; gearBtn.classList.add('play'); }
   gearBtn.dataset.on = tab === 'settings' ? '1' : '';
-  // Місця зберігання — сторінка всередині налаштувань: «Назад» веде в налаштування
-  $('back-btn').hidden = tab !== 'settings' && tab !== 'places';
-  $('back-btn').href = `#${tab === 'places' ? 'settings' : backTab}`;
+  $('back-btn').hidden = tab !== 'settings';
+  $('back-btn').href = `#${backTab}`;
 }
 
 function route() {
@@ -3313,7 +3321,7 @@ function route() {
   }
   const next = location.hash.slice(1);
   const to = VIEWS[next] ? next : 'gear';
-  if (to === 'settings' && !['settings', 'places'].includes(tab) && VIEWS[tab]) backTab = tab;
+  if (to === 'settings' && tab !== 'settings' && VIEWS[tab]) backTab = tab;
   tab = to;
   render();
   window.scrollTo(0, 0);
