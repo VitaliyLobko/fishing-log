@@ -159,6 +159,7 @@ export function goTab(hash) {
  * dirty: false — не питати ніколи (фільтр, де закрити = скасувати).
  */
 export function sheet(title, body, { actions = [], onClose, live, tools = [], lead = null, full = false, dirty = null } = {}) {
+  if (dirty === false) dirty = () => false;
   const titleOf = () => (typeof title === 'function' ? title() : title);
   const layer = document.getElementById('layer');
   const opener = document.activeElement;
