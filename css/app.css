@@ -17,7 +17,7 @@
   --fill-2: var(--accent-2);
   --on-fill: var(--on-accent);
   --buy: #46a862;
-  --shoot: #ea6f5c;
+  --shoot: #f07a67;
   --half: #b5b86a;
   --warn: #dbad3a;
   --clean: #4fa7cf;
@@ -498,13 +498,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .form > .chips { grid-column: 1 / -1; margin-top: -4px; }
 .form > .check { grid-column: 1 / -1; margin: 0; }
 .field { display: flex; flex-direction: column; gap: 4px; grid-column: 1 / -1; }
-.field.half { grid-column: span 1; min-width: 0; justify-content: flex-end; }
+.field.half { grid-column: span 1; min-width: 0; }
+/* Пара полів рівняється по верху: підказка під одним не зсуває сусіда; підпис — в один рядок */
+.field.half > .field-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Дата ширша за час: на телефоні вона буває «18 жовт. 2026 р.» і в пів рядка не влазить. */
 .form.when { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 .form + .form.when { margin-top: 10px; }
 .field input[type="date"], .field input[type="time"] { min-width: 0; padding-inline: 10px 8px; }
 .field-label { font-size: 13px; color: var(--muted); }
-.field input, .field select, .field textarea, .item-row select, .item-row input {
+.field input, .field select, .field textarea, .field .time-field, .item-row select, .item-row input {
   width: 100%;
   min-height: 44px;
   padding: 10px 12px;
@@ -512,7 +514,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--line);
   background: var(--bg);
 }
-.field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* Час — кнопка (свій вибір годин), а виглядає як поле */
+.field .time-field { display: flex; align-items: center; text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
+.field .time-field:empty, .field .time-field.blank { color: var(--muted); }
+.field input:focus, .field select:focus, .field textarea:focus, .field .time-field:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0 0 12px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
@@ -685,7 +690,7 @@ body:has(#layer .backdrop) .toast:not(.reminder) { bottom: auto; top: calc(env(s
   color: var(--text); font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .set-head .tool-ico { flex: none; width: 34px; height: 34px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-2); }
 .set-head .tool-ico svg { width: 19px; height: 19px; }
-.set-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; }
+.set-title { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.3; font-size: 16px; font-weight: 600; }
 .set-val { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
 .set-val:empty { display: none; }
 .set-val.ok::before, .set-val.bad::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--buy); }
@@ -776,14 +781,13 @@ a.set-link .set-head { cursor: pointer; }
 
 /* Фото у формі (як у shooting-log): плитка-прев'ю, «Знайти фото», «Вставити», «З галереї» */
 .btn.mini { min-height: 44px; padding: 6px 12px; font-size: 13px; border-radius: 10px; }
-.photo-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 12px; }
-.photo-pick-hint { flex-basis: 100%; margin: -4px 0 0; }
+.photo-pick { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 4px; }
 .photo-pick-thumb { flex: none; width: 96px; height: 96px; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px;
   background: var(--surface-2); color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .photo-pick-thumb.empty { border-style: dashed; }
 .photo-pick-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.photo-pick-acts { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
-.photo-pick-icons { display: flex; gap: 8px; }
+.photo-pick-acts { display: flex; flex: 1; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; }
+.photo-pick-acts .btn { justify-content: flex-start; text-align: left; }
 .specs-find { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 8px; grid-column: 1 / -1; }
 .specs-find .btn { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
 
@@ -849,7 +853,7 @@ button.row-main { display: flex; flex: 1; flex-direction: column; align-items: s
 .photo-btn img { display: block; }
 .photo-strip .photo-btn { flex: none; }
 /* Поля — помітна межа (≥3:1 до шторки), а не лише на півтону інший фон */
-.field input, .field select, .field textarea { border-color: color-mix(in srgb, var(--muted) 72%, var(--line)); }
+.field input, .field select, .field textarea, .field .time-field { border-color: color-mix(in srgb, var(--muted) 72%, var(--line)); }
 /* Значок розділу замість монограми */
 .thumb-ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 /* Галочка збору — намальована, однакова на всіх телефонах */
@@ -1041,7 +1045,6 @@ button.meta-chip:active { background: var(--seg-on); }
 .stock-meta b.warn-text { color: var(--warn); }
 .stock .btn-row { margin: 0; }
 /* «Списати» — тиха кнопка: рідкісна дія не має виглядати головною */
-.gear-sheet > .btn-row .btn.quiet { flex: 0 1 auto; color: var(--muted); }
 /* Рядок списку: характеристики й місце — по рядку, з трьома крапками; праворуч — кількість і улов */
 .row-line { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .row-place { display: flex; align-items: center; gap: 4px; }
@@ -1054,7 +1057,6 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 /* Дії залишку: головна («−1 Втратив» / «Витратив») — на всю ширину, під нею дві рівні */
 .stock .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .stock .btn-row .btn.primary { grid-column: 1 / -1; }
-.gear-sheet > .btn-row .btn.quiet { margin-left: auto; }
 
 /* ---------- Водойми (0.21.0) ---------- */
 /* Фото водойми — пейзаж: на всю ширину, обрізане, а не на білому тлі, як фото речі */
@@ -1411,3 +1413,59 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .sec-grip { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--muted); cursor: grab; touch-action: none; }
 .sec-grip .ico svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
 .sec-order-row.dragging { position: relative; z-index: 2; box-shadow: 0 10px 28px rgb(0 0 0 / .35); outline: 2px solid var(--accent); cursor: grabbing; }
+
+/* Форма водойми блоками: мала карта або заклик «вибрати на карті», згорнуті «Координати вручну» й «Хто водиться» */
+.blocks-form .box { margin: 18px 0 8px; }
+.blocks-form .box .chips { margin-bottom: 4px; }
+.spot-map-preview .map-mini-btn { margin: 4px 0 6px; }
+.map-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 120px; margin: 4px 0 6px; padding: 16px;
+  border: 1px dashed var(--line); border-radius: var(--radius); background: var(--surface-2); color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+.map-empty .ico svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.map-empty b { color: var(--text); font-size: 15px; }
+.map-status { margin: 0 0 8px; }
+.blocks-form .box .btn-row .btn { flex: 1; }
+.form-fold { margin: 10px 0 0; padding: 0 12px; border: 1px solid var(--line); border-top: 1px solid var(--line); border-radius: 12px; }
+.form-fold > summary { color: var(--text); font-size: 14px; }
+.form-fold[open] { padding-bottom: 12px; }
+.box .form-fold { margin-top: 8px; }
+.blocks-form > .form-fold { margin: 18px 0 8px; }
+.blocks-form .box textarea { width: 100%; }
+
+/* Форми блоками (виїзд, улов, річ): години в рядок із датою, «＋» поруч зі списком, підсумок у заголовку згорнутого блоку */
+.form.when3 { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
+.blocks-form > .form + .form, .blocks-form > .form + .with-add, .blocks-form > .with-add { margin-top: 10px; }
+.blocks-form > .field-label { margin: 14px 0 6px; }
+.blocks-form > .field { margin-top: 14px; }
+.with-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.with-add .add-inline { width: 44px; height: 44px; border-radius: 10px; font-size: 20px; }
+.chips button.add { border-style: dashed; background: transparent; color: var(--accent-2); }
+.form-fold > summary .fold-sum { margin-left: auto; padding-left: 10px; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.form.trio { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.blocks-form > .form-note { margin: 4px 0 0; }
+.blocks-form > .chips.segmented { margin-top: 12px; }
+/* Чип приманки: мініатюра, назва, колір дрібно */
+.bait-chips button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.bait-chips button > span:not(.bait-sw) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bait-chips button small { color: inherit; opacity: .75; font-size: 12px; }
+.bait-chips .bait-sw { display: inline-grid; flex: none; width: 24px; height: 24px; margin-left: -6px; border-radius: 6px; overflow: hidden; }
+.bait-chips .bait-sw > * { width: 24px; height: 24px; }
+.bait-chips .bait-sw img { width: 100%; height: 100%; object-fit: cover; }
+.bait-chips .bait-sw svg { width: 18px; height: 18px; }
+/* Заголовок місяця в списку виїздів */
+.list-head { margin: 18px 4px 8px; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+/* Назва розділу на всю ширину, «мало: N» — під нею */
+.sec-text { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.25; }
+.sec-text .sec-low { font-size: 12px; }
+/* Докупити: «у Хочу» значком */
+.row.slot .wish-add { flex: none; color: var(--accent-2); }
+.row.slot .wish-mark { flex: none; display: grid; place-items: center; width: 44px; height: 44px; color: var(--muted); font-weight: 700; }
+.restock-groups { display: grid; gap: 6px; }
+.restock-hint { margin: 10px 0 0; }
+.sec-text .sec-name { flex: none; }
+/* Видалити — внизу шторки, підписано, окремо від решти дій */
+.sheet-danger { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.sheet-danger .btn { min-height: 44px; }
+.sheet-danger .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.with-add > .field { grid-column: auto; }
+.blocks-form > * + .form, .blocks-form > .form-note + .form { margin-top: 12px; }
+.bait-pick { margin-top: 2px; }

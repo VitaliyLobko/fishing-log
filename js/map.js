@@ -20,6 +20,11 @@ const LAYERS = {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Esri, Maxar, Earthstar Geographics',
     maxNativeZoom: 18,
+    // Знімок без підписів — зверху прозорі шари Esri: дороги, назви міст і сіл
+    over: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    ],
   },
   osm: {
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -38,11 +43,13 @@ export function makeMap(L, el, { lat, lon, zoom, layer = 'sat', interactive = tr
     scrollWheelZoom: interactive, doubleClickZoom: interactive, boxZoom: false, keyboard: interactive, tap: interactive,
   }).setView([lat, lon], zoom);
   map.attributionControl.setPrefix(false);
-  let base = null;
+  let shown = [];
   map.setLayer = (key) => {
-    base?.remove();
+    shown.forEach((l) => l.remove());
     const x = LAYERS[key] ?? LAYERS.sat;
-    base = L.tileLayer(x.url, { attribution: x.attribution, maxNativeZoom: x.maxNativeZoom, maxZoom: 20 }).addTo(map);
+    shown = [x.url, ...(x.over ?? [])].map((url, i) => L.tileLayer(url, {
+      attribution: i ? undefined : x.attribution, maxNativeZoom: x.maxNativeZoom, maxZoom: 20,
+    }).addTo(map));
   };
   map.setLayer(layer);
   return map;

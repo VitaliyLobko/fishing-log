@@ -199,24 +199,31 @@ export function sheet(title, body, { actions = [], onClose, live, tools = [], le
     // Фокус (клавіатура, читалка екрана) — на той самий за порядком елемент, інакше він злітає на початок сторінки
     const focusable = () => [...box.querySelectorAll('button, [href], input, select, textarea, [tabindex]')];
     const at = box.contains(document.activeElement) ? focusable().indexOf(document.activeElement) : -1;
-    box.replaceChildren(next);
+    box.replaceChildren(next, ...(dangerZone ? [dangerZone] : []));
     box.scrollTop = top;
     if (at >= 0) focusable()[at]?.focus({ preventScroll: true });
   };
   if (live) liveSheets.add(rebuild);
-  // Червоні дії (кошик) — завжди ліворуч від назви, подалі від ✕: поряд із ним легко схибити
+  // Червоні дії (кошик) — внизу шторки підписаною кнопкою: ліворуч угорі, де на Android «Назад», її натискали за звичкою,
+  // а поряд із ✕ легко схибити
   const danger = [tools].flat(Infinity).filter((x) => x?.classList?.contains('danger'));
   const rest = [tools].flat(Infinity).filter((x) => !danger.includes(x));
-  const left = [danger, lead].flat(Infinity).filter(Boolean);
+  const dangerZone = danger.length ? h('div', { class: 'sheet-danger' }, danger.map((b) => {
+    b.className = 'btn quiet danger with-ico';
+    b.removeAttribute('title');
+    b.append(h('span', {}, b.getAttribute('aria-label')));
+    return b;
+  })) : null;
+  const left = [lead].flat(Infinity).filter(Boolean);
   const panel = h('section', { class: full ? 'sheet full' : 'sheet', role: 'dialog', 'aria-label': titleOf() },
     h('div', { class: 'sheet-grip' }),
-    // Три й більше кнопок у шапці (кошик, копія, олівець, ✕) стискали назву до «Chubby 38…» — тоді назва окремим рядком на всю ширину
-    h('header', { class: `sheet-head${left.length + rest.length >= 2 ? ' stacked' : ''}` },
+    // Картка на весь екран чи кілька кнопок у шапці (копія, олівець, ✕) — назва окремим рядком на всю ширину, а не «Chubby 38…»
+    h('header', { class: `sheet-head${full || left.length + rest.length >= 2 ? ' stacked' : ''}` },
       left.length ? h('div', { class: 'sheet-lead' }, left) : null,
       h('h2', {}, titleOf()),
       h('div', { class: 'sheet-tools' }, rest,
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('Закрити'), onclick: ask }, '✕'))),
-    h('div', { class: 'sheet-body' }, body),
+    h('div', { class: 'sheet-body' }, body, dangerZone),
     actions.length ? h('footer', { class: 'sheet-actions' }, actions) : null);
   if (dirty === null && actions.length) {
     const body = panel.querySelector('.sheet-body');
@@ -500,7 +507,7 @@ function timeInput(value, label) {
   const el = h('button', { type: 'button', class: 'time-field', 'aria-label': label });
   Object.defineProperty(el, 'value', {
     get: () => current,
-    set: (v) => { current = v ?? ''; el.textContent = current || '--:--'; },
+    set: (v) => { current = v ?? ''; el.textContent = current || '—:—'; el.classList.toggle('blank', !current); },
   });
   el.value = value ?? '';
   el.addEventListener('click', async () => {
