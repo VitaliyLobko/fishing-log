@@ -343,6 +343,9 @@ const STATUS = { have: 'В наявності', lost: 'Втрачено', broken
 const ACTIONS = [['', '—'], ['xfast', 'Екстрашвидкий'], ['fast', 'Швидкий'], ['mod', 'Середній'], ['slow', 'Повільний']];
 const ROD_TYPES = [['', '—'], ['spin', 'Спінінг'], ['feeder', 'Фідер'], ['float', 'Поплавок'], ['donka', 'Донка'], ['fly', 'Нахлист'], ['other', 'Інше']];
 const label = (list, k) => (k ? t(list.find(([x]) => x === k)?.[1] ?? '') : '');
+/** Під назвою вудилища: тип · довжина · тест; не вудилище — розділ; списане — «вже немає». */
+const rodText = (g) => [g.rodType ? label(ROD_TYPES, g.rodType) : catOf(g.cat).name, num(g.length) ? `${fmt.num(g.length)} ${t('м')}` : null,
+  g.test ? `${g.test} ${t('г')}` : null, active(g) ? null : t('вже немає')].filter(Boolean).join(' · ');
 // Поля, що показуються лише для своєї групи
 const GROUP_FIELDS = {
   rods: ['length', 'test', 'action', 'pieces', 'rodType'], reels: ['size', 'ratio', 'spools'], lines: ['pe', 'mm', 'length'],
@@ -1911,6 +1914,10 @@ const parkOf = (s) => (hasCoords({ lat: s?.pLat, lon: s?.pLon }) ? { lat: s.pLat
 
 const SPOT_KINDS = [['river', 'Річка'], ['lake', 'Озеро'], ['pond', 'Ставок'], ['reservoir', 'Водосховище'], ['quarry', 'Кар’єр'], ['canal', 'Канал'], ['sea', 'Море, лиман'], ['other', 'Інше']];
 const ACCESS = [['car', 'Авто до води'], ['walk', 'Пішки'], ['shore', 'З берега'], ['boat', 'З човна'], ['ice', 'По льоду']];
+/** Одне поле spot.access — два питання: як дістатися й звідки ловлю. */
+const ACCESS_GET = ['car', 'walk'];
+const ACCESS_FROM = ['shore', 'boat', 'ice'];
+const accessText = (s, keys) => (s.access ?? []).filter((k) => keys.includes(k)).map((k) => label(ACCESS, k)).join(', ');
 const PAY = [['free', 'Безкоштовно'], ['paid', 'Платно']];
 
 // Виїзди за водоймами — один прохід на завантаження (state.trips міняється лише через refresh)
@@ -2115,10 +2122,14 @@ function spotForm(s = null, { onSaved = null } = {}) {
   const fitPrice = () => { field('price').hidden = f.inputs.pay.value !== 'paid'; };
   f.inputs.pay.addEventListener('click', fitPrice);
   fitPrice();
-  const access = multiChips(ACCESS.map(([k, l]) => [k, t(l)]), s?.access ?? []);
+  const accessChips = (keys) => multiChips(ACCESS.filter(([k]) => keys.includes(k)).map(([k, l]) => [k, t(l)]), (s?.access ?? []).filter((k) => keys.includes(k)));
+  const getThere = accessChips(ACCESS_GET);
+  const fishFrom = accessChips(ACCESS_FROM);
+  const access = { value: () => [...getThere.value(), ...fishFrom.value()] };
   const fishBox = box(t('Риболовля'), h('div', {},
     h('div', { class: 'form' }, f.inputs.pay, field('price')),
-    h('div', { class: 'field-label' }, t('Як дістатися й ловити')), access.el));
+    h('div', { class: 'field-label' }, t('Як дістатися')), getThere.el,
+    h('div', { class: 'field-label' }, t('Звідки ловлю')), fishFrom.el));
   // «Хто водиться» — довгий список риб: згорнуто, у заголовку — скільки вибрано
   const fishHere = multiChips([...new Set([...allSpecies(), ...(s?.species ?? [])])].map((x) => [x, x]), s?.species ?? []);
   const speciesTitle = h('span', {});
@@ -2255,7 +2266,8 @@ function spotBody(s) {
     [t('Тип'), s.kind ? label(SPOT_KINDS, s.kind) : null],
     [t('Риболовля'), spotPrice(s) || null],
     [t('Глибини'), s.depth ? `${s.depth} ${t('м')}` : null],
-    [t('Як дістатися'), (s.access ?? []).map((k) => label(ACCESS, k)).join(', ')],
+    [t('Як дістатися'), accessText(s, ACCESS_GET)],
+    [t('Звідки ловлю'), accessText(s, ACCESS_FROM)],
     hasPlace(s) ? null : [t('На карті'), t('не позначено'), () => spotForm(s)],
     [t('Нотатка'), s.note ? h('span', { class: 'pre' }, s.note) : null],
   ]);
@@ -2545,6 +2557,7 @@ function tripBody(tr) {
   const spends = tripSpends(tr.id);
   const catches = tr.catches ?? [];
   const photos = (tr.photoIds ?? []).filter(findPhoto);
+  const rods = (tr.gearIds ?? []).map(findGear).filter(Boolean);
   return h('div', {},
     facts([
       // Дата — у назві картки; тут години, а для кількох днів — скільки днів і коли почав та закінчив
@@ -2553,7 +2566,6 @@ function tripBody(tr) {
         : [tr.from, tr.to].filter(Boolean).join('–') || null],
       s ? [t('Водойма'), s.name, () => spotDetail(s.id)] : [t('Водойма'), t('Без водойми')],
       [t('Як ловив'), (tr.kinds ?? []).map((k) => label(KINDS, k)).join(', ')],
-      [t('Чим ловив'), (tr.gearIds ?? []).map(findGear).filter(Boolean).map(gearTitle).join(', ')],
       [t('Вода'), tr.waterT !== null && tr.waterT !== undefined && tr.waterT !== '' ? `${fmt.num(tr.waterT)} °C` : null],
       (() => {
         const c = tripCost(tr);
@@ -2577,6 +2589,7 @@ function tripBody(tr) {
       w ? h('p', { class: 'muted small' }, tripDays(tr) > 1
         ? t('Open-Meteo, {d} на {h}:00', { d: fmt.date(w.date).slice(0, 5), h: String(w.hour).padStart(2, '0') })
         : t('Open-Meteo, на {h}:00', { h: String(w.hour).padStart(2, '0') })) : null)),
+    rods.length ? box(t('Чим ловив'), h('div', { class: 'rows' }, rods.map((g) => row(gearTitle(g), rodText(g), '', () => gearDetail(g.id), { thumb: gearThumb(g) })))) : null,
     box([t('Улов'), catches.length ? fmt.num(tripCatch(tr)) : null, tripKg(tr) ? `${fmt.num(Math.round(tripKg(tr) * 100) / 100)} ${t('кг')}` : null].filter(Boolean).join(' · '), h('div', {},
       catches.length ? h('div', { class: 'rows' }, catches.map((c) => row(
         `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
