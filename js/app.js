@@ -2433,31 +2433,55 @@ function multiChips(options, selected = []) {
 }
 
 /**
- * Речі чипами без стіни: вибрані й кілька останніх — одразу, решта — «＋ …» зі списком і пошуком.
- * Коли речей мало (≤ 6), показуємо всі.
+ * Речі списком з галочками (фото, назва, характеристики): вибрані й кілька останніх — одразу, решта — «＋ …» зі списком і пошуком.
+ * Коли підходящих речей мало (≤ 6), показуємо всі. fits — які речі підходять зараз (напр. під спосіб ловлі);
+ * вибрані й додані вручну лишаються видимими, навіть коли перестали підходити. refresh() — перемалювати після зміни fits.
  */
-function gearChips(list, selected, recent, addLabel, pickTitle) {
+function gearChecks(list, selected, recent, addLabel, pickTitle, fits = () => true) {
   const ids = new Set(list.map((g) => g.id));
   const on = new Set(selected.filter((id) => ids.has(id)));
-  const few = list.length <= 6;
-  const shown = few ? list.map((g) => g.id) : [...new Set([...on, ...recent.filter((id) => ids.has(id)).slice(0, 4)])];
-  const el = h('div', { class: 'chips check' });
+  const added = new Set();
+  let shown = [];
+  const el = h('div', { class: 'gear-checks' });
   const paint = () => {
-    el.replaceChildren(...shown.map((id) => h('button', {
-      type: 'button', class: on.has(id) ? 'on' : '',
-      onclick: (e) => { if (!on.delete(id)) on.add(id); e.currentTarget.classList.toggle('on', on.has(id)); },
-    }, gearTitle(findGear(id)))),
-    // replaceChildren не пропускає null (вставив би текст «null») — тому розгорнутий порожній масив
-    ...(few || shown.length >= list.length ? [] : [h('button', {
-      type: 'button', class: 'add',
-      onclick: () => gearPickSheet(pickTitle, list.filter((g) => !shown.includes(g.id)).sort(byGroup), (g) => {
-        on.add(g.id); shown.push(g.id); paint();
+    const pool = list.filter(fits);
+    const base = new Set(pool.length <= 6 ? pool.map((g) => g.id) : recent.filter((id) => pool.some((g) => g.id === id)).slice(0, 4));
+    shown = list.filter((g) => on.has(g.id) || added.has(g.id) || base.has(g.id)).map((g) => g.id);
+    const rest = list.filter((g) => !shown.includes(g.id));
+    const check = (id) => {
+      const g = findGear(id);
+      const el = row(gearTitle(g), rodText(g), h('span', { class: `box-check${on.has(id) ? ' on' : ''}` }), (e) => {
+        if (!on.delete(id)) on.add(id);
+        e.currentTarget.classList.toggle('on', on.has(id));
+        e.currentTarget.setAttribute('aria-checked', String(on.has(id)));
+        e.currentTarget.querySelector('.box-check').classList.toggle('on', on.has(id));
+      }, { cls: on.has(id) ? 'on' : '', thumb: gearThumb(g) });
+      el.setAttribute('role', 'checkbox');
+      el.setAttribute('aria-checked', String(on.has(id)));
+      return el;
+    };
+    el.replaceChildren(
+      shown.length ? h('div', { class: 'rows' }, shown.map(check)) : h('p', { class: 'muted small' }, t('Під цей спосіб вудилищ немає.')),
+      // replaceChildren не пропускає null (вставив би текст «null») — тому розгорнутий порожній масив
+    ...(rest.length ? [h('button', {
+      type: 'button', class: 'add-more',
+      // Підходящі — першими
+      onclick: () => gearPickSheet(pickTitle, [...rest.filter(fits).sort(byGroup), ...rest.filter((g) => !fits(g)).sort(byGroup)], (g) => {
+        on.add(g.id); added.add(g.id); paint();
       }),
-    }, `＋ ${addLabel}`)]));
+    }, shown.length ? `＋ ${t('Інше')} ${addLabel.toLowerCase()} · ${fmt.num(rest.length)}` : `＋ ${addLabel} · ${fmt.num(rest.length)}`)] : []));
   };
   paint();
   Object.defineProperty(el, 'value', { get: () => [...on].join(',') });
-  return { el, value: () => shown.filter((id) => on.has(id)) };
+  return { el, value: () => shown.filter((id) => on.has(id)), refresh: paint };
+}
+
+/** Які типи вудилищ підходять під спосіб ловлі; «Інше» — будь-які. */
+const KIND_RODS = { spin: ['spin'], feeder: ['feeder'], float: ['float'], donka: ['donka'], makush: ['donka', 'feeder'], fly: ['fly'] };
+/** Вудилище під вибрані способи: нічого не вибрано, «Інше» чи вудилище без типу — підходить. */
+function rodFits(g, kinds) {
+  if (!kinds.length || kinds.includes('other') || !g.rodType || g.rodType === 'other') return true;
+  return kinds.some((k) => KIND_RODS[k]?.includes(g.rodType));
 }
 
 /** preset — для нового виїзду, напр. вудилища зі збору. */
@@ -2516,14 +2540,15 @@ function tripForm(tr = null, preset = {}) {
   const kinds = multiChips(KINDS.map(([k, l]) => [k, t(l)]), tr?.kinds ?? (preset.kinds?.length ? preset.kinds : null) ?? last?.kinds ?? []);
   const rods = state.gear.filter((g) => active(g) && ['rods'].includes(groupOf(g))).sort(byGroup);
   const recentRods = byDate.flatMap((x) => x.gearIds ?? []);
-  const used = gearChips(rods, tr?.gearIds ?? preset.gearIds ?? [], recentRods, t('Вудилище'), t('Чим ловив'));
+  const used = gearChecks(rods, tr?.gearIds ?? preset.gearIds ?? [], recentRods, t('Вудилище'), t('Чим ловив'), (g) => rodFits(g, kinds.value()));
+  kinds.el.addEventListener('click', () => requestAnimationFrame(used.refresh));
   // Вода — про водойму в цей день, тому одразу під нею; «Інші витрати» — окремо, перед нотаткою
   const waterRow = h('div', { class: 'form' }, field('waterT'));
   const costRow = h('div', { class: 'form' }, field('cost'));
   const close = sheet(tr ? t('Змінити виїзд') : t('Новий виїзд'), h('div', { class: 'blocks-form' },
     when.el, moreDays, multi, spotRow, waterRow,
-    h('div', { class: 'field-label' }, t('Як ловив')), kinds.el,
-    rods.length ? [h('div', { class: 'field-label' }, t('Чим ловив')), used.el] : null,
+    box(t('Як ловив'), kinds.el),
+    rods.length ? box(t('Чим ловив'), used.el) : null,
     costRow, noteField), {
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
       if (invalidField(when) || invalidField(f)) return;
@@ -2669,7 +2694,7 @@ function gearPickSheet(title, sorted, onPick) {
   const paint = () => {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
     rows.replaceChildren(...sorted.filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); }).map((g) =>
-      row(gearTitle(g), [weightText(g), g.color].filter(Boolean).join(' · '), qtyText(g), () => { close(); onPick(g); }, { thumb: gearThumb(g) })));
+      row(gearTitle(g), groupOf(g) === 'rods' ? rodText(g) : [weightText(g), g.color].filter(Boolean).join(' · '), qtyText(g), () => { close(); onPick(g); }, { thumb: gearThumb(g) })));
     if (thumbIo) dropGoneThumbs();
   };
   search.addEventListener('input', paint);
