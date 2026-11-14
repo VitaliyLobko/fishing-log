@@ -2505,13 +2505,19 @@ function onNfcTag(urls) {
   toast(urls.length ? t('Мітка не з Fishing Log') : t('Мітка порожня. Запишіть її з картки речі: значок NFC угорі'));
 }
 
+/** Значок NFC натискали в цій сесії — після згортання читання відновлюється саме. */
+let nfcWanted = false;
+
 /** Слухати мітки; з кнопки — ще й підказати, що робити, і показати, чому не вийшло. */
 async function nfcStart(fromButton = false) {
   try {
     await nfc.listen(onNfcTag);
+    nfcWanted = true;
     document.querySelectorAll('.nfc-btn').forEach((b) => b.classList.add('on'));
     if (fromButton) toast(t('Піднесіть телефон до мітки'));
   } catch (err) {
+    nfcWanted = false;
+    document.querySelectorAll('.nfc-btn').forEach((b) => b.classList.remove('on'));
     if (fromButton) toast(err.name === 'NotAllowedError' ? t('Дозвольте NFC для цього сайту в налаштуваннях Chrome') : t('NFC недоступний: увімкніть його в налаштуваннях телефона'));
   }
 }
@@ -3425,11 +3431,12 @@ const googleFromOtherApp = () => {
 };
 googleFromOtherApp();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') googleFromOtherApp(); });
-// NFC: дозвіл уже є — мітки читаються, поки застосунок на екрані; згорнули — читання зупиняється
+// NFC: читання вмикає лише значок — сам scan() при вимкненому NFC показує вікно Chrome.
+// Згорнули — читання зупиняється; повернулися — відновлюється, якщо значок уже натискали
 if (nfc.supported()) {
-  const nfcAuto = async () => { if (document.visibilityState === 'visible' && await nfc.granted()) nfcStart(); };
-  nfcAuto();
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') nfc.stop(); else nfcAuto(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') nfc.stop(); else if (nfcWanted) nfcStart();
+  });
 }
 sync.preload();
 sync.syncNow();

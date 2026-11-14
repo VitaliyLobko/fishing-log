@@ -7,11 +7,6 @@ export const supported = () => 'NDEFReader' in window && window.isSecureContext;
 let listening = null;
 let onTag = null;
 
-/** Дозвіл на NFC уже дано — тоді читати можна без натискання кнопки. */
-export async function granted() {
-  try { return (await navigator.permissions.query({ name: 'nfc' })).state === 'granted'; } catch { return false; }
-}
-
 /** Слухати мітки, поки застосунок на екрані; handler отримує адреси з мітки й її серійний номер. */
 export async function listen(handler) {
   onTag = handler;
