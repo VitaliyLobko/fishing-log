@@ -2378,6 +2378,60 @@ async function markUrl(c, mode, range = null) {
   return url;
 }
 
+// Межі діапазонів легенди: повзунок ходить лише по них — проміжне значення підсвітило б ті самі смуги.
+// Остання межа — «понад 12 м» без дна
+const RANGE_STOPS = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 99];
+const RANGE_LAST = RANGE_STOPS.length - 1;
+const stopLabel = (i) => (i === RANGE_LAST ? '12+' : String(RANGE_STOPS[i]));
+const stopsText = (a, b) => (b === RANGE_LAST ? t('від {n} м', { n: RANGE_STOPS[a] }) : `${RANGE_STOPS[a]}–${RANGE_STOPS[b]} ${t('м')}`);
+
+/** Метри → номери меж: «від» униз, «до» вгору — підсвітяться ті самі смуги легенди, що й для точних чисел. */
+function rangeStops([lo, hi]) {
+  let a = 0;
+  RANGE_STOPS.forEach((s, i) => { if (s <= lo && i < RANGE_LAST) a = i; });
+  let b = RANGE_STOPS.findIndex((s) => s >= hi);
+  if (b < 0) b = RANGE_LAST;
+  return [a, Math.max(b, a + 1)];
+}
+
+/** Подвійний повзунок «від–до» по межах легенди. onChange([lo, hi]) у метрах. */
+function depthSlider(start, onChange) {
+  let [a, b] = rangeStops(start);
+  const knob = (v, label) => h('input', { type: 'range', min: '0', max: String(RANGE_LAST), step: '1', value: String(v), 'aria-label': label });
+  const fromIn = knob(a, t('Глибина від'));
+  const toIn = knob(b, t('Глибина до'));
+  const fill = h('div', { class: 'dr-fill' });
+  const out = h('output', { class: 'dr-value' });
+  const ticks = h('div', { class: 'dr-ticks', 'aria-hidden': 'true' }, RANGE_STOPS.map((_, i) => {
+    const s = h('span', {}, stopLabel(i));
+    s.style.left = `${(i / RANGE_LAST) * 100}%`;
+    return s;
+  }));
+  const show = () => {
+    fill.style.left = `${(a / RANGE_LAST) * 100}%`;
+    fill.style.right = `${100 - (b / RANGE_LAST) * 100}%`;
+    out.textContent = stopsText(a, b);
+    fromIn.setAttribute('aria-valuetext', `${stopLabel(a)} ${t('м')}`);
+    toIn.setAttribute('aria-valuetext', `${stopLabel(b)} ${t('м')}`);
+  };
+  const value = () => [RANGE_STOPS[a], RANGE_STOPS[b]];
+  // Повзунки не перехрещуються: між «від» і «до» щонайменше одна смуга
+  const moved = (isFrom) => {
+    const x = Number(fromIn.value);
+    const y = Number(toIn.value);
+    if (isFrom) a = Math.min(x, y - 1); else b = Math.max(y, x + 1);
+    fromIn.value = String(a);
+    toIn.value = String(b);
+    show();
+    onChange(value());
+  };
+  fromIn.addEventListener('input', () => moved(true));
+  toIn.addEventListener('input', () => moved(false));
+  show();
+  const el = h('div', { class: 'depth-range' }, out, h('div', { class: 'dr-track' }, fill, fromIn, toIn), ticks);
+  return { el, value };
+}
+
 /** Перемикач підкладки «Супутник / Схема» під картою. */
 function layerChips(getMap) {
   const el = chips([['sat', t('Супутник')], ['osm', t('Схема')]], mapLayer(), (v) => { getMap()?.setLayer(v); remember(MAP_LAYER, v); });
@@ -2488,28 +2542,18 @@ async function depthView({ title, center, zoom = 15, water = null, park = null, 
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
-  // «Глибини» — свій діапазон «від … до … м» (як на легенді листа); з «Куди й коли» — уже заповнений і ввімкнений.
+  // «Глибини» — свій діапазон повзунком (межі легенди листа); з «Куди й коли» — уже виставлений і ввімкнений.
   // Свій діапазон пам'ятаємо до наступного разу
   let saved = null;
   try { const v = JSON.parse(recall(DEPTH_RANGE) ?? 'null'); if (Array.isArray(v) && v.length === 2 && v.every(Number.isFinite)) saved = v; } catch { /* немає збереженого */ }
-  const start = mark?.range ? mark.range.map((x) => Math.round(x * 10) / 10) : saved ?? [3, 6];
-  const numIn = (v, label) => Object.assign(h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'range-in', 'aria-label': label }), { value: String(v).replace('.', ',') });
-  const fromIn = numIn(start[0], t('Глибина від, м'));
-  const toIn = numIn(start[1], t('Глибина до, м'));
-  const rangeRow = h('div', { class: 'depth-range', hidden: !mark?.range }, h('span', {}, t('від')), fromIn, h('span', {}, t('до')), toIn, h('span', {}, t('м')));
-  const readIn = (i) => (i.value.trim() === '' ? NaN : Number(i.value.replace(',', '.')));
-  const applyRange = () => {
-    const a = readIn(fromIn);
-    const b = readIn(toIn);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) return;
-    const r = [Math.min(a, b), Math.max(a, b)];
+  const slider = depthSlider(mark?.range ?? saved ?? [3, 6], (r) => {
     remember(DEPTH_RANGE, JSON.stringify(r));
     depth.setRange(r);
     depth.setMark('range');
-  };
-  fromIn.addEventListener('input', applyRange);
-  toIn.addEventListener('input', applyRange);
-  depth.setRange(start);
+  });
+  const rangeRow = slider.el;
+  rangeRow.hidden = !mark?.range;
+  depth.setRange(slider.value());
   const marks = depth.hasBands ? chips([...MARKS, ['range', 'Глибини']].map(([k, l]) => [k, t(l)]), mark?.range ? 'range' : '', (v) => {
     rangeRow.hidden = v !== 'range';
     depth.setMark(v);
