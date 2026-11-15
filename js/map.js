@@ -58,6 +58,7 @@ export function makeMap(L, el, { lat, lon, zoom, layer = 'sat', interactive = tr
 const PIN = {
   water: '<path d="M12 3.5c3 3.6 5 6.4 5 9a5 5 0 0 1-10 0c0-2.6 2-5.4 5-9z"/>',
   park: '<path d="M5 17V12l2-5h10l2 5v5M5 17h14M5 17v2M19 17v2M5 12h14"/><circle cx="8.5" cy="14.5" r=".8"/><circle cx="15.5" cy="14.5" r=".8"/>',
+  fish: '<path d="M3 12c3-4.5 9-5.5 14-2.5l4-2.5v10l-4-2.5C12 17.5 6 16.5 3 12z"/>',
 };
 
 /** Маркер-шпилька зі значком: вода — крапля, під'їзд — авто. */

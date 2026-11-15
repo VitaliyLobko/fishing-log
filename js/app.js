@@ -2245,7 +2245,84 @@ function layerChips(getMap) {
 }
 
 /** Карта з листом глибин на весь екран: водойма й під'їзд шпильками, лист — під центром карти. */
-async function depthView({ title, center, zoom = 15, water = null, park = null }) {
+/** Точка улову, якщо позначена: { lat, lon }. */
+const catchAt = (c) => (Number.isFinite(c?.lat) && Number.isFinite(c?.lon) ? { lat: c.lat, lon: c.lon } : null);
+const hasDepth = (c) => c?.depth !== null && c?.depth !== undefined && c?.depth !== '' && Number.isFinite(Number(c.depth));
+const depthText = (d) => `${fmt.num(d)} ${t('м')}`;
+
+/** Позначені точки улову на водоймі: { lat, lon, c, tr }; skip — улов, який зараз редагуємо. */
+function spotCatchPoints(spotId, skip = null) {
+  if (!spotId) return [];
+  return spotTrips(spotId).flatMap((tr) => (tr.catches ?? [])
+    .filter((c) => c.id !== skip && catchAt(c))
+    .map((c) => ({ ...catchAt(c), c, tr })));
+}
+
+/** Точки улову на карті: кружок кольору напрямку (хижа — червона, мирна — зелена), підказка — що, глибина, коли. */
+function catchDots(L, map, list) {
+  for (const { lat, lon, c, tr } of list) {
+    L.circleMarker([lat, lon], {
+      radius: 7, weight: 2, color: '#fff', fillOpacity: 0.95,
+      fillColor: fishDir(c.species) === 'predator' ? '#ef4444' : '#22c55e',
+    }).bindTooltip([`${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`, hasDepth(c) ? depthText(c.depth) : null,
+      fmt.date(catchDate(tr, c))].filter(Boolean).join(' · ')).addTo(map);
+  }
+}
+
+/** Де впіймав: точка на карті з листом глибин і глибина, прочитана з листа. onDone({ at, depth }). */
+async function catchPointPicker({ at, depth, center, others = [] }, onDone) {
+  let L;
+  try { L = await loadLeaflet(); } catch { toast(t('Карта не завантажилась — перевірте інтернет')); return; }
+  let point = at;
+  let marker = null;
+  let map = null;
+  const el = h('div', { class: 'map-box' });
+  const dep = depthOverlay();
+  const depthIn = h('input', { type: 'text', inputmode: 'decimal', name: 'catch-depth', autocomplete: 'off', placeholder: '3,5' });
+  depthIn.value = depth ?? '';
+  const clear = btn(t('Прибрати точку'), () => { marker?.remove(); marker = null; point = null; clear.hidden = true; }, 'quiet mini');
+  clear.hidden = !point;
+  const put = (ll) => {
+    point = { lat: ll.lat, lon: ll.lng ?? ll.lon };
+    if (!marker) {
+      marker = L.marker([point.lat, point.lon], { icon: pinIcon(L, 'fish'), draggable: true, keyboard: false })
+        .on('dragend', (e) => { const p = e.target.getLatLng(); point = { lat: p.lat, lon: p.lng }; })
+        .addTo(map);
+    } else marker.setLatLng([point.lat, point.lon]);
+    clear.hidden = false;
+  };
+  const me = btn([icon('pin'), t('Я тут')], async () => {
+    const pos = await myPosition();
+    if (pos && map) { map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 16)); put({ lat: pos.lat, lon: pos.lon }); }
+  }, 'mini');
+  const close = sheet(t('Де впіймав'), h('div', { class: 'map-picker' },
+    h('p', { class: 'muted small map-tip' }, t('Торкніться місця, де впіймали. Глибину прочитайте з листа')), el, dep.el,
+    h('label', { class: 'field catch-depth' }, h('span', { class: 'field-label' }, t('Глибина тут, м')), depthIn),
+    h('div', { class: 'map-tools' }, layerChips(() => map), h('div', { class: 'btn-row' }, me, clear))), {
+    full: true,
+    dirty: false,
+    onClose: () => map?.remove(),
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Готово'), () => {
+      const raw = depthIn.value.trim();
+      const d = raw === '' ? null : Number(raw.replace(',', '.'));
+      if (d !== null && !(d >= 0 && d < 1000)) { fieldError(depthIn, t('Не схоже на глибину')); return; }
+      close();
+      onDone({ at: point, depth: d });
+    }, 'primary')],
+  });
+  requestAnimationFrame(() => {
+    const c = point ?? center;
+    map = makeMap(L, el, c ? { lat: c.lat, lon: c.lon, zoom: 16, layer: mapLayer() } : { lat: UA.lat, lon: UA.lon, zoom: UA.zoom, layer: mapLayer() });
+    satControl(L, map);
+    dep.attach(L, map);
+    catchDots(L, map, others);
+    if (point) put(point);
+    map.on('click', (e) => put(e.latlng));
+    setTimeout(() => map.invalidateSize(), 250);
+  });
+}
+
+async function depthView({ title, center, zoom = 15, water = null, park = null, catches = [] }) {
   let L;
   try { L = await loadLeaflet(); } catch { toast(t('Карта не завантажилась — перевірте інтернет')); return; }
   const el = h('div', { class: 'map-box' });
@@ -2267,6 +2344,7 @@ async function depthView({ title, center, zoom = 15, water = null, park = null }
     satControl(L, map);
     if (water) L.marker([water.lat, water.lon], { icon: pinIcon(L, 'water'), interactive: false, keyboard: false }).addTo(map);
     if (park) L.marker([park.lat, park.lon], { icon: pinIcon(L, 'park'), interactive: false, keyboard: false }).addTo(map);
+    catchDots(L, map, catches);
     depth.attach(L, map);
     setTimeout(() => map.invalidateSize(), 250);
   });
@@ -2984,6 +3062,7 @@ function renderTrips() {
     packBox(),
     seasonBox(),
     recordsBox(),
+    patternsBox(),
     list.length ? byMonth(list).map(([head, rows]) => [h('h3', { class: 'list-head' }, head), h('div', { class: 'rows' }, rows.map(tripRow))])
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]));
 }
@@ -3221,7 +3300,7 @@ function tripBody(tr) {
     box([t('Улов'), catches.length ? fmt.num(tripCatch(tr)) : null, tripKg(tr) ? `${fmt.num(Math.round(tripKg(tr) * 100) / 100)} ${t('кг')}` : null].filter(Boolean).join(' · '), h('div', {},
       catches.length ? h('div', { class: 'rows' }, catches.map((c) => row(
         `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
-        [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null, c.length ? `${fmt.num(c.length)} ${t('см')}` : null, baitText(c), c.released ? t('відпустив') : t('забрав')].filter(Boolean).join(' · '),
+        [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null, c.length ? `${fmt.num(c.length)} ${t('см')}` : null, hasDepth(c) ? t('глибина {d}', { d: depthText(c.depth) }) : null, baitText(c), c.released ? t('відпустив') : t('забрав')].filter(Boolean).join(' · '),
         '', () => catchForm(tr, c), { thumb: c.photoId ? thumbImg(c.photoId) : null }))) : h('p', { class: 'muted small' }, t('Без улову — теж запис.')),
       h('div', { class: 'btn-row' }, btn(t('+ Улов'), () => catchForm(tr), 'primary')))),
     box(t('Втрати й витрати'), h('div', {},
@@ -3316,6 +3395,7 @@ function catchForm(tr, c = null) {
       options: [['', t('— інше, впишу —')], ...sections().map(({ key: gk, name: gl }) => ({ group: gl, options: baits.filter((g) => groupOf(g) === gk).map((g) => [g.id, [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ')]) }))] },
     { name: 'bait', label: t('Приманка чи насадка'), value: c?.bait, placeholder: t('напр. опариш + кукурудза') },
     { name: 'length', label: t('Довжина, см'), type: 'number', value: c?.length, half: true },
+    { name: 'depth', label: t('Глибина, м'), type: 'number', value: c?.depth, half: true, placeholder: '3,5' },
   ]);
   f.el.classList.add('trio');
   f.el.append(h('datalist', { id: 'species-list' }, allSpecies().map((x) => h('option', { value: x }))));
@@ -3348,10 +3428,47 @@ function catchForm(tr, c = null) {
   paintMore();
   const more = formFold([t('Довжина й фото'), moreSum], h('div', {}, h('div', { class: 'form' }, lengthField), pick.el));
   more.open = Boolean(c?.length || c?.photoId);
+  // Де впіймав: точка й глибина; нова рибина — там само, де попередня цього виїзду (найчастіше так і є)
+  let at = c ? catchAt(c) : null;
+  let same = false;
+  if (!c) {
+    const prev = [...(tr.catches ?? [])].reverse().find((x) => catchAt(x) || hasDepth(x));
+    if (prev) {
+      at = catchAt(prev);
+      if (hasDepth(prev)) f.inputs.depth.value = String(prev.depth);
+      same = true;
+    }
+  }
+  const spot = findSpot(tr.spotId);
+  const whereSum = h('span', { class: 'fold-sum' });
+  const whereBtn = btn('', () => catchPointPicker({
+    at, depth: f.inputs.depth.value.trim(),
+    center: at ?? [...(tr.catches ?? [])].reverse().map(catchAt).find(Boolean) ?? (hasCoords(spot) ? { lat: Number(spot.lat), lon: Number(spot.lon) } : null),
+    others: spotCatchPoints(tr.spotId, c?.id),
+  }, ({ at: p, depth: d }) => {
+    at = p;
+    same = false;
+    f.inputs.depth.value = d === null ? '' : String(d);
+    paintWhere();
+  }), 'with-ico');
+  const whereClear = btn(t('Прибрати'), () => { at = null; same = false; paintWhere(); }, 'quiet mini');
+  const paintWhere = () => {
+    const d = f.inputs.depth.value.trim();
+    const v = [at ? (same ? t('там само, що попередня') : t('позначено на карті')) : null, d && Number.isFinite(Number(d.replace(',', '.'))) ? depthText(Number(d.replace(',', '.'))) : null].filter(Boolean);
+    whereSum.textContent = v.length ? v.join(' · ') : t('не вказано');
+    whereBtn.replaceChildren(icon('map'), h('span', {}, at ? t('Змінити на карті') : t('Позначити на карті')));
+    whereClear.hidden = !at;
+  };
+  f.inputs.depth.addEventListener('input', () => { same = false; paintWhere(); });
+  paintWhere();
+  const where = formFold([t('Де впіймав'), whereSum], h('div', {},
+    h('div', { class: 'btn-row' }, whereBtn, whereClear), h('div', { class: 'form' }, field('depth')),
+    h('p', { class: 'muted small form-note' }, t('Глибину зручно читати з листа глибин на карті. З цього складаються «Закономірності» у Виїздах'))));
+  where.open = Boolean(c && (catchAt(c) || hasDepth(c)));
   const close = sheet(c ? t('Змінити улов') : t('Новий улов'), h('div', { class: 'blocks-form' },
     f.el, h('p', { class: 'muted small form-note' }, t('Вага для кількох — разом')),
     dayChips ? [h('div', { class: 'field-label' }, t('День')), dayChips] : null,
-    baitBlock, rel, more), {
+    baitBlock, rel, where, more), {
     tools: c ? [toolBtn('delete', t('Видалити'), () => confirmSheet(t('Видалити улов «{name}»?', { name: c.species }), t('Скасувати не можна.'), t('Видалити'), async () => {
       close();
       await save(joinChanges(c.photoId ? dropPhotos([c.photoId]) : {}, { trips: { put: [{ ...findTrip(tr.id), catches: (findTrip(tr.id).catches ?? []).filter((x) => x.id !== c.id) }] } }));
@@ -3362,7 +3479,8 @@ function catchForm(tr, c = null) {
       let photo;
       try { photo = await photoChanges(c, pick.value(), tr.id); } catch (err) { toast(err.message); return; }
       close();
-      const rec = { ...(c ?? { id: db.uid() }), ...v, n: Math.max(1, num(v.n) || 1), baitId: v.baitId || null, bait: v.baitId ? '' : v.bait, released, photoId: photo.photoId, date: days.length ? day : null };
+      const rec = { ...(c ?? { id: db.uid() }), ...v, n: Math.max(1, num(v.n) || 1), baitId: v.baitId || null, bait: v.baitId ? '' : v.bait, released, photoId: photo.photoId, date: days.length ? day : null,
+        lat: at?.lat ?? null, lon: at?.lon ?? null, depth: v.depth === null ? null : Math.abs(v.depth) };
       const prev = catchRecords().get(v.species);
       const now = findTrip(tr.id);
       const catches = c ? (now.catches ?? []).map((x) => (x.id === c.id ? rec : x)) : [...(now.catches ?? []), rec];
@@ -3585,6 +3703,82 @@ function recordsBox() {
       h('div', { class: 'rows' }, row(`${tripTitle(top)} · ${tripWhen(top)}`,
         [t('риб: {n}', { n: fmt.num(tripCatch(top)) }), tripKg(top) ? `${fmt.num(Math.round(tripKg(top) * 10) / 10)} ${t('кг')}` : null].filter(Boolean).join(' · '),
         '', () => tripDetail(top.id)))] : null));
+}
+
+// ---------- закономірності ----------
+
+// Межі груп: тиск — зміна за добу, мм рт. ст.; вода — °C; глибина — м. Верхня межа не включно.
+const DP_BANDS = [[-Infinity, -4, 'Різко падає'], [-4, -1, 'Падає'], [-1, 2, 'Стабільний'], [2, 5, 'Росте'], [5, Infinity, 'Різко росте']];
+const WATER_BANDS = [[-Infinity, 5, 'до 5 °C'], [5, 10, '5–10 °C'], [10, 15, '10–15 °C'], [15, 20, '15–20 °C'], [20, Infinity, 'від 20 °C']];
+const DEPTH_BANDS = [[0, 1, 'до 1 м'], [1, 2, '1–2 м'], [2, 3, '2–3 м'], [3, 5, '3–5 м'], [5, 8, '5–8 м'], [8, Infinity, 'від 8 м']];
+const bandOf = (bands, v) => bands.findIndex(([lo, hi]) => v >= lo && v < hi);
+const PATTERN_SP = 'fishing-log:pattern-species';
+const tripsText = (n) => `${fmt.num(n)} ${plural(n, [t('виїзд'), t('виїзди'), t('виїздів')])}`;
+const fishText = (n) => `${fmt.num(n)} ${plural(n, [t('риба'), t('риби'), t('риб')])}`;
+
+/**
+ * Закономірності виду: на якій глибині брав, і скільки риб за виїзд при якому тиску й воді.
+ * Виїзди — лише на водойми, де цей вид уже ловився (інакше коропові ставки «топлять» щуку), з порожніми включно.
+ * Погода виїзду — на годину початку першого дня, тож для тиску рахуємо лише улов першого дня.
+ */
+function patternSections(sp) {
+  const fits = (c) => !sp || c.species === sp;
+  const spots = sp ? new Set(state.trips.filter((tr) => (tr.catches ?? []).some(fits)).map((tr) => tr.spotId)) : null;
+  const pool = state.trips.filter((tr) => !spots || spots.has(tr.spotId));
+  const fishOf = (tr, firstDay = false) => (tr.catches ?? []).filter((c) => fits(c) && (!firstDay || catchDate(tr, c) === tr.date))
+    .reduce((n, c) => n + (num(c.n) || 1), 0);
+  const perTrip = (bands, list, value, fish) => {
+    const acc = bands.map(() => ({ trips: 0, n: 0 }));
+    for (const tr of list) {
+      const i = bandOf(bands, value(tr));
+      if (i < 0) continue;
+      acc[i].trips += 1;
+      acc[i].n += fish(tr);
+    }
+    return acc.map((x, i) => ({ ...x, label: t(bands[i][2]) })).filter((x) => x.trips);
+  };
+  const perTripBars = (rows) => bars(rows.map((x) => ({ label: x.label, n: x.n / x.trips,
+    text: `${fmt.num(Math.round((x.n / x.trips) * 10) / 10)} · ${tripsText(x.trips)}` })));
+  const out = [];
+  // Глибина — розподіл самого улову: «скільки риб на якій глибині»
+  const deep = pool.flatMap((tr) => (tr.catches ?? []).filter((c) => fits(c) && hasDepth(c)));
+  if (deep.length >= 2) {
+    const acc = DEPTH_BANDS.map(([, , l]) => ({ label: t(l), n: 0 }));
+    for (const c of deep) { const i = bandOf(DEPTH_BANDS, Number(c.depth)); if (i >= 0) acc[i].n += num(c.n) || 1; }
+    const total = acc.reduce((s, x) => s + x.n, 0);
+    out.push(h('div', { class: 'field-label' }, t('На якій глибині брала · {n} з глибиною', { n: fishText(total) })),
+      bars(acc.filter((x) => x.n)));
+  }
+  const press = perTrip(DP_BANDS, pool.filter((tr) => Number.isFinite(tr.weather?.dp)), (tr) => tr.weather.dp, (tr) => fishOf(tr, true));
+  if (press.length >= 2) {
+    out.push(h('div', { class: 'field-label' }, t('Тиск за добу до виїзду — риб за виїзд')), perTripBars(press),
+      h('p', { class: 'muted small' }, t('Тиск — на початок виїзду; з виїздів на кілька днів — лише улов першого дня. Виїзди без погоди не враховано.')));
+  }
+  const waterT = (tr) => (tr.waterT === null || tr.waterT === undefined || tr.waterT === '' ? NaN : Number(tr.waterT));
+  const water = perTrip(WATER_BANDS, pool.filter((tr) => Number.isFinite(waterT(tr))), waterT, (tr) => fishOf(tr) / tripDays(tr));
+  if (water.length >= 2) out.push(h('div', { class: 'field-label' }, t('Вода — риб за день на воді')), perTripBars(water));
+  return out;
+}
+
+function patternsBox() {
+  const counts = new Map();
+  for (const tr of state.trips) for (const c of tr.catches ?? []) counts.set(c.species, (counts.get(c.species) ?? 0) + (num(c.n) || 1));
+  if (!counts.size) return null;
+  const list = [...counts].sort((a, b) => b[1] - a[1] || collate(a[0], b[0])).map(([sp]) => sp);
+  let sp = recall(PATTERN_SP) ?? '';
+  if (sp && !counts.has(sp)) sp = '';
+  return fold('patterns', t('Закономірності'), () => {
+    const body = h('div', { class: 'patterns' });
+    const paint = () => {
+      const parts = patternSections(sp);
+      body.replaceChildren(...(parts.length ? parts : [h('p', { class: 'muted small' },
+        t('Ще замало даних. Вказуйте в улові глибину й точку («Де впіймав»), а погода виїзду підтягнеться сама — тут з’явиться, на якій глибині, при якому тиску й воді у вас бере.'))]));
+    };
+    const pick = chips([['', t('Усі риби')], ...list.map((x) => [x, x])], sp, (v) => { sp = v; remember(PATTERN_SP, v); paint(); });
+    pick.classList.add('pattern-species');
+    paint();
+    return h('div', {}, pick, body);
+  });
 }
 
 // ---------- печиво з передбаченням ----------
@@ -4506,12 +4700,14 @@ function renderShop() {
     settingsGroup(t('Витрати'), [marnotratRow()]));
 }
 
-/** «Глибини» в картці водойми — лише коли точка води лежить на прив'язаному листі. */
+/** «Глибини» в картці водойми — коли точка води лежить на прив'язаному листі; без листа, але з позначеним уловом — «Точки лову». */
 function depthBtn(s) {
-  if (!hasCoords(s)) return null;
-  const water = { lat: Number(s.lat), lon: Number(s.lon) };
-  if (!chartsAt(water).length) return null;
-  return btn([icon('depth'), t('Глибини')], () => depthView({ title: s.name, center: water, water, park: parkOf(s) }), 'with-ico');
+  const water = hasCoords(s) ? { lat: Number(s.lat), lon: Number(s.lon) } : null;
+  const catches = spotCatchPoints(s.id);
+  const onChart = Boolean(water && chartsAt(water).length);
+  if (!onChart && !catches.length) return null;
+  return btn([icon('depth'), onChart ? t('Глибини') : t('Точки лову')],
+    () => depthView({ title: s.name, center: water ?? catches[0], water, park: parkOf(s), catches }), 'with-ico');
 }
 
 function renderSettings() {
