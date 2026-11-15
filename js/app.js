@@ -4,7 +4,7 @@ import * as db from './db.js';
 import * as sync from './sync.js';
 import * as bot from './bot.js';
 import * as nfc from './nfc.js';
-import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, onSheet, nudgePts, mercPerPx } from './map.js';
+import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, onSheet, nudgePts, mercPerPx, satAreaUrls } from './map.js';
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto, prepareSheet as preparePhotoSheet } from './photos.js';
 import { weatherAt, waterEstimate, forecastDays, moonPhase, compass } from './weather.js';
@@ -3219,6 +3219,7 @@ function spotForm(s = null, { onSaved = null } = {}) {
 function removeSpot(s) {
   confirmSheet(t('Видалити «{name}»?', { name: s.name }), t('Виїзди залишаться, але без водойми.'), t('Видалити'), async () => {
     await save(joinChanges(s.photoId ? dropPhotos([s.photoId]) : {}, { spots: { del: [s.id] } }));
+    dropArea(s.id);
     toast(t('Видалено'));
   });
 }
@@ -3366,6 +3367,7 @@ function spotBody(s) {
     photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(photo.id) },
       h('img', { class: 'item-photo spot-photo', src: photo.thumb, alt: '' })) : null,
     hasPlace(s) ? spotMiniMap(s) : null,
+    offlineAreaRow(s),
     h('div', { class: 'btn-row spot-acts' },
       hasPlace(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
       depthBtn(s),
@@ -3387,6 +3389,108 @@ function spotBody(s) {
     trips.length ? fold('spot-trips', `${t('Виїзди')} · ${trips.length}`, () => h('div', { class: 'rows' }, trips.map(tripRow))) : null,
     hasPlace(s) ? h('p', { class: 'muted small' }, [hasCoords(s) ? t('Водойма: {c} — для погоди у виїздах.', { c: coordsText(s) }) : null,
       parkOf(s) ? t('Під’їзд: {c} — маршрут веде сюди.', { c: coordsText(parkOf(s)) }) : null].filter(Boolean).join(' ')) : null);
+}
+
+// ---------- супутник без інтернету ----------
+
+// Район водойми — свій кеш: звичайне витіснення переглянутих плиток (sw.js) його не чіпає
+const AREA_CACHE = 'tiles-area-fishing-log-';
+const AREA_KEY = 'fishing-log:area:';
+const AREA_ZOOMS = [12, 13, 14, 15, 16, 17];
+// Середня плитка супутника з підписами — для оцінки розміру до завантаження
+const AREA_TILE_KB = 13;
+// Завантаження, що йдуть: spotId → { done, all, failed, bytes, stop }; картка водойми може перемалюватись посеред
+const areaJobs = new Map();
+const areaPainters = new Set();
+
+/** Плитки району: ±1,5 км навколо води (зум 12–17), найближчі ±0,5 км — ще й зум 18; під'їзд — ±0,5 км. */
+function areaUrls(s) {
+  const park = parkOf(s);
+  return satAreaUrls([
+    { lat: Number(s.lat), lon: Number(s.lon), km: 1.5, zooms: AREA_ZOOMS, labels: true },
+    { lat: Number(s.lat), lon: Number(s.lon), km: 0.5, zooms: [18] },
+    park ? { lat: Number(park.lat), lon: Number(park.lon), km: 0.5, zooms: [...AREA_ZOOMS, 18], labels: true } : null,
+  ].filter(Boolean));
+}
+
+const areaMeta = (id) => { try { return JSON.parse(recall(AREA_KEY + id) ?? 'null'); } catch { return null; } };
+const mbText = (bytes) => fmt.num(Math.max(0.1, Math.round(bytes / 1e5) / 10));
+const tilesText = (n) => `${fmt.num(n)} ${plural(n, [t('плитка'), t('плитки'), t('плиток')])}`;
+
+function dropArea(id) {
+  if ('caches' in window) caches.delete(AREA_CACHE + id);
+  try { localStorage.removeItem(AREA_KEY + id); } catch { /* приватний режим */ }
+  areaPainters.forEach((p) => p());
+}
+
+/** Завантажити район: по 4 плитки разом, щоб не навантажувати сервер; зупинка — job.stop. */
+async function saveArea(s) {
+  const urls = areaUrls(s);
+  const job = { done: 0, all: urls.length, failed: 0, bytes: 0, stop: false };
+  areaJobs.set(s.id, job);
+  areaPainters.forEach((p) => p());
+  const cache = await caches.open(AREA_CACHE + s.id);
+  let next = 0;
+  const worker = async () => {
+    while (!job.stop && next < urls.length) {
+      const url = urls[next];
+      next += 1;
+      try {
+        const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+        if (!res.ok) throw new Error(String(res.status));
+        job.bytes += Number(res.headers.get('content-length')) || AREA_TILE_KB * 1024;
+        await cache.put(url, res);
+      } catch {
+        job.failed += 1;
+        // Мережі немає зовсім — далі не мучимо
+        if (job.failed >= 12 && job.failed === job.done + 1) job.stop = true;
+      }
+      job.done += 1;
+      areaPainters.forEach((p) => p());
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  areaJobs.delete(s.id);
+  const saved = job.done - job.failed;
+  if (saved) remember(AREA_KEY + s.id, JSON.stringify({ at: today(), n: saved, bytes: job.bytes, partial: job.done < job.all || job.failed > 0 }));
+  areaPainters.forEach((p) => p());
+  return { ...job, saved };
+}
+
+/** Рядок у картці водойми: супутник району без інтернету — зберегти, оновити, прибрати. */
+function offlineAreaRow(s) {
+  if (!hasCoords(s) || !('caches' in window)) return null;
+  const text = h('span', { class: 'muted small' });
+  const acts = h('div', { class: 'btn-row' });
+  const el = h('div', { class: 'offline-area' }, text, acts);
+  const start = async () => {
+    if (!navigator.onLine) { toast(t('Немає інтернету')); return; }
+    const res = await saveArea(s);
+    if (!res.saved) toast(t('Не вдалося завантажити — перевірте інтернет'));
+    else if (res.failed) toast(t('Збережено {n}, {f} не завантажились — можна «Оновити»', { n: tilesText(res.saved), f: fmt.num(res.failed) }));
+    else toast(t('Район збережено — супутник буде й без інтернету'));
+  };
+  const paint = () => {
+    // Картку закрили чи перемалювали — цей рядок більше не оновлюємо
+    if (!el.isConnected && el.dataset.drawn) { areaPainters.delete(paint); return; }
+    el.dataset.drawn = '1';
+    const job = areaJobs.get(s.id);
+    const meta = areaMeta(s.id);
+    if (job) {
+      text.textContent = t('Зберігаю супутник району: {n} з {all}', { n: fmt.num(job.done), all: fmt.num(job.all) });
+      acts.replaceChildren(btn(t('Зупинити'), () => { job.stop = true; }, 'quiet mini'));
+    } else if (meta) {
+      text.textContent = t('Супутник району без інтернету: {d} · {n}, ≈ {mb} МБ{p}', { d: fmt.date(meta.at), n: tilesText(meta.n), mb: mbText(meta.bytes), p: meta.partial ? t(' (не весь)') : '' });
+      acts.replaceChildren(btn(t('Оновити'), start, 'quiet mini'), btn(t('Прибрати'), () => dropArea(s.id), 'quiet mini'));
+    } else {
+      const n = areaUrls(s).length;
+      text.textContent = t('Супутник без інтернету: ≈ {n}, {mb} МБ', { n: tilesText(n), mb: mbText(n * AREA_TILE_KB * 1024) });
+      acts.replaceChildren(btn([icon('map'), t('Зберегти район')], start, 'mini with-ico'));
+    }
+  };
+  areaPainters.add(paint);
+  paint();
+  return el;
 }
 
 // ---------- погода й місяць ----------
@@ -5202,7 +5306,10 @@ function wipeRow() {
     h('div', { class: 'btn-row' }, btn(t('Видалити дані з пристрою'), () => confirmSheet(t('Видалити дані з пристрою?'), sync.enabled()
       ? t('Дані буде видалено з цього пристрою. Копія на Google Диску залишиться й повернеться під час наступної синхронізації — щоб цього не сталося, спершу вимкніть синхронізацію.')
       : t('Снасті, місця, виїзди, збори, бажання й фото буде видалено з цього пристрою. Скасувати не можна.'), t('Видалити'), async () => {
-      await db.clearAll(); await refresh(); toast(t('Дані видалено'));
+      await db.clearAll();
+      // Збережена карта — теж дані з пристрою: переглянуті плитки й райони водойм
+      if ('caches' in window) (await caches.keys()).filter((k) => k.startsWith('tiles-')).forEach((k) => caches.delete(k));
+      await refresh(); toast(t('Дані видалено'));
     }), 'danger')),
     { danger: true });
 }

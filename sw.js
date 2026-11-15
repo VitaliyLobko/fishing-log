@@ -75,13 +75,63 @@ async function receiveShare(request) {
   return Response.redirect(new URL('?go=shared', self.registration.scope).href, 303);
 }
 
+// Плитки карти (супутник Esri, схема OSM), які людина вже бачила, — щоб на воді без мережі карта була.
+// Назва кешу — не з «fishing-log-»: activate чистить такі при кожному оновленні. Райони, збережені кнопкою
+// в картці водойми, лежать окремо («tiles-area-fishing-log-<id>») і звідси не витісняються.
+const TILES = 'tiles-fishing-log';
+const TILE_HOSTS = new Set(['server.arcgisonline.com', 'tile.openstreetmap.org']);
+// Свіжа плитка (до тижня) — з кешу, без мережі: OSM просить кешувати щонайменше 7 днів, а на воді так і швидше
+const TILE_FRESH = 7 * 864e5;
+// ≈ 4000 плиток по 10–25 КБ — до ~100 МБ; найстаріші витісняються
+const TILE_MAX = 4000;
+// Стара плитка вже є — по нову мережу чекаємо недовго, інакше на слабкому зв'язку карта стоїть сірою
+const TILE_WAIT = 6000;
+let tilePuts = 0;
+
+async function trimTiles() {
+  const cache = await caches.open(TILES);
+  const keys = await cache.keys();
+  // keys() — у порядку додавання (перезапис ставить у кінець): спершу найстаріші
+  for (const k of keys.slice(0, Math.max(0, keys.length - TILE_MAX))) await cache.delete(k);
+}
+
+async function tile(event, request) {
+  const hit = await caches.match(request);
+  const age = hit ? Date.now() - Date.parse(hit.headers.get('date') ?? '') : Infinity;
+  if (hit && age < TILE_FRESH) return hit;
+  const ctl = new AbortController();
+  const timer = hit ? setTimeout(() => ctl.abort(), TILE_WAIT) : null;
+  try {
+    const res = await fetch(request, { signal: ctl.signal });
+    // Лише відповіді CORS: «непрозорі» Chrome рахує в квоті як ~7 МБ кожну
+    if (res.ok && res.type === 'cors') {
+      const cache = await caches.open(TILES);
+      await cache.put(request, res.clone());
+      tilePuts += 1;
+      if (tilePuts % 200 === 0) event.waitUntil(trimTiles());
+    }
+    return res;
+  } catch (err) {
+    if (hit) return hit;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  const url = new URL(request.url);
+  // Плитки, які показує карта (img); завантаження району з картки водойми йде fetch-ем повз цей кеш
+  if (request.method === 'GET' && request.destination === 'image' && TILE_HOSTS.has(url.hostname)) {
+    event.respondWith(tile(event, request));
+    return;
+  }
   if (request.method === 'POST' && new URL(request.url).searchParams.get('go') === 'shared') {
     event.respondWith(receiveShare(request));
     return;
   }
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   event.respondWith((async () => {
     const cached = await caches.match(request, { ignoreSearch: true });
     if (cached) return cached;

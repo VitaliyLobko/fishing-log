@@ -1690,3 +1690,7 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 /* Розділи «Виїздів»: перемикач угорі, вміст розділу — на картці */
 .trips-switch { margin-bottom: 12px; }
 .box-like { padding: 12px; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+/* Супутник району без інтернету — рядок у картці водойми */
+.offline-area { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0; }
+.offline-area > span { flex: 1 1 200px; }
+.offline-area .btn-row { margin: 0; }

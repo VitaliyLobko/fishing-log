@@ -33,6 +33,36 @@ const LAYERS = {
   },
 };
 
+/** Номер плитки під точкою на зумі z (Web Mercator, як у Leaflet). */
+function tileXY(lat, lon, z) {
+  const n = 2 ** z;
+  const r = (lat * Math.PI) / 180;
+  return { x: Math.floor(((lon + 180) / 360) * n), y: Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n) };
+}
+
+/**
+ * Адреси плиток супутника навколо точок — для збереження району без мережі; без повторів.
+ * parts: [{ lat, lon, km, zooms, labels }] — квадрат ±km; підписи (дороги, назви) — лише до зуму 16.
+ * Лише супутник Esri: правила OpenStreetMap забороняють завантажувати плитки наперед.
+ */
+export function satAreaUrls(parts) {
+  const urls = new Set();
+  const { url, over } = LAYERS.sat;
+  for (const { lat, lon, km, zooms, labels } of parts) {
+    const dLat = km / 111.32;
+    const dLon = km / (111.32 * Math.cos((lat * Math.PI) / 180));
+    for (const z of zooms) {
+      const a = tileXY(lat + dLat, lon - dLon, z);
+      const b = tileXY(lat - dLat, lon + dLon, z);
+      const tpls = labels && z <= 16 ? [url, ...over] : [url];
+      for (let x = a.x; x <= b.x; x += 1) {
+        for (let y = a.y; y <= b.y; y += 1) for (const tpl of tpls) urls.add(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y));
+      }
+    }
+  }
+  return [...urls];
+}
+
 /** Україна цілком — коли ще немає жодної точки й телефон не дав місце. */
 export const UA = { lat: 48.6, lon: 31.2, zoom: 6 };
 
@@ -47,8 +77,9 @@ export function makeMap(L, el, { lat, lon, zoom, layer = 'sat', interactive = tr
   map.setLayer = (key) => {
     shown.forEach((l) => l.remove());
     const x = LAYERS[key] ?? LAYERS.sat;
+    // crossOrigin — щоб service worker міг зберегти плитку для роботи без мережі (непрозору зберігати не можна)
     shown = [x.url, ...(x.over ?? [])].map((url, i) => L.tileLayer(url, {
-      attribution: i ? undefined : x.attribution, maxNativeZoom: x.maxNativeZoom, maxZoom: 20,
+      attribution: i ? undefined : x.attribution, maxNativeZoom: x.maxNativeZoom, maxZoom: 20, crossOrigin: true,
     }).addTo(map));
   };
   map.setLayer(layer);
