@@ -1937,6 +1937,9 @@ function spotTrips(spotId) {
 const spotPrice = (s) => (s.pay === 'paid' ? (num(s.price) ? t('путівка {s}', { s: fmt.money(s.price) }) : t('платно')) : s.pay === 'free' ? t('безкоштовно') : null);
 // Google Maps — посиланням у новій вкладці: сам застосунок координати нікуди не шле
 const mapUrl = (s) => `https://www.google.com/maps/search/?api=1&query=${Number(s.lat)},${Number(s.lon)}`;
+/** Те саме місце в Google Maps одразу супутником — знімки там зазвичай новіші, ніж у Esri. */
+const satUrl = (at, zoom = 17) => `https://www.google.com/maps/@?api=1&map_action=map&center=${Number(at.lat).toFixed(6)},${Number(at.lon).toFixed(6)}&zoom=${Math.round(zoom)}&basemap=satellite`;
+const openUrl = (url) => window.open(url, '_blank', 'noopener');
 const routeUrl = (s) => {
   const to = parkOf(s) ?? s;
   return `https://www.google.com/maps/dir/?api=1&destination=${Number(to.lat)},${Number(to.lon)}`;
@@ -2015,12 +2018,16 @@ async function mapPicker(start, onDone) {
     } else markers[kind].setLatLng(ll);
     hint();
   };
+  const gsat = btn([icon('globe'), t('Google супутник')], () => {
+    const c = map?.getCenter();
+    if (c) openUrl(satUrl({ lat: c.lat, lon: c.lng }, map.getZoom()));
+  }, 'mini');
   const me = btn([icon('pin'), t('Я тут')], async () => {
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
   const close = sheet(t('Водойма на карті'), h('div', { class: 'map-picker' }, modes, tip, el,
-    h('div', { class: 'map-tools' }, layers, h('div', { class: 'btn-row' }, me, clear))), {
+    h('div', { class: 'map-tools' }, layers, h('div', { class: 'btn-row' }, me, gsat, clear))), {
     full: true,
     dirty: false,
     onClose: () => map?.remove(),
@@ -2311,7 +2318,8 @@ function spotBody(s) {
     hasPlace(s) ? spotMiniMap(s) : null,
     h('div', { class: 'btn-row spot-acts' },
       hasPlace(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
-      btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
+      btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null })),
+      hasPlace(s) ? btn([icon('globe'), t('Google супутник')], () => open(satUrl(hasCoords(s) ? { lat: s.lat, lon: s.lon } : parkOf(s)))) : null),
     meta,
     tiles,
     caught.length || unseen.length ? speciesBox(caught, unseen) : null,
@@ -4069,7 +4077,8 @@ function rowMenu(el) {
       ['note', t('Відкрити'), () => spotDetail(s.id)],
       ['edit', t('Змінити'), () => spotForm(s)],
       ['fish', t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null })],
-      hasPlace(s) ? ['route', t('Маршрут'), () => window.open(routeUrl(s), '_blank', 'noopener')] : null,
+      hasPlace(s) ? ['route', t('Маршрут'), () => openUrl(routeUrl(s))] : null,
+      hasPlace(s) ? ['globe', t('Google супутник'), () => openUrl(satUrl(hasCoords(s) ? { lat: s.lat, lon: s.lon } : parkOf(s)))] : null,
       ['delete', t('Видалити'), () => removeSpot(s), 'danger'],
     ];
   }
