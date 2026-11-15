@@ -3242,11 +3242,10 @@ function renderTrips() {
   const season = list.filter((x) => x.date.startsWith(year));
   $('subtitle').textContent = season.length ? t('сезон {y}: виїздів {n}, риб {f}', { y: year, n: season.length, f: fmt.num(season.reduce((s, x) => s + tripCatch(x), 0)) }) : '';
   return h('div', {},
+    tripsSwitch(),
     packBox(),
-    biteBox(),
     seasonBox(),
     recordsBox(),
-    patternsBox(),
     list.length ? byMonth(list).map(([head, rows]) => [h('h3', { class: 'list-head' }, head), h('div', { class: 'rows' }, rows.map(tripRow))])
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]));
 }
@@ -3968,25 +3967,26 @@ function patternSections(sp) {
   return out;
 }
 
-function patternsBox() {
+/** Розділ «Закономірності»: вид чипами, під ним — глибина, тиск і вода з вашого журналу. */
+function renderPatterns() {
   const counts = new Map();
   for (const tr of state.trips) for (const c of tr.catches ?? []) counts.set(c.species, (counts.get(c.species) ?? 0) + (num(c.n) || 1));
-  if (!counts.size) return null;
+  if (!counts.size) {
+    return h('div', {}, tripsSwitch(), empty(t('Ще немає улову'), t('Записуйте улов у виїздах, з глибиною й точкою («Де впіймав») — тут з’явиться, на якій глибині, при якому тиску й воді у вас бере.')));
+  }
   const list = [...counts].sort((a, b) => b[1] - a[1] || collate(a[0], b[0])).map(([sp]) => sp);
   let sp = recall(PATTERN_SP) ?? '';
   if (sp && !counts.has(sp)) sp = '';
-  return fold('patterns', t('Закономірності'), () => {
-    const body = h('div', { class: 'patterns' });
-    const paint = () => {
-      const parts = patternSections(sp);
-      body.replaceChildren(...(parts.length ? parts : [h('p', { class: 'muted small' },
-        t('Ще замало даних. Вказуйте в улові глибину й точку («Де впіймав»), а погода виїзду підтягнеться сама — тут з’явиться, на якій глибині, при якому тиску й воді у вас бере.'))]));
-    };
-    const pick = chips([['', t('Усі риби')], ...list.map((x) => [x, x])], sp, (v) => { sp = v; remember(PATTERN_SP, v); paint(); });
-    pick.classList.add('pattern-species');
-    paint();
-    return h('div', {}, pick, body);
-  });
+  const body = h('div', { class: 'patterns' });
+  const paint = () => {
+    const parts = patternSections(sp);
+    body.replaceChildren(...(parts.length ? parts : [h('p', { class: 'muted small' },
+      t('Ще замало даних. Вказуйте в улові глибину й точку («Де впіймав»), а погода виїзду підтягнеться сама — тут з’явиться, на якій глибині, при якому тиску й воді у вас бере.'))]));
+  };
+  const pick = chips([['', t('Усі риби')], ...list.map((x) => [x, x])], sp, (v) => { sp = v; remember(PATTERN_SP, v); paint(); });
+  pick.classList.add('pattern-species');
+  paint();
+  return h('div', {}, tripsSwitch(), h('div', { class: 'box-like' }, pick, body));
 }
 
 // ---------- куди й коли ----------
@@ -4050,10 +4050,13 @@ function biteScore(day, prev, rule) {
 const dots = (n) => h('span', { class: 'bite-dots', 'aria-label': t('клювання {n} з 3', { n }) }, [0, 1, 2].map((i) => h('i', { class: i < n ? 'on' : '' })));
 
 /** «Куди й коли»: вид і водойма → 16 днів з оцінкою; торкнулися дня — де шукати, ваші дані, карта з потрібними глибинами. */
-function biteBox() {
+function renderBite() {
   const spots = state.spots.filter(hasCoords);
-  if (!spots.length) return null;
-  return fold('bite', t('Куди й коли'), () => {
+  if (!spots.length) {
+    return h('div', {}, tripsSwitch(), empty(t('Немає водойм на карті'), t('Позначте водоймі точку на карті — тут з’явиться прогноз клювання на 16 днів і де шукати рибу.'),
+      [btn(t('+ Водойма'), () => spotForm(), 'primary')]));
+  }
+  return h('div', {}, tripsSwitch(), (() => {
     const counts = new Map();
     for (const tr of state.trips) for (const c of tr.catches ?? []) counts.set(c.species, (counts.get(c.species) ?? 0) + (num(c.n) || 1));
     const species = [...new Set([...[...counts].sort((a, b) => b[1] - a[1]).map(([x]) => x), ...Object.keys(BITE_RULES).map((x) => t(x))])];
@@ -4097,9 +4100,17 @@ function biteBox() {
       [...spots].sort((a, b) => collate(a.name, b.name)).map((s) => h('option', { value: s.id, selected: s.id === spotId }, s.name))) : null;
     spotPick?.addEventListener('change', () => { spotId = spotPick.value; remember(BITE_SPOT, spotId); open = null; paint(); });
     paint();
-    return h('div', { class: 'bite' }, spPick, spotPick ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('Водойма')), spotPick) : null, days,
+    return h('div', { class: 'bite box-like' }, spPick, spotPick ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('Водойма')), spotPick) : null, days,
       h('p', { class: 'muted small' }, t('Оцінка — за стабільністю тиску, вітром і водою для виду. Де шукати — загальні правила сезону; ваші «Закономірності» йдуть першими, коли їх достатньо. Прогноз Open-Meteo.')));
-  });
+  })());
+}
+
+/** Перемикач угорі «Виїздів»: журнал, «Куди й коли», «Закономірності»; нижня вкладка пам'ятає, де були. */
+const TRIPS_SEG = 'fishing-log:trips-seg';
+function tripsSwitch() {
+  const sw = chips([['trips', t('Виїзди')], ['bite', t('Куди й коли')], ['patterns', t('Закономірності')]], tab, (v) => goTab(`#${v}`));
+  sw.classList.add('segmented', 'trips-switch');
+  return sw;
 }
 
 /** Розгорнутий день: де шукати, чому така оцінка, ваші дані, кнопки. */
@@ -5074,6 +5085,8 @@ function renderSettings() {
 const VIEWS = {
   gear: { title: 'Снасті', render: renderGear, fab: () => gearForm() },
   trips: { title: 'Виїзди', render: renderTrips, fab: () => tripForm() },
+  bite: { title: 'Куди й коли', render: renderBite },
+  patterns: { title: 'Закономірності', render: renderPatterns },
   spots: { title: 'Водойми', render: renderSpots, fab: () => spotForm() },
   places: { title: 'Місця зберігання', render: renderPlaces, fab: () => placeForm() },
   shop: { title: 'Покупки', render: renderShop, fab: () => wishForm() },
@@ -5089,10 +5102,14 @@ function render() {
   $('fab').hidden = !view.fab || Boolean($('view').querySelector('.empty .btn.add'));
   $('fab').classList.remove('away');
   // Місця зберігання — друга половина вкладки «Склад»
-  const navTab = tab === 'places' ? 'shop' : tab;
+  // «Куди й коли» й «Закономірності» — розділи вкладки «Виїзди»
+  const navTab = tab === 'places' ? 'shop' : ['bite', 'patterns'].includes(tab) ? 'trips' : tab;
   // Вкладка внизу відкриває ту половину, де були востаннє; спершу — місця
   if (navTab === 'shop') remember(SHOP_SEG, tab);
   document.querySelector('.tabs a[data-tab="shop"]').setAttribute('href', `#${recall(SHOP_SEG) === 'shop' ? 'shop' : 'places'}`);
+  if (navTab === 'trips') remember(TRIPS_SEG, tab);
+  const tripSeg = recall(TRIPS_SEG);
+  document.querySelector('.tabs a[data-tab="trips"]').setAttribute('href', `#${['bite', 'patterns'].includes(tripSeg) ? tripSeg : 'trips'}`);
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === navTab));
   // Налаштування — не в нижньому меню, а шестернею вгорі (як у Shooter's Log); у них — «Назад» туди, звідки прийшли
   const gearBtn = $('settings-btn');
