@@ -2278,27 +2278,84 @@ function chartName(file) {
   return /^\d+$/.test(base) ? t('Лист {n}', { n: base }) : base || t('Лист');
 }
 
-/** Нові листи з файлів: по одному (кожен — кілька мегабайт), щоб не тримати всі в пам'яті разом. */
+/** Ім'я файлу без розширення — ключ листа у файлі прив'язок: «10.gif» → «10». */
+const fileBase = (name) => name.replace(/\.[^.]+$/, '').trim();
+
+/**
+ * Файл прив'язок (JSON поруч зі сканами): { sheets: { "10": { pts: [{ fx, fy, lat, lon }, …] } } }.
+ * fx, fy — частки ширини й висоти листа, тож прив'язка не залежить від того, до якого розміру стиснуто картинку.
+ */
+async function readPins(file) {
+  const data = JSON.parse(await file.text());
+  const sheets = data?.sheets && typeof data.sheets === 'object' ? data.sheets : null;
+  if (!sheets) throw new Error(t('Це не файл прив’язок листів'));
+  const ok = (p) => [p?.fx, p?.fy, p?.lat, p?.lon].every((v) => Number.isFinite(Number(v)));
+  return new Map(Object.entries(sheets)
+    .filter(([, v]) => Array.isArray(v?.pts) && v.pts.length >= 2 && v.pts.slice(0, 2).every(ok))
+    .map(([k, v]) => [String(k), v.pts.slice(0, 2).map((p) => ({ fx: Number(p.fx), fy: Number(p.fy), lat: Number(p.lat), lon: Number(p.lon) }))]));
+}
+
+const pinsFor = (pins, w, h) => pins?.map((p) => ({ x: Math.round(p.fx * w * 10) / 10, y: Math.round(p.fy * h * 10) / 10, lat: p.lat, lon: p.lon })) ?? [];
+
+/**
+ * Нові листи з файлів: по одному (кожен — кілька мегабайт), щоб не тримати всі в пам'яті разом.
+ * JSON серед файлів — прив'язки за іменем файлу. Лист, що вже є, вдруге не додається; прив'язка лягає
+ * лише на неприв'язаний — те, що людина підігнала руками, не затирається.
+ */
 async function addCharts(files) {
-  let n = 0;
-  for (const [i, file] of files.entries()) {
-    if (files.length > 1) toast(t('Обробляю листи: {n} з {all}', { n: i + 1, all: files.length }));
+  const images = files.filter((f) => !/\.json$/i.test(f.name) && f.type !== 'application/json');
+  let pins = new Map();
+  for (const f of files.filter((x) => !images.includes(x))) {
+    try {
+      pins = new Map([...pins, ...await readPins(f)]);
+    } catch (err) {
+      toast(`${f.name}: ${err instanceof SyntaxError ? t('файл пошкоджено') : err.message}`);
+    }
+  }
+  const existing = (base) => state.charts.find((c) => (c.file ?? null) === base || c.name === chartName(`${base}.x`));
+  let added = 0;
+  let pinned = 0;
+  let skipped = 0;
+  for (const [i, file] of images.entries()) {
+    const base = fileBase(file.name);
+    const have = existing(base);
+    if (have) {
+      skipped += 1;
+      continue;
+    }
+    if (images.length > 1) toast(t('Обробляю листи: {n} з {all}', { n: i + 1, all: images.length }));
     try {
       const { blob, thumb, w, h: height } = await preparePhotoSheet(file);
       const id = db.uid();
       const photoId = db.uid();
+      const pts = pinsFor(pins.get(base), w, height);
       await db.write({
-        charts: { put: [{ id, name: chartName(file.name), photoId, w, h: height, pts: [], created: Date.now() }] },
+        charts: { put: [{ id, name: chartName(file.name), file: base, photoId, w, h: height, pts, created: Date.now() }] },
         photos: { put: [{ id: photoId, owner: id, thumb, created: Date.now() }] },
         blobs: { put: [{ id: photoId, blob }] },
       });
-      n += 1;
+      added += 1;
+      if (pts.length) pinned += 1;
     } catch (err) {
       toast(`${file.name}: ${err.message}`);
     }
   }
+  // Прив'язки до листів, доданих раніше без них
+  const late = [];
+  for (const [base, p] of pins) {
+    const c = existing(base);
+    if (c && !sheetPinned(c) && !late.some((x) => x.id === c.id)) late.push({ ...c, file: c.file ?? base, pts: pinsFor(p, c.w, c.h) });
+  }
+  if (late.length) await db.write({ charts: { put: late } });
+  pinned += late.length;
   await refresh();
-  if (n) toast(t('Додано листів: {n}. Торкніться листа, щоб прив’язати його до карти', { n: fmt.num(n) }));
+  const parts = [
+    added ? t('додано листів: {n}', { n: fmt.num(added) }) : null,
+    pinned ? t('прив’язано: {n}', { n: fmt.num(pinned) }) : null,
+    skipped ? t('вже були: {n}', { n: fmt.num(skipped) }) : null,
+  ].filter(Boolean);
+  if (parts.length) toast(`${parts.join(', ')}${pinned < added ? `. ${t('Решту прив’яжіть, торкнувшись листа')}` : ''}`);
+  else if (pins.size) toast(t('Нічого не змінилось: ці листи вже прив’язані'));
 }
 
 function chartRow(c) {
@@ -2311,11 +2368,12 @@ function chartsRow() {
   const list = [...state.charts].sort((a, b) => collate(a.name, b.name));
   const pinned = list.filter(sheetPinned).length;
   const input = h('input', {
-    type: 'file', accept: 'image/*', multiple: true, hidden: true,
+    type: 'file', accept: 'image/*,.json,application/json', multiple: true, hidden: true,
     onchange: (e) => { const files = [...e.target.files]; e.target.value = ''; if (files.length) addCharts(files); },
   });
   return setRow('charts', 'depth', t('Карти глибин'), list.length ? `${fmt.num(pinned)} / ${fmt.num(list.length)}` : '', [
     h('p', { class: 'muted small' }, t('Скани карт глибин — атлас, лоція. Лист прив’язується двома точками до супутника й лягає шаром на карту водойми. Файли лишаються на пристрої й на вашому Google Диску.')),
+    h('p', { class: 'muted small' }, t('Є файл прив’язок (.json)? Виберіть його разом зі сканами — листи ляжуть на карту одразу.')),
     list.length ? h('div', { class: 'rows' }, list.map(chartRow)) : null,
     input,
     h('div', { class: 'btn-row' }, btn([icon('depth'), t('Додати листи')], () => input.click(), 'primary with-ico'))]);
