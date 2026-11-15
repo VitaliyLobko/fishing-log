@@ -4,7 +4,7 @@ import * as db from './db.js';
 import * as sync from './sync.js';
 import * as bot from './bot.js';
 import * as nfc from './nfc.js';
-import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, onSheet } from './map.js';
+import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, onSheet, nudgePts, mercPerPx } from './map.js';
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto, prepareSheet as preparePhotoSheet } from './photos.js';
 import { weatherAt, waterEstimate, moonPhase, compass } from './weather.js';
@@ -2400,14 +2400,43 @@ async function chartPin(id) {
     const near = done && Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) < Math.hypot(c.w, c.h) / 4;
     warn.hidden = !near;
     warn.textContent = t('Точки близько одна до одної — краї листа можуть з’їхати. Краще взяти їх у різних кінцях листа.');
-    preview?.remove();
-    preview = null;
-    look.hidden = !done;
-    if (done && satMap) {
-      const geo = sheetGeo({ ...c, pts });
-      if (geo) preview = sheetLayer(L, url, c, geo).setOpacity(opacity).addTo(satMap);
-    }
+    look.hidden = nudge.hidden = !done;
+    const geo = done && satMap ? sheetGeo({ ...c, pts }) : null;
+    if (!geo) {
+      preview?.remove();
+      preview = null;
+    } else if (preview) preview.setGeo(geo);
+    else preview = sheetLayer(L, url, c, geo).setOpacity(opacity).addTo(satMap);
   };
+  // Підгонка стрілками: крок — кілька пікселів екрана, тож на великому зумі зсув дрібний, на малому — помітний
+  const STEP_PX = 3;
+  const shift = (fx, fy, dir = 0) => {
+    if (!satMap || !pts.every((x) => hasPx(x) && hasLl(x))) return;
+    const m = mercPerPx(satMap.getZoom());
+    const center = { lat: satMap.getCenter().lat, lon: satMap.getCenter().lng };
+    let turn = 0;
+    if (dir) {
+      // Поворот, від якого край листа на екрані зсувається на ті самі кілька пікселів
+      const geo = sheetGeo({ ...c, pts });
+      const reach = Math.max(...geo.corners.map((k) => satMap.latLngToContainerPoint([k.lat, k.lon]).distanceTo(satMap.latLngToContainerPoint([center.lat, center.lon]))));
+      turn = dir * Math.min(1, (STEP_PX / Math.max(reach, 50)) * 180 / Math.PI);
+    }
+    const moved = nudgePts(pts, { dx: fx * STEP_PX * m, dy: fy * STEP_PX * m, turn, center });
+    moved.forEach((p, i) => { pts[i] = p; marks.sat[i]?.setLatLng([p.lat, p.lon]); });
+    touched = true;
+    paint();
+  };
+  const arrow = (label, text, fn) => h('button', { type: 'button', class: 'btn mini nudge-btn', 'aria-label': label, title: label, onclick: fn }, text);
+  const nudge = h('div', { class: 'nudge', hidden: true },
+    h('span', { class: 'muted small nudge-tip' }, t('Підігнати лист')),
+    h('div', { class: 'nudge-btns' },
+      arrow(t('Повернути проти годинникової'), '⟲', () => shift(0, 0, 1)),
+      arrow(t('Посунути вліво'), '←', () => shift(-1, 0)),
+      arrow(t('Посунути вгору'), '↑', () => shift(0, 1)),
+      arrow(t('Посунути вниз'), '↓', () => shift(0, -1)),
+      arrow(t('Посунути вправо'), '→', () => shift(1, 0)),
+      arrow(t('Повернути за годинниковою'), '⟳', () => shift(0, 0, -1))),
+    h('span', { class: 'muted small nudge-tip' }, t('Поворот — навколо середини карти; наблизьте карту — крок стане дрібнішим')));
   const put = (kind, i, ll) => {
     touched = true;
     const p = pts[i];
@@ -2432,7 +2461,7 @@ async function chartPin(id) {
     else paint();
   };
   const close = sheet(t('Прив’язка: {name}', { name: c.name }), h('div', { class: 'map-picker chart-pin' }, seg, tip,
-    h('div', { class: 'pin-maps' }, sheetEl, satEl), warn, look,
+    h('div', { class: 'pin-maps' }, sheetEl, satEl), warn, look, nudge,
     h('div', { class: 'map-tools' }, layerChips(() => satMap))), {
     full: true,
     dirty: () => touched,

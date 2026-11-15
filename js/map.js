@@ -132,10 +132,11 @@ export function onSheet(c, geo, ll) {
  * ImageOverlay так не вміє — він лише прямокутник «північ угорі».
  */
 export function sheetLayer(L, url, c, geo) {
-  const ll = [[0, 0], [c.w, 0], [0, c.h]].map(([x, y]) => {
-    const p = geo.toLatLng(x, y);
+  const corners = (g) => [[0, 0], [c.w, 0], [0, c.h]].map(([x, y]) => {
+    const p = g.toLatLng(x, y);
     return L.latLng(p.lat, p.lon);
   });
+  let ll = corners(geo);
   const Layer = L.Layer.extend({
     onAdd(map) {
       this._img = L.DomUtil.create('img', `leaflet-image-layer depth-sheet ${map._zoomAnimated ? 'leaflet-zoom-animated' : 'leaflet-zoom-hide'}`);
@@ -150,6 +151,12 @@ export function sheetLayer(L, url, c, geo) {
       if (this._map._zoomAnimated) ev.zoomanim = this._anim;
       return ev;
     },
+    /** Нова прив'язка без перестворення картинки — щоб лист не блимав під час підгонки. */
+    setGeo(g) {
+      ll = corners(g);
+      if (this._map) this._reset();
+      return this;
+    },
     setOpacity(v) {
       this._opacity = v;
       if (this._img) this._img.style.opacity = v;
@@ -159,8 +166,25 @@ export function sheetLayer(L, url, c, geo) {
       const m = [(tr.x - tl.x) / c.w, (tr.y - tl.y) / c.w, (bl.x - tl.x) / c.h, (bl.y - tl.y) / c.h, tl.x, tl.y];
       this._img.style.transform = `matrix(${m.join(',')})`;
     },
-    _reset() { this._place(ll.map((p) => this._map.latLngToLayerPoint(p))); },
+    // Без округлення до пікселя (latLngToLayerPoint округлює) — інакше на малому зумі кут і крок підгонки «стрибають»
+    _reset() { this._place(ll.map((p) => this._map.project(p)._subtract(this._map.getPixelOrigin()))); },
     _anim(e) { this._place(ll.map((p) => this._map._latLngToNewLayerPoint(p, e.zoom, e.center))); },
   });
   return new Layer();
+}
+
+/** Метрів Меркатора в одному пікселі екрана на цьому зумі (плитка 256 px). */
+export const mercPerPx = (zoom) => 2 * Math.PI * R / (256 * 2 ** zoom);
+
+/**
+ * Підгонка прив'язки: обидві точки на супутнику зсуваються на dx, dy (метри Меркатора: схід, північ)
+ * і повертаються на turn градусів (проти годинникової) навколо center. Точки на листі не змінюються.
+ */
+export function nudgePts(pts, { dx = 0, dy = 0, turn = 0, center }) {
+  const c = merc(center);
+  const r = { x: Math.cos(turn * Math.PI / 180), y: Math.sin(turn * Math.PI / 180) };
+  return pts.map((p) => {
+    const ll = unmerc(cadd(cadd(cmul(r, csub(merc(p), c)), c), { x: dx, y: dy }));
+    return { ...p, lat: ll.lat, lon: ll.lon };
+  });
 }

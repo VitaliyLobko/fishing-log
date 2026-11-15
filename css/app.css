@@ -1615,3 +1615,10 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .pin-warn { margin: 6px 0 0; color: #f5b82e; }
 :root[data-theme="light"] .pin-warn { color: #a86a0c; }
 .chart-photo { object-fit: contain; }
+
+/* Підгонка листа стрілками */
+.nudge { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.nudge[hidden] { display: none; }
+.nudge-btns { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 6px 0; }
+.nudge .nudge-btn { min-height: 44px; padding: 0; font-size: 26px; font-weight: 700; line-height: 1; }
+.nudge-tip { display: block; }
