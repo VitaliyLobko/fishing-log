@@ -1080,7 +1080,7 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .spot-note { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line-soft); }
 .row.static { cursor: default; }
 /* Одна сітка на всі смужки: колонка чисел однакова, тож смужки однієї довжини */
-.bars { display: grid; grid-template-columns: minmax(64px, 30%) minmax(0, 1fr) auto; align-items: center; gap: 8px 10px; margin: 4px 0 10px; }
+.bars { display: grid; grid-template-columns: fit-content(50%) minmax(40px, 1fr) auto; align-items: center; gap: 8px 10px; margin: 4px 0 10px; }
 .bar { display: contents; }
 .spot-sheet .spec-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 600px) { .spot-sheet .spec-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -1509,7 +1509,8 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 
 /* Хто ловиться: значок хижак/мирна біля назви; ще не піймані — пунктирні плашки */
 .fish-name { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: middle; }
-.fish-name > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.fish-name > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fish-name > .trophy-star { flex: none; }
 .fish-name .ico, .fish-tag .ico { display: grid; flex: none; color: var(--accent-2); }
 .fish-name .ico svg, .fish-tag .ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .fish-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
@@ -1555,8 +1556,8 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 /* Трофейна риба водойми: золота ★ */
 .trophy-star { margin-left: 4px; color: #f5b82e; font-size: 1.05em; line-height: 1; }
 .fish-tag.trophy { border-style: solid; border-color: color-mix(in srgb, #f5b82e 70%, transparent); background: color-mix(in srgb, #f5b82e 10%, transparent); }
-.trophy-pick { margin-top: 10px; }
-.trophy-chips { margin-top: 6px; }
+.mark-pick { margin-top: 10px; }
+.mark-chips { margin-top: 6px; }
 .trophy-chips .trophy-mark { margin-right: 5px; color: var(--muted); }
 .trophy-chips button.on { background: color-mix(in srgb, #f5b82e 18%, transparent); border-color: #f5b82e; color: var(--text); font-weight: 650; }
 .trophy-chips button.on .trophy-mark { color: #f5b82e; }
@@ -1571,3 +1572,22 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 @media (hover: hover) { .hist-item:hover { background: color-mix(in srgb, var(--muted) 10%, transparent); } }
 .hist-date { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .hist-text { overflow-wrap: anywhere; }
+
+/* «Багато»: блакитна зграя з трьох рибок */
+.fish-name .ico-school, .fish-tag .ico-school { display: grid; color: #38bdf8; margin-left: 2px; }
+.fish-name .ico-school svg, .fish-tag .ico-school svg { width: 20px; height: 20px; stroke-width: 1.6; }
+.fish-tag.plenty { border-style: solid; border-color: color-mix(in srgb, #38bdf8 65%, transparent); background: color-mix(in srgb, #38bdf8 9%, transparent); }
+.plenty-chips button { display: inline-flex; align-items: center; }
+.plenty-chips .plenty-mark { display: grid; margin-right: 5px; color: var(--muted); }
+.plenty-chips .plenty-mark svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.plenty-chips button.on { background: color-mix(in srgb, #38bdf8 16%, transparent); border-color: #38bdf8; color: var(--text); font-weight: 650; }
+.plenty-chips button.on .plenty-mark { color: #38bdf8; }
+:root[data-theme="light"] .fish-name .ico-school, :root[data-theme="light"] .fish-tag .ico-school, :root[data-theme="light"] .plenty-chips button.on .plenty-mark { color: #0b6fa0; }
+:root[data-theme="light"] .plenty-chips button.on, :root[data-theme="light"] .fish-tag.plenty { border-color: #2b8fc4; }
+
+/* Нова річ: «Заповнити з посилання» першим блоком */
+.link-box { margin-top: 4px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.link-box > legend { display: inline-flex; align-items: center; gap: 6px; }
+.link-box > legend .ico { display: grid; color: var(--accent); }
+.link-box > legend .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.link-box .link-fill { margin: 4px 0 0; padding: 0; border: 0; background: none; }
