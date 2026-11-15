@@ -1627,7 +1627,7 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 /* Листи глибин групами за водоймою */
 .chart-groups { display: grid; gap: 8px; }
 .chart-group > summary .chart-group-title { display: inline-flex; align-items: baseline; gap: 8px; }
-.chart-group .rows { margin-top: 8px; }
+.chart-group .rows { margin: 4px 0 8px 10px; padding-left: 12px; border-left: 2px solid var(--line); }
 
 /* Де впіймав: глибина під картою; закономірності — вибір виду чипами */
 .catch-depth { margin-top: 8px; }
