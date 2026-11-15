@@ -2292,10 +2292,13 @@ async function readPins(file) {
   const ok = (p) => [p?.fx, p?.fy, p?.lat, p?.lon].every((v) => Number.isFinite(Number(v)));
   return new Map(Object.entries(sheets)
     .filter(([, v]) => Array.isArray(v?.pts) && v.pts.length >= 2 && v.pts.slice(0, 2).every(ok))
-    .map(([k, v]) => [String(k), v.pts.slice(0, 2).map((p) => ({ fx: Number(p.fx), fy: Number(p.fy), lat: Number(p.lat), lon: Number(p.lon) }))]));
+    .map(([k, v]) => [String(k), {
+      pts: v.pts.slice(0, 2).map((p) => ({ fx: Number(p.fx), fy: Number(p.fy), lat: Number(p.lat), lon: Number(p.lon) })),
+      group: typeof v.group === 'string' ? v.group.trim().slice(0, 60) : '',
+    }]));
 }
 
-const pinsFor = (pins, w, h) => pins?.map((p) => ({ x: Math.round(p.fx * w * 10) / 10, y: Math.round(p.fy * h * 10) / 10, lat: p.lat, lon: p.lon })) ?? [];
+const pinsFor = (pin, w, h) => pin?.pts.map((p) => ({ x: Math.round(p.fx * w * 10) / 10, y: Math.round(p.fy * h * 10) / 10, lat: p.lat, lon: p.lon })) ?? [];
 
 /**
  * Нові листи з файлів: по одному (кожен — кілька мегабайт), щоб не тримати всі в пам'яті разом.
@@ -2329,8 +2332,9 @@ async function addCharts(files) {
       const id = db.uid();
       const photoId = db.uid();
       const pts = pinsFor(pins.get(base), w, height);
+      const group = pins.get(base)?.group || undefined;
       await db.write({
-        charts: { put: [{ id, name: chartName(file.name), file: base, photoId, w, h: height, pts, created: Date.now() }] },
+        charts: { put: [{ id, name: chartName(file.name), file: base, ...(group ? { group } : {}), photoId, w, h: height, pts, created: Date.now() }] },
         photos: { put: [{ id: photoId, owner: id, thumb, created: Date.now() }] },
         blobs: { put: [{ id: photoId, blob }] },
       });
@@ -2340,14 +2344,20 @@ async function addCharts(files) {
       toast(`${file.name}: ${err.message}`);
     }
   }
-  // Прив'язки до листів, доданих раніше без них
+  // Листи, додані раніше: прив'язка — лише неприв'язаним, група — лише тим, у кого її ще немає
   const late = [];
+  let latePins = 0;
   for (const [base, p] of pins) {
     const c = existing(base);
-    if (c && !sheetPinned(c) && !late.some((x) => x.id === c.id)) late.push({ ...c, file: c.file ?? base, pts: pinsFor(p, c.w, c.h) });
+    if (!c || late.some((x) => x.id === c.id)) continue;
+    const pin = !sheetPinned(c);
+    const group = !c.group && p.group;
+    if (!pin && !group) continue;
+    late.push({ ...c, file: c.file ?? base, ...(pin ? { pts: pinsFor(p, c.w, c.h) } : {}), ...(group ? { group: p.group } : {}) });
+    if (pin) latePins += 1;
   }
   if (late.length) await db.write({ charts: { put: late } });
-  pinned += late.length;
+  pinned += latePins;
   await refresh();
   const parts = [
     added ? t('додано листів: {n}', { n: fmt.num(added) }) : null,
@@ -2364,6 +2374,27 @@ function chartRow(c) {
     { id: c.id, thumb: findPhoto(c.photoId) ? thumbImg(c.photoId) : null, cls: sheetPinned(c) ? 'chart-row pinned' : 'chart-row' });
 }
 
+const chartGroupOf = (c) => c.group?.trim() || '';
+const chartGroupNames = () => [...new Set(state.charts.map(chartGroupOf).filter(Boolean))].sort(collate);
+
+/** Листи групами за водоймою: група згортається, у заголовку — скільки листів і скільки прив'язано. Одна група — без заголовка. */
+function chartGroups(list) {
+  const groups = new Map();
+  for (const c of list) {
+    const g = chartGroupOf(c);
+    groups.set(g, [...(groups.get(g) ?? []), c]);
+  }
+  const names = [...groups.keys()].sort((a, b) => (!a) - (!b) || collate(a, b));
+  if (names.length === 1 && !names[0]) return h('div', { class: 'rows' }, list.map(chartRow));
+  return h('div', { class: 'chart-groups' }, names.map((g) => {
+    const items = groups.get(g);
+    const done = items.filter(sheetPinned).length;
+    const title = h('span', { class: 'chart-group-title' }, h('b', {}, g || t('Без групи')),
+      h('span', { class: 'muted small' }, done === items.length ? fmt.num(items.length) : `${fmt.num(done)} / ${fmt.num(items.length)}`));
+    return fold(`chart-group:${g}`, title, () => h('div', { class: 'rows' }, items.map(chartRow)), 'chart-group', items.map((c) => c.id));
+  }));
+}
+
 function chartsRow() {
   const list = [...state.charts].sort((a, b) => collate(a.name, b.name));
   const pinned = list.filter(sheetPinned).length;
@@ -2374,7 +2405,7 @@ function chartsRow() {
   return setRow('charts', 'depth', t('Карти глибин'), list.length ? `${fmt.num(pinned)} / ${fmt.num(list.length)}` : '', [
     h('p', { class: 'muted small' }, t('Скани карт глибин — атлас, лоція. Лист прив’язується двома точками до супутника й лягає шаром на карту водойми. Файли лишаються на пристрої й на вашому Google Диску.')),
     h('p', { class: 'muted small' }, t('Є файл прив’язок (.json)? Виберіть його разом зі сканами — листи ляжуть на карту одразу.')),
-    list.length ? h('div', { class: 'rows' }, list.map(chartRow)) : null,
+    list.length ? chartGroups(list) : null,
     input,
     h('div', { class: 'btn-row' }, btn([icon('depth'), t('Додати листи')], () => input.click(), 'primary with-ico'))]);
 }
@@ -2384,7 +2415,11 @@ function chartSheet(id) {
   if (!c) return;
   const geo = sheetGeo(c);
   const photo = findPhoto(c.photoId);
-  const f = form([{ name: 'name', label: t('Назва'), value: c.name, required: true }]);
+  const f = form([
+    { name: 'name', label: t('Назва'), value: c.name, required: true },
+    { name: 'group', label: t('Група'), value: c.group, list: 'chart-groups', placeholder: t('водойма, напр. Дністер'), hint: t('Листи однієї групи лежать у списку разом') },
+  ]);
+  f.el.append(h('datalist', { id: 'chart-groups' }, chartGroupNames().map((g) => h('option', { value: g }))));
   const remove = () => confirmSheet(t('Видалити «{name}»?', { name: c.name }), t('Лист зникне з карт і з Диска. Файл-оригінал на телефоні чи комп’ютері лишиться.'), t('Видалити'), async () => {
     close();
     await save(joinChanges(dropPhotos([c.photoId]), { charts: { del: [c.id] } }));
@@ -2404,7 +2439,8 @@ function chartSheet(id) {
     actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
       if (invalidField(f)) return;
       close();
-      await save({ charts: { put: [{ ...findChart(id) ?? c, name: f.values().name }] } }, [c.id]);
+      const v = f.values();
+      await save({ charts: { put: [{ ...findChart(id) ?? c, name: v.name, group: (v.group ?? '').trim() }] } }, [c.id]);
     }, 'primary')],
   });
 }
