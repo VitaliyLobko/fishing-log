@@ -8,7 +8,7 @@ import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, o
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto, prepareSheet as preparePhotoSheet } from './photos.js';
 import { weatherAt, waterEstimate, forecastDays, moonPhase, compass } from './weather.js';
-import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
+import { h, svgClone, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], charts: [], photos: [], prefs: [] };
 let tab = 'gear';
@@ -120,7 +120,7 @@ function gearThumb(g) {
   // Значок розділу — лише коли фото немає: розбирати SVG для кожного рядка з фото — зайва робота
   if (findPhoto(g.photoId)) return thumbImg(g.photoId);
   const el = h('span', { class: 'thumb-ico', 'aria-hidden': 'true' });
-  el.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[sectionOf(groupOf(g))?.icon] ?? GROUP_ICONS.other}</svg>`;
+  el.append(svgClone(`<svg viewBox="0 0 24 24">${GROUP_ICONS[sectionOf(groupOf(g))?.icon] ?? GROUP_ICONS.other}</svg>`));
   return thumbImg(null, el);
 }
 
@@ -572,7 +572,7 @@ function sectionLook(d) {
       h('div', { class: 'chips icon-pick', role: 'group', 'aria-label': t(title) }, keys.map((k) => {
         const b = h('button', { type: 'button', class: k === d.icon ? 'on' : '', 'aria-pressed': String(k === d.icon), 'aria-label': t(ICON_NAMES[k] ?? k), title: t(ICON_NAMES[k] ?? k),
           onclick: () => { d.icon = k; markPicked(icons, b); paint(); } });
-        b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[k]}</svg>`;
+        b.append(svgClone(`<svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[k]}</svg>`));
         b.dataset.find = norm(t(ICON_NAMES[k] ?? k));
         return b;
       })));
@@ -962,7 +962,7 @@ function shownGear() {
 /** Значок розділу в плитці; color — розділ свого кольору. */
 function secIco(iconKey, color = null) {
   const ico = h('span', { class: color ? 'sec-ico tinted' : 'sec-ico', 'aria-hidden': 'true' });
-  ico.innerHTML = `<svg viewBox="0 0 24 24">${GROUP_ICONS[iconKey] ?? GROUP_ICONS.other}</svg>`;
+  ico.append(svgClone(`<svg viewBox="0 0 24 24">${GROUP_ICONS[iconKey] ?? GROUP_ICONS.other}</svg>`));
   if (color) ico.style.setProperty('--c', color);
   return ico;
 }
@@ -2271,6 +2271,8 @@ const DEPTH_BANDS_M = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 8], [
 const bandLabel = (b) => { const [lo, hi] = DEPTH_BANDS_M[b - 1]; return hi === null ? t('понад {n} м', { n: lo }) : lo === 0 ? t('до 1 м') : `${lo}–${hi} ${t('м')}`; };
 const bandMid = (b) => { const [lo, hi] = DEPTH_BANDS_M[b - 1]; return hi === null ? lo : (lo + hi) / 2; };
 const bandsCache = new Map();
+// Червоний канал маски → номер смуги (значення ×20; корекція кольору при розпакуванні не зсуває смугу)
+const BAND_OF_RED = Uint8Array.from({ length: 256 }, (_, v) => Math.min(10, Math.round(v / 20)));
 
 /** Маска глибин листа: { w, h, data } (data[i] — діапазон 1..10, 0 — не вода); null — маски немає. */
 function chartBands(c) {
@@ -2285,7 +2287,7 @@ function chartBands(c) {
         x.drawImage(img, 0, 0);
         const px = x.getImageData(0, 0, cv.width, cv.height).data;
         const data = new Uint8Array(cv.width * cv.height);
-        for (let i = 0; i < data.length; i += 1) data[i] = Math.min(10, Math.round(px[i * 4] / 20));
+        for (let i = 0; i < data.length; i += 1) data[i] = BAND_OF_RED[px[i * 4]];
         resolve({ w: cv.width, h: cv.height, data });
       };
       img.onerror = () => resolve(null);
@@ -2322,7 +2324,9 @@ async function depthAt(ll) {
 
 const MARKS = [['', 'Ні'], ['drop', 'Бровки'], ['hole', 'Ями 8+ м']];
 const DEPTH_RANGE = 'fishing-log:depth-range';
+// Готові підсвітки (blob-адреси): останні MARKS_KEEP, старіші звільняємо — повзунок інакше копичив би їх без кінця
 const marksCache = new Map();
+const MARKS_KEEP = 40;
 
 /**
  * Підсвітка листа поверх карти: бровка — верхній край схилу, де за кілька метрів дно йде вниз на 3 м і більше
@@ -2333,49 +2337,82 @@ async function markUrl(c, mode, range = null) {
   const m = await chartBands(c);
   if (!m || !mode) return null;
   const key = `${c.id}:${mode}:${range?.join('-') ?? ''}:${c.bands.png.length}`;
-  if (marksCache.has(key)) return marksCache.get(key);
-  const { w, h, data } = m;
-  const out = new ImageData(w, h);
+  if (marksCache.has(key)) {
+    const hit = marksCache.get(key);
+    marksCache.delete(key);
+    marksCache.set(key, hit);
+    return hit;
+  }
+  const made = paintMarks(m, mode, range);
+  marksCache.set(key, made);
+  while (marksCache.size > MARKS_KEEP) {
+    const [old, url] = marksCache.entries().next().value;
+    marksCache.delete(old);
+    url.then((u) => u && URL.revokeObjectURL(u));
+  }
+  return made;
+}
+
+// Середина діапазону легенди за номером (0 — не вода): таблиця замість розбору DEPTH_BANDS_M на кожну клітинку
+const BAND_MID = Float32Array.from({ length: DEPTH_BANDS_M.length + 1 }, (_, b) => (b ? bandMid(b) : 0));
+const MARK_RGBA = { hole: [220, 38, 120, 235], range: [34, 197, 94, 150], drop: [245, 158, 11, 235] };
+
+/** Які клітинки маски підсвітити: 1 — так. */
+function markCells({ w, h, data }, mode, range) {
+  const on = new Uint8Array(w * h);
+  if (mode !== 'drop') {
+    // Ями й діапазон залежать лише від смуги легенди — рішення раз на смугу
+    const band = DEPTH_BANDS_M.map(([lo, hi], k) => (mode === 'hole' ? k + 1 >= 8 : Boolean(range) && (hi ?? Infinity) > range[0] && lo < range[1]));
+    for (let i = 0; i < on.length; i += 1) if (data[i] && band[data[i] - 1]) on[i] = 1;
+    return on;
+  }
+  // Бровка: у вікні ±R клітинок глибини різняться на 3 м і більше, а сама клітинка — на мілкому боці.
+  // Смуги легенди йдуть за глибиною, тож мінімум і максимум беремо по номерах смуг (байти), метри — лише в порівнянні.
+  // Вода — кілька відсотків маски, тож перебір квадрата лише для неї дешевший за проходи по всій масці
   const R = 2;
   for (let y = 0; y < h; y += 1) {
+    const y0 = y > R ? y - R : 0;
+    const y1 = y + R < h ? y + R : h - 1;
     for (let x = 0; x < w; x += 1) {
       const b = data[y * w + x];
       if (!b) continue;
-      let on = false;
-      if (mode === 'hole') on = b >= 8;
-      else if (mode === 'range') {
-        // Діапазон легенди перетинається з потрібними глибинами
-        const [lo, hi] = DEPTH_BANDS_M[b - 1];
-        on = Boolean(range) && (hi === null ? Infinity : hi) > range[0] && lo < range[1];
-      } else {
-        let lo = Infinity;
-        let hi = -Infinity;
-        for (let dy = -R; dy <= R; dy += 1) {
-          const yy = y + dy;
-          if (yy < 0 || yy >= h) continue;
-          for (let dx = -R; dx <= R; dx += 1) {
-            const xx = x + dx;
-            if (xx < 0 || xx >= w) continue;
-            const v = data[yy * w + xx];
-            if (!v) continue;
-            const d = bandMid(v);
-            if (d < lo) lo = d;
-            if (d > hi) hi = d;
-          }
+      const x0 = x > R ? x - R : 0;
+      const x1 = x + R < w ? x + R : w - 1;
+      let lo = b;
+      let hi = b;
+      for (let yy = y0; yy <= y1; yy += 1) {
+        const row = yy * w;
+        for (let xx = x0; xx <= x1; xx += 1) {
+          const v = data[row + xx];
+          if (!v) continue;
+          if (v < lo) lo = v;
+          else if (v > hi) hi = v;
         }
-        on = hi - lo >= 3 && bandMid(b) - lo <= 1;
       }
-      if (!on) continue;
-      const i = (y * w + x) * 4;
-      if (mode === 'hole') { out.data[i] = 220; out.data[i + 1] = 38; out.data[i + 2] = 120; } else if (mode === 'range') { out.data[i] = 34; out.data[i + 1] = 197; out.data[i + 2] = 94; } else { out.data[i] = 245; out.data[i + 1] = 158; out.data[i + 2] = 11; }
-      out.data[i + 3] = mode === 'range' ? 150 : 235;
+      if (BAND_MID[hi] - BAND_MID[lo] >= 3 && BAND_MID[b] - BAND_MID[lo] <= 1) on[y * w + x] = 1;
     }
   }
-  const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  return on;
+}
+
+/** Картинка підсвітки з маски. PNG кодує toBlob у фоні — toDataURL робив це в головному потоці й смикав повзунок. */
+async function paintMarks(m, mode, range) {
+  const on = markCells(m, mode, range);
+  const out = new ImageData(m.w, m.h);
+  const [r, g, b, a] = MARK_RGBA[mode] ?? MARK_RGBA.drop;
+  // out.data — геттер: узяти раз, а не на кожен піксель
+  const px = out.data;
+  for (let i = 0; i < on.length; i += 1) {
+    if (!on[i]) continue;
+    px[i * 4] = r;
+    px[i * 4 + 1] = g;
+    px[i * 4 + 2] = b;
+    px[i * 4 + 3] = a;
+  }
+  const cv = Object.assign(document.createElement('canvas'), { width: m.w, height: m.h });
   cv.getContext('2d').putImageData(out, 0, 0);
-  const url = cv.toDataURL('image/png');
-  marksCache.set(key, url);
-  return url;
+  const blob = await new Promise((resolve) => { cv.toBlob(resolve, 'image/png'); });
+  return blob ? URL.createObjectURL(blob) : null;
 }
 
 // Межі діапазонів легенди: повзунок ходить лише по них — проміжне значення підсвітило б ті самі смуги.
@@ -3317,7 +3354,7 @@ function renderTrips() {
     packBox(),
     seasonBox(),
     recordsBox(),
-    list.length ? byMonth(list).map(([head, rows]) => [h('h3', { class: 'list-head' }, head), h('div', { class: 'rows' }, rows.map(tripRow))])
+    list.length ? byMonth(list).map(([head, rows]) => [h('h3', { class: 'list-head' }, head), h('div', { class: 'rows month-rows' }, rows.map(tripRow))])
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]));
 }
 
@@ -3787,6 +3824,14 @@ function packItems(p) {
 }
 
 /** Виїзди за місяцями: [«Листопад 2026», [виїзди]] — у тому ж порядку, що й список. */
+// Форматер назви місяця — один на мову: toLocaleDateString щоразу будує новий, на довгому журналі це помітно
+const monthFormats = new Map();
+function monthName(d) {
+  const loc = locale();
+  if (!monthFormats.has(loc)) monthFormats.set(loc, new Intl.DateTimeFormat(loc, { month: 'long' }));
+  return monthFormats.get(loc).format(d);
+}
+
 function byMonth(list) {
   const out = [];
   for (const tr of list) {
@@ -3795,7 +3840,7 @@ function byMonth(list) {
     out.at(-1)[1].push(tr);
   }
   return out.map(([ym, rows]) => {
-    const m = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1).toLocaleDateString(locale(), { month: 'long' });
+    const m = monthName(new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1));
     return [`${m.charAt(0).toUpperCase()}${m.slice(1)} ${ym.slice(0, 4)}`, rows];
   });
 }
@@ -5185,7 +5230,11 @@ function render() {
   // Налаштування — не в нижньому меню, а шестернею вгорі (як у Shooter's Log); у них — «Назад» туди, звідки прийшли
   const gearBtn = $('settings-btn');
   gearBtn.classList.toggle('active', tab === 'settings');
-  if (tab === 'settings' && !gearBtn.dataset.on) { gearBtn.classList.remove('play'); void gearBtn.offsetWidth; gearBtn.classList.add('play'); }
+  if (tab === 'settings' && !gearBtn.dataset.on) {
+    // Перезапуск обертання без offsetWidth: той примушував верстати всю щойно збудовану сторінку (~0,3 с на телефоні)
+    gearBtn.classList.remove('play');
+    requestAnimationFrame(() => requestAnimationFrame(() => gearBtn.classList.add('play')));
+  }
   gearBtn.dataset.on = tab === 'settings' ? '1' : '';
   $('back-btn').hidden = tab !== 'settings';
   $('back-btn').href = `#${backTab}`;

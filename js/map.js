@@ -141,7 +141,8 @@ export function sheetLayer(L, url, c, geo) {
   const Layer = L.Layer.extend({
     onAdd(map) {
       this._img = L.DomUtil.create('img', `leaflet-image-layer depth-sheet ${map._zoomAnimated ? 'leaflet-zoom-animated' : 'leaflet-zoom-hide'}`);
-      Object.assign(this._img, { src: url, alt: '', draggable: false });
+      // Лист — кілька мегапікселів: розпаковувати у фоні, інакше перехід на сусідній лист смикає карту
+      Object.assign(this._img, { decoding: 'async', src: url, alt: '', draggable: false });
       Object.assign(this._img.style, { width: `${c.w}px`, height: `${c.h}px`, opacity: this._opacity ?? 0.7 });
       map.getPanes().overlayPane.append(this._img);
       this._reset();

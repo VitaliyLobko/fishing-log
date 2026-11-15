@@ -958,17 +958,29 @@ const TOOL_ICON = {
   code: '<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/>',
 };
 
+/** SVG з розмітки: розбирається раз, далі — копія. innerHTML на кожну іконку гальмував довгі списки. */
+const svgTemplates = new Map();
+export function svgClone(markup) {
+  let tpl = svgTemplates.get(markup);
+  if (!tpl) {
+    tpl = document.createElement('template');
+    tpl.innerHTML = markup;
+    svgTemplates.set(markup, tpl);
+  }
+  return tpl.content.firstChild.cloneNode(true);
+}
+
 /** Зірка «найкраще»: SVG, бо гліф ★ у кожному шрифті сидить на своїй висоті й не стає по цифрах поруч. */
 export function starIcon(label) {
   const el = h('span', { class: 'star-ico', role: 'img', title: label, 'aria-label': label });
-  el.innerHTML = '<svg viewBox="1.7 1.5 20.6 19.6" aria-hidden="true"><path d="M12 1.5l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.6l-6.4 3.5L7 14l-5.3-5 7.2-.9z"/></svg>';
+  el.append(svgClone('<svg viewBox="1.7 1.5 20.6 19.6" aria-hidden="true"><path d="M12 1.5l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.6l-6.4 3.5L7 14l-5.3-5 7.2-.9z"/></svg>'));
   return el;
 }
 
 /** Іконка з набору TOOL_ICON — для своїх кнопок. */
 export function icon(name) {
   const el = h('span', { class: `ico ico-${name}`, 'aria-hidden': 'true' });
-  el.innerHTML = `<svg viewBox="0 0 24 24">${TOOL_ICON[name]}</svg>`;
+  el.append(svgClone(`<svg viewBox="0 0 24 24">${TOOL_ICON[name]}</svg>`));
   return el;
 }
 
@@ -976,13 +988,13 @@ export function icon(name) {
 /** Значок без кнопки — той самий, що на кнопці-іконці; для підказок у тексті. */
 export function toolIcon(icon) {
   const el = h('span', { class: 'tool-ico', 'aria-hidden': 'true' });
-  el.innerHTML = `<svg viewBox="0 0 24 24">${TOOL_ICON[icon]}</svg>`;
+  el.append(svgClone(`<svg viewBox="0 0 24 24">${TOOL_ICON[icon]}</svg>`));
   return el;
 }
 
 export function toolBtn(icon, label, onclick, cls = '') {
   const el = h('button', { type: 'button', class: `icon-btn tool ${cls}`, 'aria-label': label, title: label, onclick });
-  el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${TOOL_ICON[icon]}</svg>`;
+  el.append(svgClone(`<svg viewBox="0 0 24 24" aria-hidden="true">${TOOL_ICON[icon]}</svg>`));
   return el;
 }
 
