@@ -1914,9 +1914,9 @@ const coordsText = (s) => (hasCoords(s) ? `${Number(s.lat).toFixed(5)}, ${Number
 const parkOf = (s) => (hasCoords({ lat: s?.pLat, lon: s?.pLon }) ? { lat: s.pLat, lon: s.pLon } : null);
 
 const SPOT_KINDS = [['river', 'Річка'], ['lake', 'Озеро'], ['pond', 'Ставок'], ['reservoir', 'Водосховище'], ['quarry', 'Кар’єр'], ['canal', 'Канал'], ['sea', 'Море, лиман'], ['other', 'Інше']];
-const ACCESS = [['car', 'Авто до води'], ['walk', 'Пішки'], ['shore', 'З берега'], ['boat', 'З човна'], ['ice', 'По льоду']];
+const ACCESS = [['car', 'Авто до води'], ['walk', 'Пішки'], ['byboat', 'Човном'], ['shore', 'З берега'], ['boat', 'З човна'], ['ice', 'По льоду']];
 /** Одне поле spot.access — два питання: як дістатися й звідки ловлю. */
-const ACCESS_GET = ['car', 'walk'];
+const ACCESS_GET = ['car', 'walk', 'byboat'];
 const ACCESS_FROM = ['shore', 'boat', 'ice'];
 const accessText = (s, keys) => (s.access ?? []).filter((k) => keys.includes(k)).map((k) => label(ACCESS, k)).join(', ');
 const PAY = [['free', 'Безкоштовно'], ['paid', 'Платно']];
