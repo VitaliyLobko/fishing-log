@@ -1551,3 +1551,14 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .map-box .sat-ctl a { display: grid; place-items: center; }
 .map-box .sat-ctl .ico { display: grid; }
 .map-box .sat-ctl svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Трофейна риба водойми: золота ★ */
+.trophy-star { margin-left: 4px; color: #f5b82e; font-size: 1.05em; line-height: 1; }
+.fish-tag.trophy { border-style: solid; border-color: color-mix(in srgb, #f5b82e 70%, transparent); background: color-mix(in srgb, #f5b82e 10%, transparent); }
+.trophy-pick { margin-top: 10px; }
+.trophy-chips { margin-top: 6px; }
+.trophy-chips .trophy-mark { margin-right: 5px; color: var(--muted); }
+.trophy-chips button.on { background: color-mix(in srgb, #f5b82e 18%, transparent); border-color: #f5b82e; color: var(--text); font-weight: 650; }
+.trophy-chips button.on .trophy-mark { color: #f5b82e; }
+:root[data-theme="light"] .trophy-star, :root[data-theme="light"] .trophy-chips button.on .trophy-mark { color: #a86a0c; }
+:root[data-theme="light"] .trophy-chips button.on, :root[data-theme="light"] .fish-tag.trophy { border-color: #c98a1b; }

@@ -1949,7 +1949,8 @@ const hasPlace = (s) => hasCoords(s) || Boolean(parkOf(s));
 function spotRow(s) {
   const trips = spotTrips(s.id);
   const fish = trips.reduce((n, x) => n + tripCatch(x), 0);
-  const sub = [label(SPOT_KINDS, s.kind), trips.length ? t('виїздів: {n}, останній {d}', { n: fmt.num(trips.length), d: fmt.date(trips[0].date) }) : t('ще не їздив'), spotPrice(s)];
+  const big = spotTrophy(s);
+  const sub = [label(SPOT_KINDS, s.kind), big.length ? `★ ${big.join(', ')}` : null, trips.length ? t('виїздів: {n}, останній {d}', { n: fmt.num(trips.length), d: fmt.date(trips[0].date) }) : t('ще не їздив'), spotPrice(s)];
   return row(s.name, sub.filter(Boolean).join(' · '),
     fish ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(fish)) : '',
     () => spotDetail(s.id), { id: s.id, thumb: findPhoto(s.photoId) ? thumbImg(s.photoId) : null });
@@ -2163,9 +2164,23 @@ function spotForm(s = null, { onSaved = null } = {}) {
   const fishHere = multiChips([...new Set([...allSpecies(), ...(s?.species ?? [])])].map((x) => [x, x]), s?.species ?? []);
   const speciesTitle = h('span', {});
   const paintSpecies = () => { const n = fishHere.value().length; speciesTitle.textContent = n ? t('Хто водиться · {n}', { n }) : t('Хто водиться'); };
-  fishHere.el.addEventListener('click', () => requestAnimationFrame(paintSpecies));
+  // Трофейні: з вибраних риб, тап ставить ★
+  const trophy = new Set(s?.trophy ?? []);
+  const trophyChips = h('div', { class: 'chips chips-sm trophy-chips' });
+  Object.defineProperty(trophyChips, 'value', { get: () => [...trophy].sort().join(',') });
+  const trophyWrap = h('div', { class: 'trophy-pick' }, h('div', { class: 'field-label' }, t('Трофейні — позначте зірочкою')), trophyChips);
+  const paintTrophy = () => {
+    const sel = fishHere.value();
+    trophyWrap.hidden = !sel.length;
+    trophyChips.replaceChildren(...sel.map((sp) => h('button', {
+      type: 'button', class: trophy.has(sp) ? 'on' : '', 'aria-pressed': String(trophy.has(sp)),
+      onclick: () => { if (!trophy.delete(sp)) trophy.add(sp); paintTrophy(); },
+    }, h('span', { class: 'trophy-mark', 'aria-hidden': 'true' }, trophy.has(sp) ? '★' : '☆'), sp)));
+  };
+  fishHere.el.addEventListener('click', () => requestAnimationFrame(() => { paintSpecies(); paintTrophy(); }));
   paintSpecies();
-  const species = formFold(speciesTitle, fishHere.el);
+  paintTrophy();
+  const species = formFold(speciesTitle, h('div', {}, fishHere.el, trophyWrap));
   const pick = photoPicker(findPhoto(s?.photoId), { query: () => f.inputs.name.value.trim() });
   // Поля з форми переїхали в блоки; у сітці лишаються назва, тип і глибини
   payField.remove();
@@ -2188,7 +2203,7 @@ function spotForm(s = null, { onSaved = null } = {}) {
       try { photo = await photoChanges(s, pick.value(), id); } catch (err) { toast(err.message); return; }
       const rec = {
         ...(s ?? { id, created: Date.now() }), name: v.name, kind: v.kind || null, note: v.note, lat: c?.lat ?? null, lon: c?.lon ?? null, pLat: pk?.lat ?? null, pLon: pk?.lon ?? null,
-        pay: v.pay || null, price: v.pay === 'paid' ? v.price : null, depth: v.depth, access: access.value(), species: fishHere.value(), photoId: photo.photoId,
+        pay: v.pay || null, price: v.pay === 'paid' ? v.price : null, depth: v.depth, access: access.value(), species: fishHere.value(), trophy: fishHere.value().filter((x) => trophy.has(x)), photoId: photo.photoId,
       };
       close();
       await save(joinChanges(photo.changes, { spots: { put: [rec] } }), [rec.id]);
@@ -2265,18 +2280,23 @@ function spotSpecies(trips) {
 /** Хижі види — для значка поруч з назвою; решта — мирна, свої види без значка напрямку. */
 const PREDATORS = ['Щука', 'Окунь', 'Судак', 'Жерех', 'Сом', 'Головень', 'Чехоня', 'Форель'];
 const fishDir = (sp) => (PREDATORS.some((x) => t(x) === sp) ? 'predator' : SPECIES.some((x) => t(x) === sp) ? 'peaceful' : 'fish');
-const fishName = (sp) => h('span', { class: 'fish-name' }, icon(fishDir(sp)), h('span', {}, sp));
+const star = () => h('span', { class: 'trophy-star', title: t('Трофейна'), 'aria-label': t('трофейна') }, '★');
+const fishName = (sp, trophy = false) => h('span', { class: 'fish-name' }, icon(fishDir(sp)), h('span', {}, sp), trophy ? star() : null);
 
-/** Хто ловиться: пійманих — смужками, «водиться, ще не ловив» — пунктирними плашками, хижі першими. */
-function speciesBox(caught, unseen) {
+/** Хто ловиться: пійманих — смужками, «водиться, ще не ловив» — пунктирними плашками; трофейні (★) і хижі — першими. */
+function speciesBox(caught, unseen, trophy = []) {
+  const big = new Set(trophy);
   const rank = { predator: 0, peaceful: 1, fish: 2 };
-  const rest = [...unseen].sort((a, b) => rank[fishDir(a)] - rank[fishDir(b)]);
+  const rest = [...unseen].sort((a, b) => big.has(b) - big.has(a) || rank[fishDir(a)] - rank[fishDir(b)]);
   return box(caught.length ? t('Хто ловиться') : t('Хто водиться'), h('div', {},
-    caught.length ? bars(caught.map(([sp, x]) => ({ label: fishName(sp), n: x.n, text: [fmt.num(x.n), x.best ? fishSize(x.best).split(' · ')[0] : null].filter(Boolean).join(' · ') }))) : null,
+    caught.length ? bars(caught.map(([sp, x]) => ({ label: fishName(sp, big.has(sp)), n: x.n, text: [fmt.num(x.n), x.best ? fishSize(x.best).split(' · ')[0] : null].filter(Boolean).join(' · ') }))) : null,
     rest.length ? [
       h('div', { class: 'field-label' }, caught.length ? t('Водиться, ще не ловив · {n}', { n: fmt.num(rest.length) }) : t('Ще не ловив тут жодної')),
-      h('div', { class: 'fish-tags' }, rest.map((sp) => h('span', { class: `fish-tag ${fishDir(sp)}` }, icon(fishDir(sp)), sp)))] : null));
+      h('div', { class: 'fish-tags' }, rest.map((sp) => h('span', { class: `fish-tag ${fishDir(sp)}${big.has(sp) ? ' trophy' : ''}` }, icon(fishDir(sp)), sp, big.has(sp) ? star() : null)))] : null));
 }
+
+/** Трофейні види водойми — лише з тих, що водяться. */
+const spotTrophy = (s) => (s.trophy ?? []).filter((x) => (s.species ?? []).includes(x));
 
 function spotBody(s) {
   const photo = findPhoto(s.photoId);
@@ -2342,7 +2362,7 @@ function spotBody(s) {
       btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
     meta,
     tiles,
-    caught.length || unseen.length ? speciesBox(caught, unseen) : null,
+    caught.length || unseen.length ? speciesBox(caught, unseen, spotTrophy(s)) : null,
     baits.length ? box(t('Уловисті приманки тут'), h('div', { class: 'rows' }, baits.map((x) => row(x.name,
       x.g ? [catOf(x.g.cat).name, weightText(x.g), !active(x.g) ? t('вже немає') : isQty(x.g) ? t('є {n}', { n: qtyText(x.g) }) : null].filter(Boolean).join(' · ') : t('вписано в улові'),
       h('span', { class: 'fish-count' }, icon('fish'), fmt.num(x.n)), x.g ? () => gearDetail(x.g.id) : null,
