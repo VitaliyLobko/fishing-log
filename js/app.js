@@ -7,7 +7,7 @@ import * as nfc from './nfc.js';
 import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, onSheet, nudgePts, mercPerPx } from './map.js';
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto, prepareSheet as preparePhotoSheet } from './photos.js';
-import { weatherAt, waterEstimate, moonPhase, compass } from './weather.js';
+import { weatherAt, waterEstimate, forecastDays, moonPhase, compass } from './weather.js';
 import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], charts: [], photos: [], prefs: [] };
@@ -2203,7 +2203,7 @@ function depthOverlay(list = pinnedCharts()) {
     mark = null;
     if (!cur || !mode || !L) return;
     const my = gen;
-    const url = await markUrl(cur.c, mode);
+    const url = await markUrl(cur.c, mode, wantRange);
     if (my !== gen || !url) return;
     mark = sheetLayer(L, url, cur.c, cur.geo).setOpacity(1).addTo(mapRef);
   };
@@ -2252,10 +2252,12 @@ function depthOverlay(list = pinnedCharts()) {
     map.on('unload', () => { drop(); cur = null; });
     show();
   };
-  /** Підсвітка: '' — немає, 'drop' — бровки, 'hole' — ями. */
+  /** Підсвітка: '' — немає, 'drop' — бровки, 'hole' — ями, 'range' — глибини з setRange. */
   const setMark = (v) => { mode = v; paintMark(); };
+  let wantRange = null;
+  const setRange = (r) => { wantRange = r; };
   const hasBands = sheets.some((x) => x.c.bands?.png);
-  return { el, attach, setMark, hasBands };
+  return { el, attach, setMark, setRange, hasBands };
 }
 
 // ---------- глибини з листа ----------
@@ -2322,10 +2324,10 @@ const marksCache = new Map();
  * (сам схил біля берегу є майже скрізь, тож позначаємо лише кромку на мілкому боці); ями — від 8 м.
  * Повертає картинку розміру маски (розтягується на лист), або null.
  */
-async function markUrl(c, mode) {
+async function markUrl(c, mode, range = null) {
   const m = await chartBands(c);
   if (!m || !mode) return null;
-  const key = `${c.id}:${mode}:${c.bands.png.length}`;
+  const key = `${c.id}:${mode}:${range?.join('-') ?? ''}:${c.bands.png.length}`;
   if (marksCache.has(key)) return marksCache.get(key);
   const { w, h, data } = m;
   const out = new ImageData(w, h);
@@ -2336,7 +2338,11 @@ async function markUrl(c, mode) {
       if (!b) continue;
       let on = false;
       if (mode === 'hole') on = b >= 8;
-      else {
+      else if (mode === 'range') {
+        // Діапазон легенди перетинається з потрібними глибинами
+        const [lo, hi] = DEPTH_BANDS_M[b - 1];
+        on = Boolean(range) && (hi === null ? Infinity : hi) > range[0] && lo < range[1];
+      } else {
         let lo = Infinity;
         let hi = -Infinity;
         for (let dy = -R; dy <= R; dy += 1) {
@@ -2356,8 +2362,8 @@ async function markUrl(c, mode) {
       }
       if (!on) continue;
       const i = (y * w + x) * 4;
-      if (mode === 'hole') { out.data[i] = 220; out.data[i + 1] = 38; out.data[i + 2] = 120; } else { out.data[i] = 245; out.data[i + 1] = 158; out.data[i + 2] = 11; }
-      out.data[i + 3] = 235;
+      if (mode === 'hole') { out.data[i] = 220; out.data[i + 1] = 38; out.data[i + 2] = 120; } else if (mode === 'range') { out.data[i] = 34; out.data[i + 1] = 197; out.data[i + 2] = 94; } else { out.data[i] = 245; out.data[i + 1] = 158; out.data[i + 2] = 11; }
+      out.data[i + 3] = mode === 'range' ? 150 : 235;
     }
   }
   const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
@@ -2467,7 +2473,7 @@ async function catchPointPicker({ at, depth, center, others = [] }, onDone) {
   });
 }
 
-async function depthView({ title, center, zoom = 15, water = null, park = null, catches = [] }) {
+async function depthView({ title, center, zoom = 15, water = null, park = null, catches = [], mark = null }) {
   let L;
   try { L = await loadLeaflet(); } catch { toast(t('Карта не завантажилась — перевірте інтернет')); return; }
   const el = h('div', { class: 'map-box' });
@@ -2477,7 +2483,11 @@ async function depthView({ title, center, zoom = 15, water = null, park = null, 
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
-  const marks = depth.hasBands ? chips(MARKS.map(([k, l]) => [k, t(l)]), '', (v) => depth.setMark(v)) : null;
+  // З «Куди й коли» — ще й чип з потрібними глибинами, увімкнений одразу
+  const opts = mark?.range ? [...MARKS, ['range', t('{lo}–{hi} м', { lo: fmt.num(Math.round(mark.range[0] * 10) / 10), hi: fmt.num(Math.round(mark.range[1] * 10) / 10) })]] : MARKS;
+  if (mark?.range) depth.setRange(mark.range);
+  const marks = depth.hasBands ? chips(opts.map(([k, l]) => [k, t(l)]), mark?.range ? 'range' : '', (v) => depth.setMark(v)) : null;
+  if (mark?.range) depth.setMark('range');
   marks?.classList.add('segmented', 'depth-marks');
   const close = sheet(title, h('div', { class: 'map-picker depth-view' }, el, depth.el,
     marks ? h('div', { class: 'depth-marks-row' }, h('span', { class: 'field-label' }, t('Підсвітити')), marks) : null,
@@ -3233,6 +3243,7 @@ function renderTrips() {
   $('subtitle').textContent = season.length ? t('сезон {y}: виїздів {n}, риб {f}', { y: year, n: season.length, f: fmt.num(season.reduce((s, x) => s + tripCatch(x), 0)) }) : '';
   return h('div', {},
     packBox(),
+    biteBox(),
     seasonBox(),
     recordsBox(),
     patternsBox(),
@@ -3318,7 +3329,7 @@ function tripForm(tr = null, preset = {}) {
   const spotOpts = () => [['', '—'], ...[...state.spots].sort((a, b) => collate(a.name, b.name)).map((s) => [s.id, s.name])];
   // «Коли» — дата й години одним рядком; «По» — лише для виїзду на кілька днів
   const when = form([
-    { name: 'date', label: t('Дата'), type: 'dmy', value: tr?.date ?? today(), required: true, half: true },
+    { name: 'date', label: t('Дата'), type: 'dmy', value: tr?.date ?? preset.date ?? today(), required: true, half: true },
     { name: 'from', label: t('З'), type: 'time', value: tr?.from ?? '', half: true },
     { name: 'to', label: t('До'), type: 'time', value: tr?.to ?? '', half: true },
     { name: 'dateTo', label: t('По'), type: 'dmy', value: tr && tripDays(tr) > 1 ? tr.dateTo : '', half: true },
@@ -3894,22 +3905,46 @@ const fishText = (n) => `${fmt.num(n)} ${plural(n, [t('риба'), t('риби')
  * Виїзди — лише на водойми, де цей вид уже ловився (інакше коропові ставки «топлять» щуку), з порожніми включно.
  * Погода виїзду — на годину початку першого дня, тож для тиску рахуємо лише улов першого дня.
  */
-function patternSections(sp) {
+function patternPool(sp) {
   const fits = (c) => !sp || c.species === sp;
   const spots = sp ? new Set(state.trips.filter((tr) => (tr.catches ?? []).some(fits)).map((tr) => tr.spotId)) : null;
   const pool = state.trips.filter((tr) => !spots || spots.has(tr.spotId));
   const fishOf = (tr, firstDay = false) => (tr.catches ?? []).filter((c) => fits(c) && (!firstDay || catchDate(tr, c) === tr.date))
     .reduce((n, c) => n + (num(c.n) || 1), 0);
-  const perTrip = (bands, list, value, fish) => {
-    const acc = bands.map(() => ({ trips: 0, n: 0 }));
-    for (const tr of list) {
-      const i = bandOf(bands, value(tr));
-      if (i < 0) continue;
-      acc[i].trips += 1;
-      acc[i].n += fish(tr);
-    }
-    return acc.map((x, i) => ({ ...x, label: t(bands[i][2]) })).filter((x) => x.trips);
-  };
+  return { fits, pool, fishOf };
+}
+
+const perTrip = (bands, list, value, fish) => {
+  const acc = bands.map(() => ({ trips: 0, n: 0 }));
+  for (const tr of list) {
+    const i = bandOf(bands, value(tr));
+    if (i < 0) continue;
+    acc[i].trips += 1;
+    acc[i].n += fish(tr);
+  }
+  return acc.map((x, i) => ({ ...x, i, label: t(bands[i][2]) })).filter((x) => x.trips);
+};
+
+/** Ваш улов виду за тиском: групи DP_BANDS → { trips, n }; лише перший день виїзду, без погоди — не рахуємо. */
+function pressureStats(sp) {
+  const { pool, fishOf } = patternPool(sp);
+  return perTrip(DP_BANDS, pool.filter((tr) => Number.isFinite(tr.weather?.dp)), (tr) => tr.weather.dp, (tr) => fishOf(tr, true));
+}
+
+/** Ваші глибини виду: { band (індекс DEPTH_BANDS), n, total } — найчастіша група, якщо записів з глибиною ≥ 5. */
+function myDepth(sp) {
+  const { fits, pool } = patternPool(sp);
+  const deep = pool.flatMap((tr) => (tr.catches ?? []).filter((c) => fits(c) && hasDepth(c)));
+  const acc = DEPTH_BANDS.map(() => 0);
+  for (const c of deep) { const i = bandOf(DEPTH_BANDS, Number(c.depth)); if (i >= 0) acc[i] += num(c.n) || 1; }
+  const total = acc.reduce((s, x) => s + x, 0);
+  if (total < 5) return null;
+  const band = acc.indexOf(Math.max(...acc));
+  return { band, n: acc[band], total };
+}
+
+function patternSections(sp) {
+  const { fits, pool, fishOf } = patternPool(sp);
   const perTripBars = (rows) => bars(rows.map((x) => ({ label: x.label, n: x.n / x.trips,
     text: `${fmt.num(Math.round((x.n / x.trips) * 10) / 10)} · ${tripsText(x.trips)}` })));
   const out = [];
@@ -3952,6 +3987,147 @@ function patternsBox() {
     paint();
     return h('div', {}, pick, body);
   });
+}
+
+// ---------- куди й коли ----------
+
+/**
+ * Правила за видом і водою (°C): [до °C, глибина від–до м, де шукати]. Перший рядок, де вода < «до», — наш.
+ * ok — вода, у якій вид активний. Загальні рибальські правила, не наука: свої закономірності важливіші.
+ */
+const BITE_RULES = {
+  'Щука': { ok: [6, 20], rows: [[8, 4, 8, 'ями й виходи з ям, повільна проводка'], [15, 2, 5, 'бровки й прибровочні мілини'], [21, 2, 4, 'межа трави, бровки — ранок і вечір'], [99, 3, 6, 'глибше й у тіні, світанок']] },
+  'Окунь': { ok: [8, 24], rows: [[8, 6, 10, 'ями, вертикаль'], [16, 3, 6, 'бровки, перепади'], [99, 1, 4, 'мілини й «котли», ранок']] },
+  'Судак': { ok: [6, 22], rows: [[8, 8, 12, 'ями, звали в яму'], [16, 4, 8, 'бровки, твердий низ — вечір і ніч'], [99, 3, 6, 'бровки й перекати вночі']] },
+  'Жерех': { ok: [12, 24], rows: [[12, 3, 6, 'нижче перекатів, тиха вода'], [99, 1, 3, 'перекати, струмінь, «бій» на поверхні']] },
+  'Сом': { ok: [18, 28], rows: [[12, 8, 14, 'ями (майже не їсть)'], [18, 6, 10, 'ями й виходи з них'], [99, 3, 8, 'виходи з ям на мілину — ніч']] },
+  'Лящ': { ok: [10, 24], rows: [[8, 8, 12, 'ями'], [16, 4, 8, 'бровки й русло'], [99, 3, 6, 'русло, бровки — вечір і ніч']] },
+  'Короп': { ok: [16, 28], rows: [[12, 4, 8, 'глибокі ями, мало клює'], [18, 2, 4, 'прогріті ділянки'], [99, 1.5, 4, 'мілини й край трави — ніч і ранок']] },
+  'Карась': { ok: [16, 28], rows: [[12, 3, 6, 'найглибше місце'], [99, 1, 3, 'тепла мілина, трава']] },
+  'Плітка': { ok: [8, 22], rows: [[8, 4, 8, 'ями з тихою водою'], [16, 2, 4, 'бровки, край трави'], [99, 1, 3, 'мілини, трава']] },
+  'Лин': { ok: [16, 26], rows: [[12, 3, 6, 'мулисті ями, майже не клює'], [99, 0.8, 2.5, 'вікна в траві, мул — ранок']] },
+  'Краснопірка': { ok: [14, 26], rows: [[10, 3, 5, 'глибші місця біля трави'], [99, 0.5, 2, 'край очерету й латаття, верхні шари']] },
+  'Густера': { ok: [10, 24], rows: [[8, 6, 10, 'ями разом з лящем'], [16, 3, 6, 'бровки'], [99, 2, 5, 'русло, перепади — вечір']] },
+  'Синець': { ok: [10, 24], rows: [[8, 6, 10, 'ями'], [16, 4, 7, 'русло, бровки'], [99, 3, 6, 'русло й течія']] },
+};
+const BITE_DEFAULT = { ok: [10, 22], rows: [[8, 6, 10, 'ями'], [16, 3, 6, 'бровки, середні глибини'], [99, 1, 4, 'мілкіше — ранок і вечір']] };
+const biteRule = (sp) => BITE_RULES[Object.keys(BITE_RULES).find((k) => t(k) === sp)] ?? BITE_DEFAULT;
+const BITE_SP = 'fishing-log:bite-species';
+const BITE_SPOT = 'fishing-log:bite-spot';
+const forecastCache = new Map();
+
+/** Прогноз водойми з кешем на годину: [дні] або помилка. */
+function spotForecast(s) {
+  const key = `${Number(s.lat).toFixed(3)},${Number(s.lon).toFixed(3)}`;
+  const hit = forecastCache.get(key);
+  if (hit && Date.now() - hit.at < 36e5) return hit.p;
+  const p = forecastDays({ lat: s.lat, lon: s.lon });
+  forecastCache.set(key, { at: Date.now(), p });
+  p.catch(() => forecastCache.delete(key));
+  return p;
+}
+
+/**
+ * Оцінка дня 0–3 і чому: тиск стабільний — добре, різкий стрибок (≥ 5 мм за добу) — погано й наступного дня теж;
+ * сильний вітер — гірше; вода поза «активною» для виду — гірше.
+ */
+function biteScore(day, prev, rule) {
+  let s = 2;
+  const why = [];
+  if (Number.isFinite(day.dp)) {
+    const a = Math.abs(day.dp);
+    if (a <= 2) { s += 1; why.push(t('тиск стабільний')); } else if (a >= 5) { s -= 1; why.push(day.dp < 0 ? t('тиск різко падає') : t('тиск різко росте')); } else why.push(day.dp < 0 ? t('тиск падає') : t('тиск росте'));
+  }
+  if (prev && Number.isFinite(prev.dp) && Math.abs(prev.dp) >= 5 && Math.abs(day.dp ?? 0) <= 2) { s -= 1; why.push(t('риба ще відходить після стрибка тиску')); }
+  if (num(day.w) >= 10) { s -= 1; why.push(t('сильний вітер')); }
+  if (Number.isFinite(day.water)) {
+    const [lo, hi] = rule.ok;
+    if (day.water < lo - 3 || day.water > hi + 3) { s -= 1; why.push(t('вода не та, риба малоактивна')); }
+  }
+  return { score: Math.max(0, Math.min(3, Math.round(s))), why };
+}
+
+const dots = (n) => h('span', { class: 'bite-dots', 'aria-label': t('клювання {n} з 3', { n }) }, [0, 1, 2].map((i) => h('i', { class: i < n ? 'on' : '' })));
+
+/** «Куди й коли»: вид і водойма → 16 днів з оцінкою; торкнулися дня — де шукати, ваші дані, карта з потрібними глибинами. */
+function biteBox() {
+  const spots = state.spots.filter(hasCoords);
+  if (!spots.length) return null;
+  return fold('bite', t('Куди й коли'), () => {
+    const counts = new Map();
+    for (const tr of state.trips) for (const c of tr.catches ?? []) counts.set(c.species, (counts.get(c.species) ?? 0) + (num(c.n) || 1));
+    const species = [...new Set([...[...counts].sort((a, b) => b[1] - a[1]).map(([x]) => x), ...Object.keys(BITE_RULES).map((x) => t(x))])];
+    let sp = recall(BITE_SP);
+    if (!species.includes(sp)) sp = species[0];
+    const lastSpot = [...state.trips].sort((a, b) => collate(b.date, a.date)).map((tr) => findSpot(tr.spotId)).find((s) => s && hasCoords(s));
+    let spotId = recall(BITE_SPOT);
+    if (!spots.some((s) => s.id === spotId)) spotId = (lastSpot ?? spots[0]).id;
+    const days = h('div', { class: 'bite-days' });
+    let open = null;
+    const paint = async () => {
+      const s = findSpot(spotId);
+      days.replaceChildren(h('p', { class: 'muted small' }, t('Завантажую прогноз…')));
+      let list;
+      try { list = await spotForecast(s); } catch {
+        days.replaceChildren(h('p', { class: 'muted small' }, navigator.onLine ? t('Прогноз зараз недоступний — спробуйте пізніше') : t('Немає інтернету')));
+        return;
+      }
+      const rule = biteRule(sp);
+      const mine = pressureStats(sp);
+      const md = myDepth(sp);
+      days.replaceChildren(...list.map((d, i) => {
+        const sc = biteScore(d, list[i - 1], rule);
+        const detail = h('div', { class: 'bite-detail', hidden: open !== d.date });
+        const head = h('button', { type: 'button', class: 'bite-day', 'aria-expanded': String(open === d.date), onclick: () => {
+          open = open === d.date ? null : d.date;
+          days.querySelectorAll('.bite-detail').forEach((x) => { x.hidden = x !== detail || !open; });
+          days.querySelectorAll('.bite-day').forEach((x) => x.setAttribute('aria-expanded', String(x === head && Boolean(open))));
+          if (open && !detail.childElementCount) detail.append(...biteDetail(s, sp, d, sc, rule, mine, md));
+        } },
+        h('span', { class: 'bite-date' }, dayLabel(d.date)), dots(sc.score),
+        h('span', { class: 'bite-wx muted small' }, [d.p ? `${d.p} ${d.dp === null ? '' : trend(d.dp)}` : null, Number.isFinite(d.w) ? `${fmt.num(Math.round(d.w))} ${t('м/с')}` : null,
+          Number.isFinite(d.water) ? t('вода ≈ {n}°', { n: d.water }) : null].filter(Boolean).join(' · ')));
+        if (open === d.date) detail.append(...biteDetail(s, sp, d, sc, rule, mine, md));
+        return h('div', { class: 'bite-row' }, head, detail);
+      }));
+    };
+    const spPick = chips(species.slice(0, 12).map((x) => [x, x]), sp, (v) => { sp = v; remember(BITE_SP, v); open = null; paint(); });
+    spPick.classList.add('pattern-species');
+    const spotPick = spots.length > 1 ? h('select', { class: 'bite-spot', 'aria-label': t('Водойма') },
+      [...spots].sort((a, b) => collate(a.name, b.name)).map((s) => h('option', { value: s.id, selected: s.id === spotId }, s.name))) : null;
+    spotPick?.addEventListener('change', () => { spotId = spotPick.value; remember(BITE_SPOT, spotId); open = null; paint(); });
+    paint();
+    return h('div', { class: 'bite' }, spPick, spotPick ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('Водойма')), spotPick) : null, days,
+      h('p', { class: 'muted small' }, t('Оцінка — за стабільністю тиску, вітром і водою для виду. Де шукати — загальні правила сезону; ваші «Закономірності» йдуть першими, коли їх достатньо. Прогноз Open-Meteo.')));
+  });
+}
+
+/** Розгорнутий день: де шукати, чому така оцінка, ваші дані, кнопки. */
+function biteDetail(s, sp, d, sc, rule, mine, md) {
+  const row = Number.isFinite(d.water) ? rule.rows.find(([upto]) => d.water < upto) : null;
+  let lo = row?.[1];
+  let hi = row?.[2];
+  const lines = [];
+  if (md) {
+    const [a, b, l] = DEPTH_BANDS[md.band];
+    lo = a;
+    hi = Number.isFinite(b) ? b : a + 4;
+    lines.push(h('p', {}, h('b', {}, t('Ваші дані: ')), t('{sp} найчастіше брала на {d} ({n} з {all})', { sp, d: t(l), n: fmt.num(md.n), all: fishText(md.total) })));
+  }
+  if (row) lines.push(h('p', {}, h('b', {}, t('Де шукати: ')), t('вода ≈ {w} °C — {where}, {lo}–{hi} м', { w: d.water, where: t(row[3]), lo: fmt.num(row[1]), hi: fmt.num(row[2]) })));
+  if (sc.why.length) lines.push(h('p', { class: 'muted small' }, sc.why.join(' · ')));
+  const band = Number.isFinite(d.dp) ? bandOf(DP_BANDS, d.dp) : -1;
+  const my = mine.find((x) => x.i === band);
+  if (my && my.trips >= 2) lines.push(h('p', { class: 'muted small' }, t('У вас при тиску «{b}»: {n} за виїзд ({trips})', { b: my.label, n: fmt.num(Math.round((my.n / my.trips) * 10) / 10), trips: tripsText(my.trips) })));
+  const water = { lat: Number(s.lat), lon: Number(s.lon) };
+  const onMap = Number.isFinite(lo) && chartsAt(water).some((c) => c.bands?.png);
+  // Глибини на листах — від рівня на 0,7 м нижче звичайного: шукаємо на листі трохи мілкіше
+  const sheetRange = Number.isFinite(lo) ? [Math.max(0, lo - 0.7), hi - 0.7] : null;
+  lines.push(h('div', { class: 'btn-row' },
+    onMap ? btn([icon('depth'), t('Показати {lo}–{hi} м на карті', { lo: fmt.num(lo), hi: fmt.num(hi) })],
+      () => depthView({ title: `${s.name} · ${dayLabel(d.date)}`, center: water, water, park: parkOf(s), catches: spotCatchPoints(s.id), mark: { range: sheetRange } }), 'with-ico') : null,
+    btn(t('+ Виїзд на цей день'), () => tripForm(null, { spotId: s.id, date: d.date }), 'quiet')));
+  return lines;
 }
 
 // ---------- печиво з передбаченням ----------

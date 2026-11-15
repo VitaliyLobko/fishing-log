@@ -61,6 +61,55 @@ export async function waterEstimate({ lat, lon }, date) {
   return Math.max(0, Math.round(sum / wsum));
 }
 
+/**
+ * Прогноз на 16 днів у точці: [{ date, p, dp, t, w, rain, water }] — тиск мм (середній за добу) і його зміна
+ * до попередньої доби, середня температура повітря °C, найсильніший вітер м/с, опади мм, оцінка води °C
+ * (як waterEstimate: середня повітря за 10 днів до дати, свіжі дні важать більше). Один запит: 10 днів назад + 16 уперед.
+ */
+export async function forecastDays({ lat, lon }) {
+  const q = new URLSearchParams({
+    latitude: Number(lat).toFixed(3), longitude: Number(lon).toFixed(3), timezone: 'auto', wind_speed_unit: 'ms',
+    past_days: '10', forecast_days: '16',
+    hourly: 'pressure_msl',
+    daily: 'temperature_2m_mean,wind_speed_10m_max,precipitation_sum',
+  });
+  const x = await getJson(`https://api.open-meteo.com/v1/forecast?${q}`);
+  const days = x.daily?.time ?? [];
+  const pressure = new Map();
+  (x.hourly?.time ?? []).forEach((tm, i) => {
+    const v = x.hourly.pressure_msl[i];
+    if (v === null || v === undefined) return;
+    const d = tm.slice(0, 10);
+    const cur = pressure.get(d) ?? { s: 0, n: 0 };
+    cur.s += v;
+    cur.n += 1;
+    pressure.set(d, cur);
+  });
+  const mm = (d) => { const c = pressure.get(d); return c?.n ? Math.round((c.s / c.n) * HPA_TO_MM) : null; };
+  const air = x.daily.temperature_2m_mean;
+  const out = [];
+  days.forEach((date, i) => {
+    if (i < 10) return;
+    let sum = 0;
+    let wsum = 0;
+    for (let k = Math.max(0, i - 10); k < i; k += 1) {
+      const v = air[k];
+      if (v === null || v === undefined) continue;
+      const w = Math.exp(-(i - 1 - k) / 4);
+      sum += w * v;
+      wsum += w;
+    }
+    const p = mm(date);
+    const prev = mm(days[i - 1]);
+    out.push({
+      date, p, dp: p !== null && prev !== null ? p - prev : null,
+      t: air[i], w: x.daily.wind_speed_10m_max[i], rain: x.daily.precipitation_sum[i],
+      water: wsum ? Math.max(0, Math.round(sum / wsum)) : null,
+    });
+  });
+  return out;
+}
+
 const SYNODIC = 29.530588853;
 // Відомий молодик: 6 січня 2000, 18:14 UTC
 const NEW_MOON = Date.UTC(2000, 0, 6, 18, 14);
