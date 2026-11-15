@@ -2322,7 +2322,7 @@ async function depthAt(ll) {
   return null;
 }
 
-const MARKS = [['', 'Ні'], ['drop', 'Бровки'], ['hole', 'Ями 8+ м']];
+const MARKS = [['', 'Ні'], ['drop', 'Бровки'], ['hole', 'Ями']];
 const DEPTH_RANGE = 'fishing-log:depth-range';
 // Готові підсвітки (blob-адреси): останні MARKS_KEEP, старіші звільняємо — повзунок інакше копичив би їх без кінця
 const marksCache = new Map();
@@ -2330,7 +2330,7 @@ const MARKS_KEEP = 40;
 
 /**
  * Підсвітка листа поверх карти: бровка — верхній край схилу, де за кілька метрів дно йде вниз на 3 м і більше
- * (сам схил біля берегу є майже скрізь, тож позначаємо лише кромку на мілкому боці); ями — від 8 м.
+ * (сам схил біля берегу є майже скрізь, тож позначаємо лише кромку на мілкому боці); ями — глибші за все навколо (pitCells).
  * Повертає картинку розміру маски (розтягується на лист), або null.
  */
 async function markUrl(c, mode, range = null) {
@@ -2357,12 +2357,90 @@ async function markUrl(c, mode, range = null) {
 const BAND_MID = Float32Array.from({ length: DEPTH_BANDS_M.length + 1 }, (_, b) => (b ? bandMid(b) : 0));
 const MARK_RGBA = { hole: [220, 38, 120, 235], range: [34, 197, 94, 150], drop: [245, 158, 11, 235] };
 
+// Яма: кільця навколо клітинки (≈25, 50 і 75 м), по 16 напрямків
+const PIT_RADII = [8, 16, 25];
+const PIT_DIRS = Array.from({ length: 16 }, (_, k) => [Math.cos((k * Math.PI) / 8), Math.sin((k * Math.PI) / 8)]);
+const PIT_RINGS = PIT_RADII.map((r) => PIT_DIRS.map(([c, sn]) => [Math.round(c * r), Math.round(sn * r)]));
+// Пляма менша за 8 клітинок (≈70 м²) — шум маски, а не яма
+const PIT_MIN_CELLS = 8;
+
+/**
+ * Ями: клітинка на 2 м і більше глибша за найглибшу воду на кільці навколо — у всіх напрямках, хоча б на одному з радіусів.
+ * Русло вздовж течії такої ж глибини, тож ямою не стає; яма мілкішає і вгору, і вниз за течією, і до берегів.
+ * Кільце, де води менше 4 точок (вузька протока між берегами), не рахуємо.
+ */
+function pitCells({ w, h, data }) {
+  const on = new Uint8Array(w * h);
+  const rings = PIT_RINGS.map((ring) => ({ ring, delta: Int32Array.from(ring, ([dx, dy]) => dy * w + dx) }));
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = y * w + x;
+      const b = data[i];
+      // Мілкіше 2 м ямою не буває
+      if (b < 3) continue;
+      const d = BAND_MID[b];
+      for (const { ring, delta } of rings) {
+        const r = Math.abs(ring[0][0]);
+        const inside = x >= r && y >= r && x < w - r && y < h - r;
+        let top = 0;
+        let n = 0;
+        for (let k = 0; k < delta.length; k += 1) {
+          if (!inside) {
+            const xx = x + ring[k][0];
+            const yy = y + ring[k][1];
+            if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          }
+          const v = data[i + delta[k]];
+          if (!v) continue;
+          n += 1;
+          if (v > top) top = v;
+        }
+        if (n >= 4 && d - BAND_MID[top] >= 2) {
+          on[i] = 1;
+          break;
+        }
+      }
+    }
+  }
+  return dropSpecks(on, w, h, PIT_MIN_CELLS);
+}
+
+/** Прибрати плями, менші за min клітинок (сусідство по 8 напрямках). */
+function dropSpecks(on, w, h, min) {
+  const seen = new Uint8Array(w * h);
+  const stack = [];
+  const part = [];
+  for (let s = 0; s < on.length; s += 1) {
+    if (!on[s] || seen[s]) continue;
+    seen[s] = 1;
+    stack.push(s);
+    part.length = 0;
+    while (stack.length) {
+      const i = stack.pop();
+      part.push(i);
+      const x = i % w;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const xx = x + dx;
+          const j = i + dy * w + dx;
+          if (xx < 0 || xx >= w || j < 0 || j >= on.length || !on[j] || seen[j]) continue;
+          seen[j] = 1;
+          stack.push(j);
+        }
+      }
+    }
+    if (part.length < min) for (const i of part) on[i] = 0;
+  }
+  return on;
+}
+
 /** Які клітинки маски підсвітити: 1 — так. */
 function markCells({ w, h, data }, mode, range) {
+  if (mode === 'hole') return pitCells({ w, h, data });
   const on = new Uint8Array(w * h);
   if (mode !== 'drop') {
-    // Ями й діапазон залежать лише від смуги легенди — рішення раз на смугу
-    const band = DEPTH_BANDS_M.map(([lo, hi], k) => (mode === 'hole' ? k + 1 >= 8 : Boolean(range) && (hi ?? Infinity) > range[0] && lo < range[1]));
+    // Діапазон залежить лише від смуги легенди — рішення раз на смугу
+    const band = DEPTH_BANDS_M.map(([lo, hi]) => Boolean(range) && (hi ?? Infinity) > range[0] && lo < range[1]);
     for (let i = 0; i < on.length; i += 1) if (data[i] && band[data[i] - 1]) on[i] = 1;
     return on;
   }
