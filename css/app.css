@@ -1520,3 +1520,8 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .gear-checks .row.on .row-title { color: var(--accent-2); }
 .gear-checks .add-more { display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; background: none; color: var(--accent-2); font: inherit; font-weight: 600; cursor: pointer; }
 .blocks-form > .box .chips { margin-bottom: 0; }
+
+/* Наведення мишею: невибрана комірка перемикача чи чип ледь сіріє */
+@media (hover: hover) {
+  .chips button:not(.on):hover { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--text); }
+}
