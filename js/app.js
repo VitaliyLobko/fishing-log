@@ -3933,12 +3933,12 @@ function renderShop() {
 }
 
 function renderSettings() {
-  // Те, по що заходять (копія, синхронізація, категорії), — першим; «Про застосунок» з версією — наприкінці, версія лише там
+  // «Про застосунок» з версією — згори, як у Shooter’s Log; далі те, по що заходять (копія, синхронізація, категорії)
   return h('div', { class: 'settings' },
+    settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [catsRow(), serviceRow(), aiRow()]),
-    settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow(), scenesRow()].filter(Boolean)),
-    settingsGroup(t('Про застосунок'), [aboutPanel()]));
+    settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow(), scenesRow()].filter(Boolean)));
 }
 
 // ---------- навігація ----------
