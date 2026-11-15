@@ -96,7 +96,7 @@ function invalidField(f) {
 }
 
 /** Запис у власну історію: дата й текст. */
-const logged = (rec, text, date = today()) => ({ ...rec, history: [...(rec.history ?? []), { date, text }] });
+const logged = (rec, text, date = today(), extra = {}) => ({ ...rec, history: [...(rec.history ?? []), { date, text, ...extra }] });
 
 
 // ---------- фото ----------
@@ -786,9 +786,50 @@ function serviceSheet(g) {
       if (invalidField(f)) return;
       const v = f.values();
       close();
-      const rec = logged({ ...g, service: [...(g.service ?? []), { id: db.uid(), date: v.date, kind, note: v.note }] },
-        [t('Обслуговано'), t(label(SERVICE_KINDS, kind)), v.note].filter(Boolean).join(': '), v.date);
+      const sv = { id: db.uid(), date: v.date, kind, note: v.note };
+      const rec = logged({ ...g, service: [...(g.service ?? []), sv] }, serviceText(sv), v.date, { serviceId: sv.id });
       await save({ gear: { put: [rec] } }, [g.id]);
+    }, 'primary')],
+  });
+}
+
+const serviceText = (sv) => [t('Обслуговано'), t(label(SERVICE_KINDS, sv.kind)), sv.note].filter(Boolean).join(': ');
+
+/** Обслуговування, якого стосується запис історії: за serviceId, у старих записах — за датою й текстом. */
+function serviceOfEntry(g, e) {
+  const list = g.service ?? [];
+  if (e.serviceId) return list.find((x) => x.id === e.serviceId) ?? null;
+  if (!String(e.text).startsWith(t('Обслуговано'))) return null;
+  return list.find((x) => x.date === e.date && serviceText(x) === e.text) ?? list.find((x) => x.date === e.date) ?? null;
+}
+
+/** Запис історії: правка дати й тексту, «Видалити»; обслуговування — разом із самим обслуговуванням (від нього рахується нагадування). */
+function historySheet(g, i = null) {
+  const e = i === null ? null : g.history[i];
+  const sv = e ? serviceOfEntry(g, e) : null;
+  let kind = sv?.kind ?? 'lube';
+  const c = sv ? chips(SERVICE_KINDS.map(([k, l]) => [k, t(l)]), kind, (v) => { kind = v; }) : null;
+  const f = form(sv
+    ? [{ name: 'date', label: t('Дата'), type: 'dmy', value: sv.date, required: true }, { name: 'note', label: t('Примітка'), value: sv.note, placeholder: t('напр. мастило Shimano, шпуля') }]
+    : [{ name: 'date', label: t('Дата'), type: 'dmy', value: e?.date ?? today(), required: true }, { name: 'text', label: t('Запис'), value: e?.text, required: true, placeholder: t('напр. поміняв ручку') }]);
+  const put = async (history, service = g.service) => {
+    close();
+    await save({ gear: { put: [{ ...g, history, ...(service ? { service } : {}) }] } }, [g.id]);
+  };
+  const close = sheet(sv ? t('Обслуговування') : e ? t('Запис історії') : t('Новий запис'), h('div', {},
+    h('p', { class: 'muted small' }, gearTitle(g)), c, f.el,
+    sv ? h('p', { class: 'muted small' }, t('Від цієї дати рахується нагадування «не обслуговувалась».')) : null), {
+    tools: e ? [toolBtn('delete', t('Видалити'), () => confirmSheet(t('Видалити запис «{text}»?', { text: e.text }),
+      sv ? t('Обслуговування теж видалиться — нагадування рахуватиметься від попереднього.') : t('Скасувати не можна.'), t('Видалити'),
+      () => put(g.history.filter((_, k) => k !== i), sv ? g.service.filter((x) => x.id !== sv.id) : undefined)), 'danger')] : [],
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      const v = f.values();
+      if (sv) {
+        const next = { ...sv, date: v.date, kind, note: v.note };
+        await put(g.history.map((x, k) => (k === i ? { date: v.date, text: serviceText(next), serviceId: sv.id } : x)), g.service.map((x) => (x.id === sv.id ? next : x)));
+      } else if (e) await put(g.history.map((x, k) => (k === i ? { ...x, date: v.date, text: v.text } : x)));
+      else await put([...(g.history ?? []), { date: v.date, text: v.text }]);
     }, 'primary')],
   });
 }
@@ -1612,11 +1653,17 @@ function gearBody(g) {
       [t('Нотатка'), g.note ? h('span', { class: 'pre' }, g.note) : null],
       [t('Характеристики'), g.specs ? h('span', { class: 'pre' }, g.specs) : null],
     ])) : null,
-    g.history?.length ? fold('gear-history', t('Історія'), historyList(g.history)) : null);
+    fold('gear-history', g.history?.length ? `${t('Історія')} · ${fmt.num(g.history.length)}` : t('Історія'), historyList(g)));
 }
 
-function historyList(list) {
-  return h('ul', { class: 'changes' }, [...list].reverse().map((x) => h('li', {}, `${fmt.date(x.date)} — ${x.text}`)));
+/** Історія речі: новіші зверху; тап — правка запису, «+ Запис» — дописати своє. */
+function historyList(g) {
+  const list = (g.history ?? []).map((x, i) => ({ x, i })).sort((a, b) => collate(b.x.date, a.x.date) || b.i - a.i);
+  return h('div', { class: 'history' },
+    list.length ? h('div', { class: 'hist-list' }, list.map(({ x, i }) => h('button', {
+      type: 'button', class: 'hist-item', onclick: () => historySheet(g, i),
+    }, h('span', { class: 'hist-date' }, fmt.date(x.date)), h('span', { class: 'hist-text' }, x.text)))) : null,
+    btn(t('+ Запис'), () => historySheet(g), 'quiet mini'));
 }
 
 /** Та сама річ іншого кольору: копія без фото, історії й кольору. */
