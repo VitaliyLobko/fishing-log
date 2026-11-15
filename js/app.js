@@ -4,13 +4,13 @@ import * as db from './db.js';
 import * as sync from './sync.js';
 import * as bot from './bot.js';
 import * as nfc from './nfc.js';
-import { loadLeaflet, makeMap, pinIcon, UA } from './map.js';
+import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, onSheet } from './map.js';
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
-import { prepare as preparePhoto } from './photos.js';
+import { prepare as preparePhoto, prepareSheet as preparePhotoSheet } from './photos.js';
 import { weatherAt, waterEstimate, moonPhase, compass } from './weather.js';
 import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
 
-let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
+let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], charts: [], photos: [], prefs: [] };
 let tab = 'gear';
 // Звідки відкрили налаштування — туди веде «Назад»
 let backTab = 'gear';
@@ -2065,8 +2065,8 @@ async function mapPicker(start, onDone) {
   hint();
   const el = h('div', { class: 'map-box' });
   let map = null;
-  const layers = chips([['sat', t('Супутник')], ['osm', t('Схема')]], mapLayer(), (v) => { map?.setLayer(v); remember(MAP_LAYER, v); });
-  layers.classList.add('segmented', 'map-layers');
+  const layers = layerChips(() => map);
+  const depth = depthOverlay();
   const put = (kind, at) => {
     pts[kind] = { lat: at.lat, lon: at.lng ?? at.lon };
     const ll = [pts[kind].lat, pts[kind].lon];
@@ -2083,7 +2083,7 @@ async function mapPicker(start, onDone) {
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
-  const close = sheet(t('Водойма на карті'), h('div', { class: 'map-picker' }, modes, tip, el,
+  const close = sheet(t('Водойма на карті'), h('div', { class: 'map-picker' }, modes, tip, el, depth.el,
     h('div', { class: 'map-tools' }, layers, h('div', { class: 'btn-row' }, me, clear))), {
     full: true,
     dirty: false,
@@ -2095,6 +2095,7 @@ async function mapPicker(start, onDone) {
     const c = pts.water ?? pts.park;
     map = makeMap(L, el, c ? { lat: c.lat, lon: c.lon, zoom: 15, layer: mapLayer() } : { lat: UA.lat, lon: UA.lon, zoom: UA.zoom, layer: mapLayer() });
     satControl(L, map);
+    depth.attach(L, map);
     for (const k of ['water', 'park']) if (pts[k]) put(k, pts[k]);
     if (pts.water && pts.park) map.fitBounds([[pts.water.lat, pts.water.lon], [pts.park.lat, pts.park.lon]], { padding: [48, 48], maxZoom: 17 });
     map.on('click', (e) => {
@@ -2151,6 +2152,324 @@ function spotMiniMap(s) {
   const water = hasCoords(s) ? { lat: Number(s.lat), lon: Number(s.lon) } : null;
   const park = parkOf(s);
   return miniMap(water, park, () => window.open(mapUrl(water ?? park), '_blank', 'noopener'), t('Відкрити «{name}» у Google Maps', { name: s.name }));
+}
+
+// ---------- карти глибин ----------
+
+const CHART_OPACITY = 'fishing-log:chart-opacity';
+const chartOpacity = () => {
+  const v = recall(CHART_OPACITY);
+  return v === null || v === '' || !Number.isFinite(Number(v)) ? 0.7 : Number(v);
+};
+const findChart = (id) => state.charts.find((c) => c.id === id) ?? null;
+const pinnedCharts = () => state.charts.filter(sheetPinned);
+/** Прив'язані листи, на які потрапляє точка. */
+const chartsAt = (ll) => pinnedCharts().filter((c) => onSheet(c, sheetGeo(c), ll));
+
+/** Повзунок прозорості листа: 0 — лист сховано. */
+function opacityRange(onChange) {
+  const el = h('input', {
+    type: 'range', min: '0', max: '100', step: '5', value: String(Math.round(chartOpacity() * 100)),
+    'aria-label': t('Прозорість листа глибин'),
+  });
+  el.addEventListener('input', () => {
+    const v = Number(el.value) / 100;
+    remember(CHART_OPACITY, String(v));
+    onChange(v);
+  });
+  return el;
+}
+
+/**
+ * Шар глибин для карти: один лист — той, під яким центр карти (сусідні листи перекриваються полями й легендою).
+ * attach(L, map) — коли карта вже створена; el — рядок із назвою листа й повзунком.
+ */
+function depthOverlay(list = pinnedCharts()) {
+  const sheets = list.map((c) => ({ c, geo: sheetGeo(c) })).filter((x) => x.geo);
+  let cur = null;
+  let layer = null;
+  let url = null;
+  let gen = 0;
+  let opacity = chartOpacity();
+  const name = h('span', { class: 'depth-name' });
+  const range = opacityRange((v) => { opacity = v; layer?.setOpacity(v); });
+  const el = h('div', { class: 'depth-ctl', hidden: !sheets.length }, icon('depth'), name, range);
+  const drop = () => {
+    gen += 1;
+    layer?.remove();
+    layer = null;
+    if (url) URL.revokeObjectURL(url);
+    url = null;
+  };
+  const attach = (L, map) => {
+    if (!sheets.length) return;
+    const pick = () => {
+      const m = map.getCenter();
+      let best = null;
+      let score = Infinity;
+      for (const x of sheets) {
+        const p = x.geo.toPx({ lat: m.lat, lon: m.lng });
+        // Найближчий до середини листа — там, де карта найкраще видна, без полів
+        const d = Math.max(Math.abs(p.x / x.c.w - 0.5), Math.abs(p.y / x.c.h - 0.5));
+        if (d <= 0.5 && d < score) { best = x; score = d; }
+      }
+      return best;
+    };
+    const show = async () => {
+      const want = pick();
+      name.textContent = want ? want.c.name : t('тут листа немає');
+      if (want?.c.id === cur?.c.id) return;
+      drop();
+      cur = want;
+      if (!want) return;
+      const my = gen;
+      const blob = await db.getBlob(want.c.photoId);
+      if (my !== gen) return;
+      // Файл ще не приїхав з Диска — поки мініатюра, розмита, але на своєму місці
+      if (blob) url = URL.createObjectURL(blob);
+      const src = url ?? findPhoto(want.c.photoId)?.thumb;
+      if (src) layer = sheetLayer(L, src, want.c, want.geo).setOpacity(opacity).addTo(map);
+    };
+    map.on('moveend', show);
+    map.on('unload', () => { drop(); cur = null; });
+    show();
+  };
+  return { el, attach };
+}
+
+/** Перемикач підкладки «Супутник / Схема» під картою. */
+function layerChips(getMap) {
+  const el = chips([['sat', t('Супутник')], ['osm', t('Схема')]], mapLayer(), (v) => { getMap()?.setLayer(v); remember(MAP_LAYER, v); });
+  el.classList.add('segmented', 'map-layers');
+  return el;
+}
+
+/** Карта з листом глибин на весь екран: водойма й під'їзд шпильками, лист — під центром карти. */
+async function depthView({ title, center, zoom = 15, water = null, park = null }) {
+  let L;
+  try { L = await loadLeaflet(); } catch { toast(t('Карта не завантажилась — перевірте інтернет')); return; }
+  const el = h('div', { class: 'map-box' });
+  let map = null;
+  const depth = depthOverlay();
+  const me = btn([icon('pin'), t('Я тут')], async () => {
+    const pos = await myPosition();
+    if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
+  }, 'mini');
+  const close = sheet(title, h('div', { class: 'map-picker depth-view' }, el, depth.el,
+    h('div', { class: 'map-tools' }, layerChips(() => map), h('div', { class: 'btn-row' }, me))), {
+    full: true,
+    dirty: false,
+    onClose: () => map?.remove(),
+    actions: [btn(t('Закрити'), () => close())],
+  });
+  requestAnimationFrame(() => {
+    map = makeMap(L, el, { lat: center.lat, lon: center.lon, zoom, layer: mapLayer() });
+    satControl(L, map);
+    if (water) L.marker([water.lat, water.lon], { icon: pinIcon(L, 'water'), interactive: false, keyboard: false }).addTo(map);
+    if (park) L.marker([park.lat, park.lon], { icon: pinIcon(L, 'park'), interactive: false, keyboard: false }).addTo(map);
+    depth.attach(L, map);
+    setTimeout(() => map.invalidateSize(), 250);
+  });
+}
+
+/** «10.gif» → «Лист 10»; інша назва — як є, без розширення. */
+function chartName(file) {
+  const base = file.replace(/\.[^.]+$/, '').trim();
+  return /^\d+$/.test(base) ? t('Лист {n}', { n: base }) : base || t('Лист');
+}
+
+/** Нові листи з файлів: по одному (кожен — кілька мегабайт), щоб не тримати всі в пам'яті разом. */
+async function addCharts(files) {
+  let n = 0;
+  for (const [i, file] of files.entries()) {
+    if (files.length > 1) toast(t('Обробляю листи: {n} з {all}', { n: i + 1, all: files.length }));
+    try {
+      const { blob, thumb, w, h: height } = await preparePhotoSheet(file);
+      const id = db.uid();
+      const photoId = db.uid();
+      await db.write({
+        charts: { put: [{ id, name: chartName(file.name), photoId, w, h: height, pts: [], created: Date.now() }] },
+        photos: { put: [{ id: photoId, owner: id, thumb, created: Date.now() }] },
+        blobs: { put: [{ id: photoId, blob }] },
+      });
+      n += 1;
+    } catch (err) {
+      toast(`${file.name}: ${err.message}`);
+    }
+  }
+  await refresh();
+  if (n) toast(t('Додано листів: {n}. Торкніться листа, щоб прив’язати його до карти', { n: fmt.num(n) }));
+}
+
+function chartRow(c) {
+  return row(c.name, sheetPinned(c) ? t('прив’язано до карти') : t('не прив’язано'),
+    sheetPinned(c) ? icon('depth') : '', () => chartSheet(c.id),
+    { id: c.id, thumb: findPhoto(c.photoId) ? thumbImg(c.photoId) : null, cls: sheetPinned(c) ? 'chart-row pinned' : 'chart-row' });
+}
+
+function chartsRow() {
+  const list = [...state.charts].sort((a, b) => collate(a.name, b.name));
+  const pinned = list.filter(sheetPinned).length;
+  const input = h('input', {
+    type: 'file', accept: 'image/*', multiple: true, hidden: true,
+    onchange: (e) => { const files = [...e.target.files]; e.target.value = ''; if (files.length) addCharts(files); },
+  });
+  return setRow('charts', 'depth', t('Карти глибин'), list.length ? `${fmt.num(pinned)} / ${fmt.num(list.length)}` : '', [
+    h('p', { class: 'muted small' }, t('Скани карт глибин — атлас, лоція. Лист прив’язується двома точками до супутника й лягає шаром на карту водойми. Файли лишаються на пристрої й на вашому Google Диску.')),
+    list.length ? h('div', { class: 'rows' }, list.map(chartRow)) : null,
+    input,
+    h('div', { class: 'btn-row' }, btn([icon('depth'), t('Додати листи')], () => input.click(), 'primary with-ico'))]);
+}
+
+function chartSheet(id) {
+  const c = findChart(id);
+  if (!c) return;
+  const geo = sheetGeo(c);
+  const photo = findPhoto(c.photoId);
+  const f = form([{ name: 'name', label: t('Назва'), value: c.name, required: true }]);
+  const remove = () => confirmSheet(t('Видалити «{name}»?', { name: c.name }), t('Лист зникне з карт і з Диска. Файл-оригінал на телефоні чи комп’ютері лишиться.'), t('Видалити'), async () => {
+    close();
+    await save(joinChanges(dropPhotos([c.photoId]), { charts: { del: [c.id] } }));
+  });
+  const close = sheet(t('Лист глибин'), h('div', { class: 'blocks-form chart-sheet' },
+    photo ? h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Лист на весь екран'), onclick: () => showPhoto(photo.id) },
+      h('img', { class: 'item-photo chart-photo', src: photo.thumb, alt: '' })) : null,
+    f.el,
+    box(t('Прив’язка до карти'), h('div', {},
+      h('p', { class: 'muted small' }, geo
+        ? t('Прив’язано двома точками. Лист повернутий на {d}° від півночі.', { d: fmt.num(Math.round(geo.turn * 10) / 10) })
+        : t('Поставте дві точки на листі й ті самі місця на супутнику — вигин берега, мис, міст. Чим далі одна від одної, тим точніше.')),
+      h('div', { class: 'btn-row' },
+        btn([icon('pin'), geo ? t('Переприв’язати') : t('Прив’язати')], () => { close(); chartPin(c.id); }, geo ? 'with-ico' : 'primary with-ico'),
+        geo ? btn([icon('map'), t('На карті')], () => depthView({ title: c.name, center: geo.center, zoom: 14 }), 'with-ico') : null)))), {
+    tools: [toolBtn('delete', t('Видалити'), remove, 'danger')],
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Зберегти'), async () => {
+      if (invalidField(f)) return;
+      close();
+      await save({ charts: { put: [{ ...findChart(id) ?? c, name: f.values().name }] } }, [c.id]);
+    }, 'primary')],
+  });
+}
+
+/** Номер точки прив'язки — кружечок на листі й на супутнику. */
+const pinNum = (L, n, on) => L.divIcon({ className: `pin-num${on ? ' on' : ''}`, html: `<span>${n}</span>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+
+/**
+ * Прив'язка листа: зверху лист, знизу супутник. Точка 1 і 2 — кожна на листі й на супутнику;
+ * коли обидві пари є — лист одразу лягає на супутник, повзунком видно, чи збігся берег.
+ */
+async function chartPin(id) {
+  const c = findChart(id);
+  if (!c) return;
+  let L;
+  try { L = await loadLeaflet(); } catch { toast(t('Карта не завантажилась — перевірте інтернет')); return; }
+  const blob = await db.getBlob(c.photoId);
+  if (!blob) { toast(t('Лист ще не завантажився з Диска — спробуйте пізніше')); return; }
+  const url = URL.createObjectURL(blob);
+  const hasPx = (p) => Number.isFinite(p.x) && Number.isFinite(p.y);
+  const hasLl = (p) => Number.isFinite(p.lat) && Number.isFinite(p.lon);
+  const pts = [0, 1].map((i) => ({ ...(c.pts?.[i] ?? {}) }));
+  let at = Math.max(0, pts.findIndex((p) => !hasPx(p) || !hasLl(p)));
+  let touched = false;
+  let opacity = chartOpacity();
+  const tip = h('p', { class: 'muted small map-tip' });
+  const warn = h('p', { class: 'small pin-warn', hidden: true });
+  const range = opacityRange((v) => { opacity = v; preview?.setOpacity(v); });
+  const look = h('div', { class: 'depth-ctl', hidden: true }, icon('depth'), h('span', { class: 'depth-name' }, t('Як ліг лист')), range);
+  const seg = chips([['0', t('Точка 1')], ['1', t('Точка 2')]], String(at), (v) => { at = Number(v); paint(); });
+  seg.classList.add('segmented', 'map-modes');
+  const sheetEl = h('div', { class: 'map-box pin-sheet' });
+  const satEl = h('div', { class: 'map-box pin-sat' });
+  let sheetMap = null;
+  let satMap = null;
+  let preview = null;
+  const marks = { sheet: [null, null], sat: [null, null] };
+  const setAt = (i) => {
+    at = i;
+    seg.value = String(i);
+    seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.value === String(i)));
+    paint();
+  };
+  const paint = () => {
+    const p = pts[at];
+    tip.textContent = !hasPx(p) ? t('Точка {n}: торкніться орієнтира на листі — вигин берега, мис, міст', { n: at + 1 })
+      : !hasLl(p) ? t('Точка {n}: тепер те саме місце на супутнику', { n: at + 1 })
+        : t('Точку {n} поставлено — шпильки можна посунути', { n: at + 1 });
+    for (const kind of ['sheet', 'sat']) marks[kind].forEach((m, i) => m?.setIcon(pinNum(L, i + 1, i === at)));
+    const done = pts.every((x) => hasPx(x) && hasLl(x));
+    const near = done && Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) < Math.hypot(c.w, c.h) / 4;
+    warn.hidden = !near;
+    warn.textContent = t('Точки близько одна до одної — краї листа можуть з’їхати. Краще взяти їх у різних кінцях листа.');
+    preview?.remove();
+    preview = null;
+    look.hidden = !done;
+    if (done && satMap) {
+      const geo = sheetGeo({ ...c, pts });
+      if (geo) preview = sheetLayer(L, url, c, geo).setOpacity(opacity).addTo(satMap);
+    }
+  };
+  const put = (kind, i, ll) => {
+    touched = true;
+    const p = pts[i];
+    if (kind === 'sheet') {
+      p.x = Math.min(c.w, Math.max(0, ll.lng));
+      p.y = Math.min(c.h, Math.max(0, -ll.lat));
+    } else {
+      p.lat = ll.lat;
+      p.lon = ll.lng;
+    }
+    const map = kind === 'sheet' ? sheetMap : satMap;
+    const pos = kind === 'sheet' ? [-p.y, p.x] : [p.lat, p.lon];
+    if (!marks[kind][i]) {
+      marks[kind][i] = L.marker(pos, { icon: pinNum(L, i + 1, i === at), draggable: true, keyboard: false })
+        .on('dragend', (e) => put(kind, i, e.target.getLatLng()))
+        .on('click', () => setAt(i))
+        .addTo(map);
+    } else marks[kind][i].setLatLng(pos);
+    // Пара готова, а друга ще ні — одразу до неї
+    const other = 1 - i;
+    if (i === at && hasPx(p) && hasLl(p) && !(hasPx(pts[other]) && hasLl(pts[other]))) setAt(other);
+    else paint();
+  };
+  const close = sheet(t('Прив’язка: {name}', { name: c.name }), h('div', { class: 'map-picker chart-pin' }, seg, tip,
+    h('div', { class: 'pin-maps' }, sheetEl, satEl), warn, look,
+    h('div', { class: 'map-tools' }, layerChips(() => satMap))), {
+    full: true,
+    dirty: () => touched,
+    onClose: () => { sheetMap?.remove(); satMap?.remove(); URL.revokeObjectURL(url); },
+    actions: [btn(t('Скасувати'), () => close()), btn(t('Готово'), async () => {
+      if (!pts.every((x) => hasPx(x) && hasLl(x))) { toast(t('Поставте обидві точки — і на листі, і на супутнику')); return; }
+      const clean = pts.map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, lat: Number(p.lat.toFixed(7)), lon: Number(p.lon.toFixed(7)) }));
+      close();
+      await save({ charts: { put: [{ ...findChart(id) ?? c, pts: clean }] } }, [c.id]);
+      toast(t('Лист прив’язано — він з’явиться на карті водойми'));
+    }, 'primary')],
+  });
+  requestAnimationFrame(() => {
+    const bounds = [[-c.h, 0], [0, c.w]];
+    sheetMap = L.map(sheetEl, { crs: L.CRS.Simple, minZoom: -6, maxZoom: 3, zoomSnap: 0.25, attributionControl: false });
+    L.imageOverlay(url, bounds).addTo(sheetMap);
+    sheetMap.fitBounds(bounds);
+    sheetMap.on('click', (e) => put('sheet', at, e.latlng));
+    // Супутник: де лист уже лежав, інакше біля останнього прив'язаного листа чи першої водойми з координатами
+    const before = sheetGeo(c);
+    const last = [...pinnedCharts()].filter((x) => x.id !== c.id).sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))[0];
+    const spot = state.spots.find(hasCoords);
+    const start = before ? { ...before.center, zoom: 14 } : last ? { ...sheetGeo(last).center, zoom: 13 }
+      : spot ? { lat: Number(spot.lat), lon: Number(spot.lon), zoom: 12 } : UA;
+    satMap = makeMap(L, satEl, { lat: start.lat, lon: start.lon, zoom: start.zoom, layer: mapLayer() });
+    satControl(L, satMap);
+    if (before) satMap.fitBounds([[before.box.south, before.box.west], [before.box.north, before.box.east]]);
+    satMap.on('click', (e) => put('sat', at, e.latlng));
+    const first = at;
+    pts.forEach((p, i) => {
+      if (hasPx(p)) put('sheet', i, L.latLng(-p.y, p.x));
+      if (hasLl(p)) put('sat', i, L.latLng(p.lat, p.lon));
+    });
+    touched = false;
+    setAt(first);
+    setTimeout(() => { sheetMap.invalidateSize(); satMap.invalidateSize(); }, 250);
+  });
 }
 
 /** Згорнутий блок форми карткою: заголовок із підсумком, розгорнули — вміст. */
@@ -2434,6 +2753,7 @@ function spotBody(s) {
     hasPlace(s) ? spotMiniMap(s) : null,
     h('div', { class: 'btn-row spot-acts' },
       hasPlace(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
+      depthBtn(s),
       btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
     meta,
     tiles,
@@ -4063,12 +4383,21 @@ function renderShop() {
     settingsGroup(t('Витрати'), [marnotratRow()]));
 }
 
+/** «Глибини» в картці водойми — лише коли точка води лежить на прив'язаному листі. */
+function depthBtn(s) {
+  if (!hasCoords(s)) return null;
+  const water = { lat: Number(s.lat), lon: Number(s.lon) };
+  if (!chartsAt(water).length) return null;
+  return btn([icon('depth'), t('Глибини')], () => depthView({ title: s.name, center: water, water, park: parkOf(s) }), 'with-ico');
+}
+
 function renderSettings() {
   // «Про застосунок» з версією — згори, як у Shooter’s Log; далі те, по що заходять (копія, синхронізація, категорії)
   return h('div', { class: 'settings' },
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
     settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [catsRow(), serviceRow(), aiRow()]),
+    settingsGroup(t('Водойми'), [chartsRow()]),
     settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow(), scenesRow()].filter(Boolean)));
 }
 

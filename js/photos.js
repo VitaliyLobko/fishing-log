@@ -50,3 +50,26 @@ export async function prepare(file) {
   src.close?.();
   return { blob: await jpeg(full, 0.82), thumb: draw(full, THUMB).toDataURL('image/jpeg', 0.7) };
 }
+
+// Лист карти глибин: цифри промірів дрібні — тримаємо до 3200 пікселів по довшій стороні,
+// але не більше 12 Мп (полотно iOS ламається на ~16,7 Мп) і не більше ~4,5 МБ (одним запитом на Диск — до 5 МБ).
+const SHEET = 3200;
+const SHEET_AREA = 12e6;
+const SHEET_BYTES = 4.5e6;
+
+/** Файл листа → { blob, thumb, w, h } (w, h — розмір збереженої картинки, у ній ставляться точки прив'язки). */
+export async function prepareSheet(file) {
+  let src;
+  try {
+    src = await decode(file);
+  } catch {
+    throw new Error(t('Формат картинки не підтримується'));
+  }
+  const side = Math.max(src.width, src.height);
+  const k = Math.min(1, SHEET / side, Math.sqrt(SHEET_AREA / (src.width * src.height)));
+  const full = draw(src, Math.round(side * k));
+  src.close?.();
+  let blob = await jpeg(full, 0.85);
+  if (blob.size > SHEET_BYTES) blob = await jpeg(full, 0.7);
+  return { blob, thumb: draw(full, THUMB).toDataURL('image/jpeg', 0.7), w: full.width, h: full.height };
+}

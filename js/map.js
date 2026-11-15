@@ -70,3 +70,97 @@ export function pinIcon(L, kind) {
     iconAnchor: [18, 43],
   });
 }
+
+// ---------- листи карти глибин ----------
+// Лист — картинка без координат. Дві пари точок «на листі ↔ на супутнику» задають подібність:
+// масштаб, поворот і зсув у проєкції Меркатора (у ній лежить і сама карта). Атласи креслять за північчю
+// сітки, а не справжньою — поворот на 1–2° дає ~100 м на краю листа, тому його не відкидаємо.
+
+const R = 6378137;
+const merc = ({ lat, lon }) => ({ x: R * lon * Math.PI / 180, y: R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) });
+const unmerc = ({ x, y }) => ({ lat: (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI, lon: x / R * 180 / Math.PI });
+const cmul = (a, b) => ({ x: a.x * b.x - a.y * b.y, y: a.x * b.y + a.y * b.x });
+const cdiv = (a, b) => {
+  const d = b.x * b.x + b.y * b.y;
+  return { x: (a.x * b.x + a.y * b.y) / d, y: (a.y * b.x - a.x * b.y) / d };
+};
+const csub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+const cadd = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+// Пікселі листа: y униз, а в Меркаторі — угору; без перевороту лист ліг би дзеркально
+const flip = ({ x, y }) => ({ x, y: -y });
+
+const pairDone = (p) => p && [p.x, p.y, p.lat, p.lon].every(Number.isFinite);
+
+/** Чи задана прив'язка: дві повні пари, точки на листі не збігаються. */
+export function sheetPinned(c) {
+  const [a, b] = c?.pts ?? [];
+  return Boolean(pairDone(a) && pairDone(b) && Math.hypot(a.x - b.x, a.y - b.y) > 1);
+}
+
+/** Перетворення листа: toLatLng(x, y) з пікселів, toPx({lat, lon}) назад; null — лист не прив'язано. */
+export function sheetGeo(c) {
+  if (!sheetPinned(c)) return null;
+  const [p1, p2] = c.pts;
+  const m1 = merc(p1);
+  const q1 = flip(p1);
+  const a = cdiv(csub(merc(p2), m1), csub(flip(p2), q1));
+  const b = csub(m1, cmul(a, q1));
+  const toLatLng = (x, y) => unmerc(cadd(cmul(a, flip({ x, y })), b));
+  const toPx = (ll) => flip(cdiv(csub(merc(ll), b), a));
+  const corners = [[0, 0], [c.w, 0], [c.w, c.h], [0, c.h]].map(([x, y]) => toLatLng(x, y));
+  const lats = corners.map((p) => p.lat);
+  const lons = corners.map((p) => p.lon);
+  return {
+    toLatLng,
+    toPx,
+    corners,
+    box: { south: Math.min(...lats), north: Math.max(...lats), west: Math.min(...lons), east: Math.max(...lons) },
+    center: toLatLng(c.w / 2, c.h / 2),
+    // Поворот листа відносно півночі, градуси — щоб показати, наскільки лист «косий»
+    turn: Math.atan2(a.y, a.x) * 180 / Math.PI,
+  };
+}
+
+/** Чи лежить точка на листі (у межах картинки). */
+export function onSheet(c, geo, ll) {
+  const p = geo.toPx(ll);
+  return p.x >= 0 && p.y >= 0 && p.x <= c.w && p.y <= c.h;
+}
+
+/**
+ * Шар Leaflet: картинка листа, розтягнута й повернута матрицею CSS за трьома кутами.
+ * ImageOverlay так не вміє — він лише прямокутник «північ угорі».
+ */
+export function sheetLayer(L, url, c, geo) {
+  const ll = [[0, 0], [c.w, 0], [0, c.h]].map(([x, y]) => {
+    const p = geo.toLatLng(x, y);
+    return L.latLng(p.lat, p.lon);
+  });
+  const Layer = L.Layer.extend({
+    onAdd(map) {
+      this._img = L.DomUtil.create('img', `leaflet-image-layer depth-sheet ${map._zoomAnimated ? 'leaflet-zoom-animated' : 'leaflet-zoom-hide'}`);
+      Object.assign(this._img, { src: url, alt: '', draggable: false });
+      Object.assign(this._img.style, { width: `${c.w}px`, height: `${c.h}px`, opacity: this._opacity ?? 0.7 });
+      map.getPanes().overlayPane.append(this._img);
+      this._reset();
+    },
+    onRemove() { this._img.remove(); },
+    getEvents() {
+      const ev = { zoom: this._reset, viewreset: this._reset };
+      if (this._map._zoomAnimated) ev.zoomanim = this._anim;
+      return ev;
+    },
+    setOpacity(v) {
+      this._opacity = v;
+      if (this._img) this._img.style.opacity = v;
+      return this;
+    },
+    _place([tl, tr, bl]) {
+      const m = [(tr.x - tl.x) / c.w, (tr.y - tl.y) / c.w, (bl.x - tl.x) / c.h, (bl.y - tl.y) / c.h, tl.x, tl.y];
+      this._img.style.transform = `matrix(${m.join(',')})`;
+    },
+    _reset() { this._place(ll.map((p) => this._map.latLngToLayerPoint(p))); },
+    _anim(e) { this._place(ll.map((p) => this._map._latLngToNewLayerPoint(p, e.zoom, e.center))); },
+  });
+  return new Layer();
+}
