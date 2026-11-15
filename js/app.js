@@ -2018,16 +2018,12 @@ async function mapPicker(start, onDone) {
     } else markers[kind].setLatLng(ll);
     hint();
   };
-  const gsat = btn([icon('globe'), t('Google супутник')], () => {
-    const c = map?.getCenter();
-    if (c) openUrl(satUrl({ lat: c.lat, lon: c.lng }, map.getZoom()));
-  }, 'mini');
   const me = btn([icon('pin'), t('Я тут')], async () => {
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
   const close = sheet(t('Водойма на карті'), h('div', { class: 'map-picker' }, modes, tip, el,
-    h('div', { class: 'map-tools' }, layers, h('div', { class: 'btn-row' }, me, gsat, clear))), {
+    h('div', { class: 'map-tools' }, layers, h('div', { class: 'btn-row' }, me, clear))), {
     full: true,
     dirty: false,
     onClose: () => map?.remove(),
@@ -2037,6 +2033,7 @@ async function mapPicker(start, onDone) {
   requestAnimationFrame(() => {
     const c = pts.water ?? pts.park;
     map = makeMap(L, el, c ? { lat: c.lat, lon: c.lon, zoom: 15, layer: mapLayer() } : { lat: UA.lat, lon: UA.lon, zoom: UA.zoom, layer: mapLayer() });
+    satControl(L, map);
     for (const k of ['water', 'park']) if (pts[k]) put(k, pts[k]);
     if (pts.water && pts.park) map.fitBounds([[pts.water.lat, pts.water.lon], [pts.park.lat, pts.park.lon]], { padding: [48, 48], maxZoom: 17 });
     map.on('click', (e) => {
@@ -2046,6 +2043,30 @@ async function mapPicker(start, onDone) {
     });
     setTimeout(() => map.invalidateSize(), 250);
   });
+}
+
+/** Значок супутника в кутку карти: ця ж ділянка й зум у Google Maps супутником (там знімки новіші, ніж у Esri). */
+function satControl(L, map) {
+  const Ctl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const bar = L.DomUtil.create('div', 'leaflet-bar sat-ctl');
+      const a = L.DomUtil.create('a', '', bar);
+      a.href = '#';
+      a.role = 'button';
+      a.title = t('Google супутник');
+      a.setAttribute('aria-label', t('Відкрити цю ділянку в Google Maps супутником'));
+      a.append(icon('satellite'));
+      L.DomEvent.disableClickPropagation(bar);
+      L.DomEvent.on(a, 'click', (e) => {
+        L.DomEvent.preventDefault(e);
+        const c = map.getCenter();
+        openUrl(satUrl({ lat: c.lat, lon: c.lng }, map.getZoom()));
+      });
+      return bar;
+    },
+  });
+  new Ctl().addTo(map);
 }
 
 /** Мала карта з точками води й під'їзду, без керування; onclick — що робить торкання. */
@@ -2318,8 +2339,7 @@ function spotBody(s) {
     hasPlace(s) ? spotMiniMap(s) : null,
     h('div', { class: 'btn-row spot-acts' },
       hasPlace(s) ? btn([icon('route'), t('Маршрут')], () => open(routeUrl(s)), 'primary') : null,
-      btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null })),
-      hasPlace(s) ? btn([icon('globe'), t('Google супутник')], () => open(satUrl(hasCoords(s) ? { lat: s.lat, lon: s.lon } : parkOf(s)))) : null),
+      btn(t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null }))),
     meta,
     tiles,
     caught.length || unseen.length ? speciesBox(caught, unseen) : null,
@@ -4078,7 +4098,7 @@ function rowMenu(el) {
       ['edit', t('Змінити'), () => spotForm(s)],
       ['fish', t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null })],
       hasPlace(s) ? ['route', t('Маршрут'), () => openUrl(routeUrl(s))] : null,
-      hasPlace(s) ? ['globe', t('Google супутник'), () => openUrl(satUrl(hasCoords(s) ? { lat: s.lat, lon: s.lon } : parkOf(s)))] : null,
+      hasPlace(s) ? ['satellite', t('Google супутник'), () => openUrl(satUrl(hasCoords(s) ? { lat: s.lat, lon: s.lon } : parkOf(s)))] : null,
       ['delete', t('Видалити'), () => removeSpot(s), 'danger'],
     ];
   }
