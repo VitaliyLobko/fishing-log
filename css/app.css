@@ -1591,3 +1591,8 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .link-box > legend .ico { display: grid; color: var(--accent); }
 .link-box > legend .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .link-box .link-fill { margin: 4px 0 0; padding: 0; border: 0; background: none; }
+
+/* Підказка температури води: оцінка за повітрям, тап — підставити в поле */
+.water-hint { grid-column: 1 / -1; justify-self: start; min-height: 36px; margin-top: -4px; padding: 6px 12px; border: 1px dashed color-mix(in srgb, var(--accent-2) 55%, var(--line));
+  border-radius: 18px; background: none; color: var(--accent-2); font: inherit; font-size: 14px; cursor: pointer; }
+.water-hint[hidden] { display: none; }

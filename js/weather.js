@@ -35,6 +35,32 @@ export async function weatherAt({ lat, lon }, date, hour = 8) {
   };
 }
 
+/**
+ * Оцінка температури води (°C) у річці чи ставку: середня температура повітря за 10 днів до дати,
+ * свіжі дні важать більше (вода відстає від повітря на кілька днів). Похибка ±2–3 °C — це підказка, не замір.
+ */
+export async function waterEstimate({ lat, lon }, date) {
+  const from = day(date, -10);
+  const to = day(date, -1);
+  const old = (Date.now() - Date.parse(`${to}T00:00:00Z`)) / 864e5 > 60;
+  const q = new URLSearchParams({
+    latitude: Number(lat).toFixed(3), longitude: Number(lon).toFixed(3), timezone: 'auto',
+    start_date: from, end_date: to, daily: 'temperature_2m_mean',
+  });
+  const vals = (await getJson(`https://${old ? 'archive-api' : 'api'}.open-meteo.com/v1/${old ? 'archive' : 'forecast'}?${q}`)).daily?.temperature_2m_mean ?? [];
+  let sum = 0;
+  let wsum = 0;
+  vals.forEach((v, i) => {
+    if (v === null || v === undefined) return;
+    const w = Math.exp(-(vals.length - 1 - i) / 4);
+    sum += w * v;
+    wsum += w;
+  });
+  if (!wsum) throw new Error('no data');
+  // Під кригою вода не холодніша за нуль
+  return Math.max(0, Math.round(sum / wsum));
+}
+
 const SYNODIC = 29.530588853;
 // Відомий молодик: 6 січня 2000, 18:14 UTC
 const NEW_MOON = Date.UTC(2000, 0, 6, 18, 14);

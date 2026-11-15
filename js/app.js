@@ -7,7 +7,7 @@ import * as nfc from './nfc.js';
 import { loadLeaflet, makeMap, pinIcon, UA } from './map.js';
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
-import { weatherAt, moonPhase, compass } from './weather.js';
+import { weatherAt, waterEstimate, moonPhase, compass } from './weather.js';
 import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
@@ -2608,6 +2608,14 @@ function rodFits(g, kinds) {
   return kinds.some((k) => KIND_RODS[k]?.includes(g.rodType));
 }
 
+/** Оцінка води з кешем: та сама водойма й дата — без повторного запиту. */
+const waterCache = new Map();
+function waterGuess(s, date) {
+  const key = `${Number(s.lat).toFixed(3)},${Number(s.lon).toFixed(3)},${date}`;
+  if (!waterCache.has(key)) waterCache.set(key, waterEstimate({ lat: s.lat, lon: s.lon }, date).catch((e) => { waterCache.delete(key); throw e; }));
+  return waterCache.get(key);
+}
+
 /** preset — для нового виїзду, напр. вудилища зі збору. */
 function tripForm(tr = null, preset = {}) {
   const byDate = [...state.trips].sort((a, b) => collate(b.date, a.date));
@@ -2667,7 +2675,35 @@ function tripForm(tr = null, preset = {}) {
   const used = gearChecks(rods, tr?.gearIds ?? preset.gearIds ?? [], recentRods, t('Вудилище'), t('Чим ловив'), (g) => rodFits(g, kinds.value()));
   kinds.el.addEventListener('click', () => requestAnimationFrame(used.refresh));
   // Вода — про водойму в цей день, тому одразу під нею; «Інші витрати» — окремо, перед нотаткою
-  const waterRow = h('div', { class: 'form' }, field('waterT'));
+  const waterHint = h('button', { type: 'button', class: 'water-hint', hidden: true });
+  let estimate = null;
+  let ask = 0;
+  const paintWater = async () => {
+    const s = findSpot(f.inputs.spotId.value);
+    const date = when.values().date;
+    const mine = ++ask;
+    estimate = null;
+    waterHint.hidden = true;
+    if (!hasCoords(s) || !date) return;
+    try {
+      const n = await waterGuess(s, date);
+      if (mine !== ask) return;
+      estimate = n;
+      waterHint.textContent = t('≈ {n} °C — оцінка за повітрям, підставити', { n: fmt.num(n) });
+      waterHint.hidden = f.inputs.waterT.value !== '';
+    } catch { /* без мережі чи даних — підказки немає */ }
+  };
+  waterHint.addEventListener('click', () => {
+    if (estimate === null) return;
+    f.inputs.waterT.value = String(estimate);
+    f.inputs.waterT.dispatchEvent(new Event('input', { bubbles: true }));
+    waterHint.hidden = true;
+  });
+  f.inputs.waterT.addEventListener('input', () => { waterHint.hidden = estimate === null || f.inputs.waterT.value !== ''; });
+  f.inputs.spotId.addEventListener('change', paintWater);
+  when.inputs.date.addEventListener('change', paintWater);
+  paintWater();
+  const waterRow = h('div', { class: 'form' }, field('waterT'), waterHint);
   const costRow = h('div', { class: 'form' }, field('cost'));
   const close = sheet(tr ? t('Змінити виїзд') : t('Новий виїзд'), h('div', { class: 'blocks-form' },
     when.el, moreDays, multi, spotRow, waterRow,
