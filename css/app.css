@@ -1638,9 +1638,12 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .patterns .bars { margin-bottom: 8px; }
 
 /* Підсвітка бровок і ям у «Глибинах»; глибина з листа під полем */
-.depth-marks-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.depth-marks-row .field-label { margin: 0; flex: none; }
-.depth-marks-row .depth-marks { flex: 1; margin: 0; }
+.depth-marks-row { display: grid; gap: 6px; margin-top: 8px; }
+.depth-marks-row .field-label { margin: 0; }
+.depth-marks-row .depth-marks { margin: 0; }
+.depth-range { display: flex; align-items: center; gap: 8px; }
+.depth-range[hidden] { display: none; }
+.depth-range .range-in { width: 72px; text-align: center; }
 .from-sheet { display: block; margin-top: 4px; }
 
 /* Куди й коли: дні з оцінкою клювання, розгорнутий день — поради */

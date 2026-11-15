@@ -2198,13 +2198,17 @@ function depthOverlay(list = pinnedCharts()) {
   let mark = null;
   let L = null;
   let mapRef = null;
+  // Кожне перемальовування скасовує попереднє: інакше швидке введення глибин наклало б кілька шарів
+  let markGen = 0;
   const paintMark = async () => {
+    markGen += 1;
+    const myMark = markGen;
     mark?.remove();
     mark = null;
     if (!cur || !mode || !L) return;
     const my = gen;
     const url = await markUrl(cur.c, mode, wantRange);
-    if (my !== gen || !url) return;
+    if (my !== gen || myMark !== markGen || !url) return;
     mark = sheetLayer(L, url, cur.c, cur.geo).setOpacity(1).addTo(mapRef);
   };
   const drop = () => {
@@ -2316,7 +2320,8 @@ async function depthAt(ll) {
   return null;
 }
 
-const MARKS = [['', 'Ні'], ['drop', 'Бровки'], ['hole', 'Ями від 8 м']];
+const MARKS = [['', 'Ні'], ['drop', 'Бровки'], ['hole', 'Ями 8+ м']];
+const DEPTH_RANGE = 'fishing-log:depth-range';
 const marksCache = new Map();
 
 /**
@@ -2483,14 +2488,36 @@ async function depthView({ title, center, zoom = 15, water = null, park = null, 
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
-  // З «Куди й коли» — ще й чип з потрібними глибинами, увімкнений одразу
-  const opts = mark?.range ? [...MARKS, ['range', t('{lo}–{hi} м', { lo: fmt.num(Math.round(mark.range[0] * 10) / 10), hi: fmt.num(Math.round(mark.range[1] * 10) / 10) })]] : MARKS;
-  if (mark?.range) depth.setRange(mark.range);
-  const marks = depth.hasBands ? chips(opts.map(([k, l]) => [k, t(l)]), mark?.range ? 'range' : '', (v) => depth.setMark(v)) : null;
+  // «Глибини» — свій діапазон «від … до … м» (як на легенді листа); з «Куди й коли» — уже заповнений і ввімкнений.
+  // Свій діапазон пам'ятаємо до наступного разу
+  let saved = null;
+  try { const v = JSON.parse(recall(DEPTH_RANGE) ?? 'null'); if (Array.isArray(v) && v.length === 2 && v.every(Number.isFinite)) saved = v; } catch { /* немає збереженого */ }
+  const start = mark?.range ? mark.range.map((x) => Math.round(x * 10) / 10) : saved ?? [3, 6];
+  const numIn = (v, label) => Object.assign(h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'range-in', 'aria-label': label }), { value: String(v).replace('.', ',') });
+  const fromIn = numIn(start[0], t('Глибина від, м'));
+  const toIn = numIn(start[1], t('Глибина до, м'));
+  const rangeRow = h('div', { class: 'depth-range', hidden: !mark?.range }, h('span', {}, t('від')), fromIn, h('span', {}, t('до')), toIn, h('span', {}, t('м')));
+  const readIn = (i) => (i.value.trim() === '' ? NaN : Number(i.value.replace(',', '.')));
+  const applyRange = () => {
+    const a = readIn(fromIn);
+    const b = readIn(toIn);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return;
+    const r = [Math.min(a, b), Math.max(a, b)];
+    remember(DEPTH_RANGE, JSON.stringify(r));
+    depth.setRange(r);
+    depth.setMark('range');
+  };
+  fromIn.addEventListener('input', applyRange);
+  toIn.addEventListener('input', applyRange);
+  depth.setRange(start);
+  const marks = depth.hasBands ? chips([...MARKS, ['range', 'Глибини']].map(([k, l]) => [k, t(l)]), mark?.range ? 'range' : '', (v) => {
+    rangeRow.hidden = v !== 'range';
+    depth.setMark(v);
+  }) : null;
   if (mark?.range) depth.setMark('range');
   marks?.classList.add('segmented', 'depth-marks');
   const close = sheet(title, h('div', { class: 'map-picker depth-view' }, el, depth.el,
-    marks ? h('div', { class: 'depth-marks-row' }, h('span', { class: 'field-label' }, t('Підсвітити')), marks) : null,
+    marks ? h('div', { class: 'depth-marks-row' }, h('span', { class: 'field-label' }, t('Підсвітити')), marks, rangeRow) : null,
     h('div', { class: 'map-tools' }, layerChips(() => map), h('div', { class: 'btn-row' }, me))), {
     full: true,
     dirty: false,
