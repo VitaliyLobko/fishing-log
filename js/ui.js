@@ -962,7 +962,7 @@ export function starIcon(label) {
 
 /** Іконка з набору TOOL_ICON — для своїх кнопок. */
 export function icon(name) {
-  const el = h('span', { class: 'ico', 'aria-hidden': 'true' });
+  const el = h('span', { class: `ico ico-${name}`, 'aria-hidden': 'true' });
   el.innerHTML = `<svg viewBox="0 0 24 24">${TOOL_ICON[name]}</svg>`;
   return el;
 }
