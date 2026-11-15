@@ -2194,14 +2194,31 @@ function depthOverlay(list = pinnedCharts()) {
   const name = h('span', { class: 'depth-name' });
   const range = opacityRange((v) => { opacity = v; layer?.setOpacity(v); });
   const el = h('div', { class: 'depth-ctl', hidden: !sheets.length }, icon('depth'), name, range);
+  let mode = '';
+  let mark = null;
+  let L = null;
+  let mapRef = null;
+  const paintMark = async () => {
+    mark?.remove();
+    mark = null;
+    if (!cur || !mode || !L) return;
+    const my = gen;
+    const url = await markUrl(cur.c, mode);
+    if (my !== gen || !url) return;
+    mark = sheetLayer(L, url, cur.c, cur.geo).setOpacity(1).addTo(mapRef);
+  };
   const drop = () => {
     gen += 1;
+    mark?.remove();
+    mark = null;
     layer?.remove();
     layer = null;
     if (url) URL.revokeObjectURL(url);
     url = null;
   };
-  const attach = (L, map) => {
+  const attach = (Lf, map) => {
+    L = Lf;
+    mapRef = map;
     if (!sheets.length) return;
     const pick = () => {
       const m = map.getCenter();
@@ -2229,12 +2246,125 @@ function depthOverlay(list = pinnedCharts()) {
       if (blob) url = URL.createObjectURL(blob);
       const src = url ?? findPhoto(want.c.photoId)?.thumb;
       if (src) layer = sheetLayer(L, src, want.c, want.geo).setOpacity(opacity).addTo(map);
+      paintMark();
     };
     map.on('moveend', show);
     map.on('unload', () => { drop(); cur = null; });
     show();
   };
-  return { el, attach };
+  /** Підсвітка: '' — немає, 'drop' — бровки, 'hole' — ями. */
+  const setMark = (v) => { mode = v; paintMark(); };
+  const hasBands = sheets.some((x) => x.c.bands?.png);
+  return { el, attach, setMark, hasBands };
+}
+
+// ---------- глибини з листа ----------
+// Маска листа: клітинка ≈ 3 м, значення = номер діапазону легенди × 20 (0 — не вода). Множник — щоб дрібна
+// корекція кольору при розпакуванні PNG не зсунула діапазон.
+const DEPTH_BANDS_M = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 8], [8, 10], [10, 12], [12, null]];
+const bandLabel = (b) => { const [lo, hi] = DEPTH_BANDS_M[b - 1]; return hi === null ? t('понад {n} м', { n: lo }) : lo === 0 ? t('до 1 м') : `${lo}–${hi} ${t('м')}`; };
+const bandMid = (b) => { const [lo, hi] = DEPTH_BANDS_M[b - 1]; return hi === null ? lo : (lo + hi) / 2; };
+const bandsCache = new Map();
+
+/** Маска глибин листа: { w, h, data } (data[i] — діапазон 1..10, 0 — не вода); null — маски немає. */
+function chartBands(c) {
+  if (!c?.bands?.png) return Promise.resolve(null);
+  const key = `${c.id}:${c.bands.png.length}:${c.bands.png.slice(-24)}`;
+  if (!bandsCache.has(key)) {
+    bandsCache.set(key, new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const cv = Object.assign(document.createElement('canvas'), { width: img.naturalWidth, height: img.naturalHeight });
+        const x = cv.getContext('2d', { willReadFrequently: true });
+        x.drawImage(img, 0, 0);
+        const px = x.getImageData(0, 0, cv.width, cv.height).data;
+        const data = new Uint8Array(cv.width * cv.height);
+        for (let i = 0; i < data.length; i += 1) data[i] = Math.min(10, Math.round(px[i * 4] / 20));
+        resolve({ w: cv.width, h: cv.height, data });
+      };
+      img.onerror = () => resolve(null);
+      img.src = c.bands.png;
+    }));
+  }
+  return bandsCache.get(key);
+}
+
+/** Діапазон глибини з листа в точці: { band, label, mid } або null. Біля берега (там маска обрізана) — найближча вода в межах ~10 м. */
+async function depthAt(ll) {
+  for (const c of chartsAt(ll)) {
+    const m = await chartBands(c);
+    if (!m) continue;
+    const p = sheetGeo(c).toPx(ll);
+    const cx = Math.floor((p.x / c.w) * m.w);
+    const cy = Math.floor((p.y / c.h) * m.h);
+    let best = null;
+    for (let r = 0; r <= 3 && !best; r += 1) {
+      for (let dy = -r; dy <= r; dy += 1) {
+        for (let dx = -r; dx <= r; dx += 1) {
+          const x = cx + dx;
+          const y = cy + dy;
+          if (x < 0 || y < 0 || x >= m.w || y >= m.h) continue;
+          const b = m.data[y * m.w + x];
+          if (b && (!best || Math.hypot(dx, dy) < best.d)) best = { b, d: Math.hypot(dx, dy) };
+        }
+      }
+    }
+    if (best) return { band: best.b, label: bandLabel(best.b), mid: bandMid(best.b) };
+  }
+  return null;
+}
+
+const MARKS = [['', 'Ні'], ['drop', 'Бровки'], ['hole', 'Ями від 8 м']];
+const marksCache = new Map();
+
+/**
+ * Підсвітка листа поверх карти: бровка — верхній край схилу, де за кілька метрів дно йде вниз на 3 м і більше
+ * (сам схил біля берегу є майже скрізь, тож позначаємо лише кромку на мілкому боці); ями — від 8 м.
+ * Повертає картинку розміру маски (розтягується на лист), або null.
+ */
+async function markUrl(c, mode) {
+  const m = await chartBands(c);
+  if (!m || !mode) return null;
+  const key = `${c.id}:${mode}:${c.bands.png.length}`;
+  if (marksCache.has(key)) return marksCache.get(key);
+  const { w, h, data } = m;
+  const out = new ImageData(w, h);
+  const R = 2;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const b = data[y * w + x];
+      if (!b) continue;
+      let on = false;
+      if (mode === 'hole') on = b >= 8;
+      else {
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let dy = -R; dy <= R; dy += 1) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= h) continue;
+          for (let dx = -R; dx <= R; dx += 1) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= w) continue;
+            const v = data[yy * w + xx];
+            if (!v) continue;
+            const d = bandMid(v);
+            if (d < lo) lo = d;
+            if (d > hi) hi = d;
+          }
+        }
+        on = hi - lo >= 3 && bandMid(b) - lo <= 1;
+      }
+      if (!on) continue;
+      const i = (y * w + x) * 4;
+      if (mode === 'hole') { out.data[i] = 220; out.data[i + 1] = 38; out.data[i + 2] = 120; } else { out.data[i] = 245; out.data[i + 1] = 158; out.data[i + 2] = 11; }
+      out.data[i + 3] = 235;
+    }
+  }
+  const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  cv.getContext('2d').putImageData(out, 0, 0);
+  const url = cv.toDataURL('image/png');
+  marksCache.set(key, url);
+  return url;
 }
 
 /** Перемикач підкладки «Супутник / Схема» під картою. */
@@ -2280,13 +2410,28 @@ async function catchPointPicker({ at, depth, center, others = [] }, onDone) {
   const dep = depthOverlay();
   const depthIn = h('input', { type: 'text', inputmode: 'decimal', name: 'catch-depth', autocomplete: 'off', placeholder: '3,5' });
   depthIn.value = depth ?? '';
-  const clear = btn(t('Прибрати точку'), () => { marker?.remove(); marker = null; point = null; clear.hidden = true; }, 'quiet mini');
+  const clear = btn(t('Прибрати точку'), () => { marker?.remove(); marker = null; point = null; clear.hidden = true; fromSheet.textContent = ''; }, 'quiet mini');
   clear.hidden = !point;
+  // Глибина з листа: порожнє поле (чи підставлене раніше з листа) заповнюється серединою діапазону; вписане руками не чіпаємо
+  const fromSheet = h('small', { class: 'muted from-sheet' });
+  let auto = false;
+  depthIn.addEventListener('input', () => { auto = false; });
+  const readSheet = async () => {
+    const at = point;
+    const d = at ? await depthAt(at) : null;
+    if (at !== point) return;
+    fromSheet.textContent = d ? t('З листа: {d}', { d: d.label }) : '';
+    if (d && (auto || depthIn.value.trim() === '')) {
+      depthIn.value = String(d.mid).replace('.', ',');
+      auto = true;
+    }
+  };
   const put = (ll) => {
     point = { lat: ll.lat, lon: ll.lng ?? ll.lon };
+    readSheet();
     if (!marker) {
       marker = L.marker([point.lat, point.lon], { icon: pinIcon(L, 'fish'), draggable: true, keyboard: false })
-        .on('dragend', (e) => { const p = e.target.getLatLng(); point = { lat: p.lat, lon: p.lng }; })
+        .on('dragend', (e) => { const p = e.target.getLatLng(); point = { lat: p.lat, lon: p.lng }; readSheet(); })
         .addTo(map);
     } else marker.setLatLng([point.lat, point.lon]);
     clear.hidden = false;
@@ -2297,7 +2442,7 @@ async function catchPointPicker({ at, depth, center, others = [] }, onDone) {
   }, 'mini');
   const close = sheet(t('Де впіймав'), h('div', { class: 'map-picker' },
     h('p', { class: 'muted small map-tip' }, t('Торкніться місця, де впіймали. Глибину прочитайте з листа')), el, dep.el,
-    h('label', { class: 'field catch-depth' }, h('span', { class: 'field-label' }, t('Глибина тут, м')), depthIn),
+    h('label', { class: 'field catch-depth' }, h('span', { class: 'field-label' }, t('Глибина тут, м')), depthIn, fromSheet),
     h('div', { class: 'map-tools' }, layerChips(() => map), h('div', { class: 'btn-row' }, me, clear))), {
     full: true,
     dirty: false,
@@ -2332,7 +2477,10 @@ async function depthView({ title, center, zoom = 15, water = null, park = null, 
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
+  const marks = depth.hasBands ? chips(MARKS.map(([k, l]) => [k, t(l)]), '', (v) => depth.setMark(v)) : null;
+  marks?.classList.add('segmented', 'depth-marks');
   const close = sheet(title, h('div', { class: 'map-picker depth-view' }, el, depth.el,
+    marks ? h('div', { class: 'depth-marks-row' }, h('span', { class: 'field-label' }, t('Підсвітити')), marks) : null,
     h('div', { class: 'map-tools' }, layerChips(() => map), h('div', { class: 'btn-row' }, me))), {
     full: true,
     dirty: false,
@@ -2367,13 +2515,22 @@ async function readPins(file) {
   const data = JSON.parse(await file.text());
   const sheets = data?.sheets && typeof data.sheets === 'object' ? data.sheets : null;
   if (!sheets) throw new Error(t('Це не файл прив’язок листів'));
+  // Файл глибин: { app: 'fishing-log-depth', sheets: { "13": { w, h, png } } } — маска діапазонів легенди
+  if (data.app === 'fishing-log-depth') {
+    const depth = new Map(Object.entries(sheets)
+      .filter(([, v]) => typeof v?.png === 'string' && v.png.startsWith('data:image/png;base64,') && v.png.length < 600000
+        && Number.isInteger(v.w) && Number.isInteger(v.h))
+      .map(([k, v]) => [String(k), { png: v.png, w: v.w, h: v.h }]));
+    return { pins: new Map(), depth };
+  }
   const ok = (p) => [p?.fx, p?.fy, p?.lat, p?.lon].every((v) => Number.isFinite(Number(v)));
-  return new Map(Object.entries(sheets)
+  const pins = new Map(Object.entries(sheets)
     .filter(([, v]) => Array.isArray(v?.pts) && v.pts.length >= 2 && v.pts.slice(0, 2).every(ok))
     .map(([k, v]) => [String(k), {
       pts: v.pts.slice(0, 2).map((p) => ({ fx: Number(p.fx), fy: Number(p.fy), lat: Number(p.lat), lon: Number(p.lon) })),
       group: typeof v.group === 'string' ? v.group.trim().slice(0, 60) : '',
     }]));
+  return { pins, depth: new Map() };
 }
 
 const pinsFor = (pin, w, h) => pin?.pts.map((p) => ({ x: Math.round(p.fx * w * 10) / 10, y: Math.round(p.fy * h * 10) / 10, lat: p.lat, lon: p.lon })) ?? [];
@@ -2386,9 +2543,12 @@ const pinsFor = (pin, w, h) => pin?.pts.map((p) => ({ x: Math.round(p.fx * w * 1
 async function addCharts(files) {
   const images = files.filter((f) => !/\.json$/i.test(f.name) && f.type !== 'application/json');
   let pins = new Map();
+  let depth = new Map();
   for (const f of files.filter((x) => !images.includes(x))) {
     try {
-      pins = new Map([...pins, ...await readPins(f)]);
+      const got = await readPins(f);
+      pins = new Map([...pins, ...got.pins]);
+      depth = new Map([...depth, ...got.depth]);
     } catch (err) {
       toast(`${f.name}: ${err instanceof SyntaxError ? t('файл пошкоджено') : err.message}`);
     }
@@ -2437,12 +2597,25 @@ async function addCharts(files) {
   if (late.length) await db.write({ charts: { put: late } });
   pinned += latePins;
   await refresh();
+  // Глибини — і новим листам, і тим, що були (новіший файл замінює маску)
+  let deep = 0;
+  if (depth.size) {
+    const put = [];
+    for (const [base, d] of depth) {
+      const c = existing(base);
+      if (c && c.bands?.png !== d.png) put.push({ ...c, file: c.file ?? base, bands: d });
+    }
+    if (put.length) { await db.write({ charts: { put } }); await refresh(); }
+    deep = put.length;
+  }
   const parts = [
     added ? t('додано листів: {n}', { n: fmt.num(added) }) : null,
     pinned ? t('прив’язано: {n}', { n: fmt.num(pinned) }) : null,
+    deep ? t('глибини: {n}', { n: fmt.num(deep) }) : null,
     skipped ? t('вже були: {n}', { n: fmt.num(skipped) }) : null,
   ].filter(Boolean);
   if (parts.length) toast(`${parts.join(', ')}${pinned < added ? `. ${t('Решту прив’яжіть, торкнувшись листа')}` : ''}`);
+  else if (depth.size) toast(t('Нічого не змінилось: глибини цих листів уже є або листів ще немає'));
   else if (pins.size) toast(t('Нічого не змінилось: ці листи вже прив’язані'));
 }
 
