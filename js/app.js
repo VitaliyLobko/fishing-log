@@ -804,7 +804,19 @@ function serviceDueBox() {
   if (!list.length) return null;
   // Картка, як розділи нижче, з жовтою смугою — а не дрібне посилання з лінією над пошуком
   return h('div', { class: 'gear-groups due-box' }, fold('service-due', `${t('Потребує уваги')} · ${list.length}`,
-    h('div', { class: 'rows' }, list.map(({ g, why }) => row(gearTitle(g), why, '', () => gearDetail(g.id), { cls: 'low', thumb: gearThumb(g) })))));
+    h('div', { class: 'rows' }, list.map(({ g, why }) => dueRow(g, why)))));
+}
+
+/** Рядок «Потребує уваги»: свайп вправо — котушку обслужив, шнур перемотав; тап — картка. */
+function dueRow(g, why) {
+  const el = row(gearTitle(g), why, '', () => gearDetail(g.id), { id: g.id, cls: 'low', thumb: gearThumb(g) });
+  const body = h('div', { class: `${el.className} swipe-body`, role: 'button', dataset: { id: g.id } }, ...el.childNodes);
+  const reel = groupOf(g) === 'reels';
+  return swipeable(h('div', { class: 'gear-card', 'aria-label': gearTitle(g) }, body), {
+    onTap: () => gearDetail(g.id),
+    onRight: reel ? () => serviceSheet(g) : () => rewound(g),
+    rightLabel: reel ? t('Обслужив') : t('Перемотав'),
+  });
 }
 
 function serviceRow() {
