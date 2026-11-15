@@ -926,7 +926,7 @@ const TOOL_ICON = {
   // напрямки снастей: усі — чотири клітинки, хижак — зубата риба, мирна — поплавок на воді, табір — намет
   all: '<rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.8"/>',
   // Хижак — щука: довге тіло, роззявлена паща з іклами, плавці біля хвоста
-  predator: '<path d="M4.2 12h9.6"/><path d="M5.9 7.6c1 1.2 1.5 2.7 1.5 4.4s-.5 3.2-1.5 4.4M9.4 6.8c1 1.4 1.6 3.3 1.6 5.2s-.6 3.8-1.6 5.2"/><path d="M4.2 12 1.5 8.2M4.2 12l-2.7 3.8"/><path d="M13.8 12c0-2.3.9-4 2.5-4.4l6.2 3-4.7 1.2 4.3 2.2-5.8 2.3c-1.6-.4-2.5-2-2.5-4.3z"/><circle cx="16.6" cy="10.2" r=".8"/>',
+  predator: '<path d="M4 12h8.5"/><path d="M6.2 8.6v6.8M8.6 7.4v9.2M11 6.6v10.8"/><path d="M4 12 1.5 8.4v7.2z"/><path d="M12.5 12c0-3.4 2.2-5.8 5.2-5.8l4.8 3.9-4 1.9 4 1.9-4.8 3.9c-3 0-5.2-2.4-5.2-5.8z"/><circle cx="16.6" cy="9.8" r="1.1"/>',
   peaceful: '<path d="M12 2.5v4"/><path d="M12 6.5c-1.9 2.6-2.6 5.2-2.6 7a2.6 2.6 0 0 0 5.2 0c0-1.8-.7-4.4-2.6-7z"/><path d="M9.5 12.2h5"/><path d="M3 20c2 0 2-1.4 4.5-1.4S9.5 20 12 20s2.5-1.4 4.5-1.4S19 20 21 20"/>',
   camp: '<path d="M2.5 20h19"/><path d="M4.5 20L12 5.5 19.5 20"/><path d="M9 20l3-5.5 3 5.5"/><path d="M12 5.5L10.5 3M12 5.5L13.5 3"/>',
   map: '<path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>',
@@ -979,6 +979,48 @@ export function toolBtn(icon, label, onclick, cls = '') {
   const el = h('button', { type: 'button', class: `icon-btn tool ${cls}`, 'aria-label': label, title: label, onclick });
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${TOOL_ICON[icon]}</svg>`;
   return el;
+}
+
+/** Контекстне меню біля курсора: items — [значок, підпис, дія, 'danger'?] або null; закривається кліком повз, Esc, прокруткою. */
+export function popMenu(x, y, items) {
+  document.querySelector('.pop-menu')?.remove();
+  const list = items.filter(Boolean);
+  if (!list.length) return;
+  const close = () => {
+    menu.remove();
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('blur', close);
+    window.removeEventListener('resize', close);
+    document.removeEventListener('scroll', close, true);
+  };
+  const menu = h('div', { class: 'pop-menu', role: 'menu' }, list.map(([ico, label, fn, cls]) => {
+    const b = h('button', { type: 'button', role: 'menuitem', class: cls ?? '', onclick: () => { close(); fn(); } },
+      ico ? icon(ico) : h('span', { class: 'ico' }), h('span', {}, label));
+    return b;
+  }));
+  const outside = (e) => { if (!menu.contains(e.target)) close(); };
+  const onKey = (e) => {
+    const btns = [...menu.querySelectorAll('button')];
+    const i = btns.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      btns[(i + (e.key === 'ArrowDown' ? 1 : btns.length - 1)) % btns.length]?.focus();
+    }
+  };
+  document.body.append(menu);
+  // Не вилазити за край: біля правого чи нижнього краю — відкривати ліворуч / вгору
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, x + r.width > innerWidth - 8 ? x - r.width : x)}px`;
+  menu.style.top = `${Math.max(8, y + r.height > innerHeight - 8 ? y - r.height : y)}px`;
+  setTimeout(() => {
+    document.addEventListener('pointerdown', outside, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('blur', close);
+    window.addEventListener('resize', close);
+    document.addEventListener('scroll', close, true);
+  });
 }
 
 export function confirmSheet(title, text, okLabel, onOk) {

@@ -846,7 +846,11 @@ a.set-link .set-head { cursor: pointer; }
 button, a, input, select, textarea, [role="checkbox"] { touch-action: manipulation; }
 /* Відгук на дотик: системне підсвічування вимкнене, тож рядки й чипи світлішають під пальцем */
 .row:active, button.row-main:active, .chips button:active, .photo-btn:active { filter: brightness(1.18); }
-@media (hover: hover) { .row:hover, button.row-main:hover { filter: brightness(1.08); } }
+/* Наведення мишею — світлішає лише фон (filter освітлював і рамку з тінню — краї ставали білими смугами) */
+@media (hover: hover) {
+  .row:not(.picked):hover { background: color-mix(in srgb, var(--muted) 9%, var(--surface)); }
+  .box .row:not(.picked):hover { background: color-mix(in srgb, var(--muted) 9%, transparent); }
+}
 /* Основна частина рядка — кнопка: працює з клавіатури й читачем екрана, виглядає як текст */
 button.row-main { display: flex; flex: 1; flex-direction: column; align-items: stretch; min-width: 0; padding: 0; border: 0; background: none;
   color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -1525,3 +1529,15 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 @media (hover: hover) {
   .chips button:not(.on):hover { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--text); }
 }
+
+/* Контекстне меню рядка (права кнопка миші) */
+.pop-menu { position: fixed; z-index: 1000; min-width: 200px; max-width: 280px; padding: 6px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); box-shadow: 0 10px 30px rgb(0 0 0 / .35); }
+.pop-menu button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 6px 10px; border: 0; border-radius: 8px;
+  background: none; color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.pop-menu button:hover, .pop-menu button:focus-visible { background: color-mix(in srgb, var(--muted) 16%, transparent); outline: none; }
+.pop-menu button.danger { color: var(--shoot); }
+.pop-menu button.danger:not(:first-child) { margin-top: 4px; box-shadow: 0 -1px 0 var(--line-soft); border-radius: 0 0 8px 8px; }
+.pop-menu .ico { display: grid; width: 18px; height: 18px; flex: none; color: var(--muted); }
+.pop-menu button.danger .ico { color: inherit; }
+.pop-menu .ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

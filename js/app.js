@@ -8,7 +8,7 @@ import { loadLeaflet, makeMap, pinIcon, UA } from './map.js';
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto } from './photos.js';
 import { weatherAt, moonPhase, compass } from './weather.js';
-import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
+import { h, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], photos: [], prefs: [] };
 let tab = 'gear';
@@ -1777,6 +1777,7 @@ const itemsAt = (id) => state.gear.filter((g) => active(g) && placeOf(g) === id)
 /** Заголовок місця: значок, назва, скільки речей усередині (з вкладеними) і кнопка картки — наклейка, NFC, змінити. */
 function placeHead(p) {
   const head = sectionHead(p.icon || 'boxes', p.name, countIn(p.id), 0, null, sectionColor(p.color));
+  head.dataset.place = p.id;
   head.append(Object.assign(h('button', {
     type: 'button', class: 'icon-btn sec-edit place-head-card', 'aria-label': t('Картка місця «{name}»', { name: p.name }),
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); placeDetail(p.id); },
@@ -4034,6 +4035,64 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 $('sync-chip').addEventListener('click', onSyncChip);
 window.addEventListener('hashchange', route);
+
+/** Права кнопка миші на рядку списку: ті самі дії, що в картці, без її відкриття. */
+function rowMenu(el) {
+  const place = el.closest('[data-place]')?.dataset.place;
+  const id = place ?? el.closest('.view [data-id]')?.dataset.id;
+  if (!id) return null;
+  const g = place ? null : findGear(id);
+  if (g) {
+    const group = groupOf(g);
+    return [
+      ['note', t('Відкрити'), () => gearDetail(g.id)],
+      ['edit', t('Змінити'), () => gearForm(g)],
+      ['copy', t('Копіювати'), () => copyGear(g)],
+      active(g) ? ['move', t('Перенести'), () => placePicker(t('Куди перенести'), (placeId) => moveGear([g], placeId))] : null,
+      ['reels', 'rods'].includes(group) && active(g) ? ['wrench', t('Обслужив'), () => serviceSheet(g)] : null,
+      active(g) ? ['tag', t('Списати'), () => statusSheet(g)] : ['undo', t('Повернути в наявні'), () => setStatus(g, 'have', t('Повернуто в наявні'))],
+      ['delete', t('Видалити'), () => removeGear(g), 'danger'],
+    ];
+  }
+  const tr = findTrip(id);
+  if (tr) {
+    return [
+      ['note', t('Відкрити'), () => tripDetail(tr.id)],
+      ['edit', t('Змінити'), () => tripForm(tr)],
+      ['fish', t('+ Улов'), () => catchForm(tr)],
+      ['delete', t('Видалити'), () => removeTrip(tr), 'danger'],
+    ];
+  }
+  const s = findSpot(id);
+  if (s) {
+    return [
+      ['note', t('Відкрити'), () => spotDetail(s.id)],
+      ['edit', t('Змінити'), () => spotForm(s)],
+      ['fish', t('+ Виїзд сюди'), () => tripForm(null, { spotId: s.id, cost: s.pay === 'paid' && num(s.price) ? s.price : null })],
+      hasPlace(s) ? ['route', t('Маршрут'), () => window.open(routeUrl(s), '_blank', 'noopener')] : null,
+      ['delete', t('Видалити'), () => removeSpot(s), 'danger'],
+    ];
+  }
+  const p = findPlace(id);
+  if (p) {
+    return [
+      ['note', t('Відкрити'), () => placeDetail(p.id)],
+      ['edit', t('Змінити'), () => placeForm(p)],
+      ['stock', t('+ Річ сюди'), () => gearForm(null, { preset: { placeId: p.id } })],
+      ['qr', t('Наклейка'), () => printLabels([p])],
+      ['delete', t('Видалити'), () => removePlace(p), 'danger'],
+    ];
+  }
+  return null;
+}
+// Лише з мишею: на телефоні довге натискання лишається за свайпом і виділенням
+document.addEventListener('contextmenu', (e) => {
+  if (!matchMedia('(hover: hover)').matches || e.target.closest('input, textarea, .sheet')) return;
+  const items = rowMenu(e.target);
+  if (!items) return;
+  e.preventDefault();
+  popMenu(e.clientX, e.clientY, items);
+});
 swipeStep(document.querySelector('.tabs'), (dir) => {
   const links = [...document.querySelectorAll('.tabs a')];
   const next = links[links.findIndex((a) => a.classList.contains('active')) + dir];
