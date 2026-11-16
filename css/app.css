@@ -1506,6 +1506,28 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .cal-legend .cal-d { width: 11px; height: 11px; }
 .cal-legend .cal-gap { width: 10px; }
 
+/* Рядок улову: фото чи значок риби, приманка з мініатюрою, мітки; праворуч — вага й відпустив/забрав */
+.catch-row { align-items: center; }
+.catch-row .thumb { width: 52px; height: 52px; }
+.thumb.catch-ico { display: grid; place-items: center; color: var(--clean); background: color-mix(in srgb, var(--clean) 12%, var(--surface-2)); border-color: color-mix(in srgb, var(--clean) 25%, var(--line)); }
+.thumb.catch-ico svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.catch-row .row-title { font-weight: 750; }
+.catch-n { color: var(--muted); font-weight: 600; }
+.catch-bait { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 3px; color: var(--muted); font-size: 13px; }
+.catch-bait > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catch-bait .bait-sw { display: inline-grid; flex: none; width: 20px; height: 20px; border-radius: 5px; overflow: hidden; }
+.catch-bait .bait-sw > * { width: 20px; height: 20px; border: 0; border-radius: 0; }
+.catch-bait .bait-sw img { object-fit: cover; }
+.catch-bait .bait-sw svg { width: 14px; height: 14px; }
+.catch-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.catch-tags > span { padding: 1px 8px; border-radius: 999px; background: var(--line-soft); color: var(--muted); font-size: 12px; line-height: 1.6; }
+.catch-side { display: grid; justify-items: end; align-content: center; gap: 3px; flex: none; text-align: right; }
+.catch-side b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.catch-len { font-weight: 700; font-variant-numeric: tabular-nums; }
+.catch-rel { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; color: var(--muted); background: var(--line-soft); }
+.catch-rel.rel { color: var(--buy); background: color-mix(in srgb, var(--buy) 14%, transparent); }
+.catch-hint { margin: 8px 2px 0; text-align: center; }
+
 /* Плитки дій виїзду: «−1 Втратив» / «Витратив» */
 .act-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 4px; }
 .act-tile { --c: var(--shoot); display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; min-height: 60px; padding: 10px 12px; text-align: left;
@@ -1525,7 +1547,14 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .bait-model { display: grid; }
 .bait-model > .bait-colors { margin: 6px 0 4px 12px; }
 .bait-model > .row[aria-expanded="true"] { border-color: var(--fill); }
-.bait-kinds { margin-bottom: 8px; }
+.bait-kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 8px; padding: 0 16px; }
+.bait-kinds::-webkit-scrollbar { display: none; }
+.bait-kinds button { flex: none; }
+.bait-side { display: flex; align-items: center; gap: 10px; flex: none; }
+.bait-caret { color: var(--muted); font-size: 12px; }
+/* Фільтр і пошук аркуша вибору — угорі, поки гортаєш довгий список */
+.pick-top { position: sticky; top: -4px; z-index: 2; margin: -4px -16px 8px; padding: 4px 16px 8px; background: var(--surface); }
+.pick-top .gear-search { margin: 0; }
 /* Заголовок місяця в списку виїздів */
 .list-head { margin: 18px 4px 8px; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 /* Журнал виїздів: місяці поза екраном браузер не верстає (300 виїздів — понад 4 тис. елементів).

@@ -3916,6 +3916,7 @@ function tripBody(tr) {
     rods.length ? box(t('Чим ловив'), h('div', { class: 'rows' }, rods.map((g) => row(gearTitle(g), rodText(g), '', () => gearDetail(g.id), { thumb: gearThumb(g) })))) : null,
     box([t('Улов'), catches.length ? fmt.num(tripCatch(tr)) : null, tripKg(tr) ? `${fmt.num(Math.round(tripKg(tr) * 100) / 100)} ${t('кг')}` : null].filter(Boolean).join(' · '), h('div', {},
       catches.length ? h('div', { class: 'rows' }, catches.map((c) => catchRow(tr, c))) : h('p', { class: 'muted small' }, t('Без улову — теж запис.')),
+      catches.length && !recall(CATCH_SWIPED) ? h('p', { class: 'muted small catch-hint' }, t('Змахніть улов: вправо — ще така, вліво — видалити')) : null,
       h('div', { class: 'btn-row' }, btn(t('+ Улов'), () => catchForm(tr), 'primary')))),
     box(t('Втрати й витрати'), h('div', {},
       losses.length || spends.length ? h('div', { class: 'rows' }, [
@@ -3939,13 +3940,26 @@ function actTile(ico, title, hint, cls, onclick) {
 }
 
 /** Рядок улову: тап — форма, свайп вправо — «Ще така», вліво — видалити. */
+// Підказку про свайп показуємо, доки людина жодного разу не змахнула улов
+const CATCH_SWIPED = 'fishing-log:catch-swiped';
+
 function catchRow(tr, c) {
-  const el = row(
-    `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
-    [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null, c.length ? `${fmt.num(c.length)} ${t('см')}` : null, hasDepth(c) ? t('глибина {d}', { d: depthText(c.depth) }) : null, c.bottom ? bottomLabel(c.bottom).toLowerCase() : null, baitText(c), c.released ? t('відпустив') : t('забрав')].filter(Boolean).join(' · '),
-    '', null, { thumb: c.photoId ? thumbImg(c.photoId) : null });
-  const body = h('div', { class: `${el.className} swipe-body`, role: 'button' }, ...el.childNodes);
+  const bait = findGear(c.baitId);
+  const tags = [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.time || null,
+    hasDepth(c) ? depthText(c.depth) : null, c.bottom ? bottomLabel(c.bottom).toLowerCase() : null].filter(Boolean);
+  const body = h('div', { class: 'row catch-row swipe-body', role: 'button' },
+    c.photoId ? thumbImg(c.photoId) : h('span', { class: 'thumb catch-ico', 'aria-hidden': 'true' }, icon('fish')),
+    h('span', { class: 'row-main' },
+      h('span', { class: 'row-title' }, c.species, num(c.n) > 1 ? h('span', { class: 'catch-n' }, ` × ${fmt.num(c.n)}`) : null),
+      bait || c.bait ? h('span', { class: 'catch-bait' }, bait ? h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(bait)) : null,
+        h('span', {}, bait ? [bareTitle(bait), bait.color].filter(Boolean).join(' ') : c.bait)) : null,
+      tags.length ? h('span', { class: 'catch-tags' }, tags.map((x) => h('span', {}, x))) : null),
+    h('span', { class: 'catch-side' },
+      num(c.weight) ? h('b', {}, `${fmt.num(c.weight)} ${t('кг')}`) : null,
+      num(c.length) ? h('span', { class: num(c.weight) ? 'muted small' : 'catch-len' }, `${fmt.num(c.length)} ${t('см')}`) : null,
+      h('span', { class: `catch-rel${c.released ? ' rel' : ''}` }, c.released ? t('відпустив') : t('забрав'))));
   return swipeable(h('div', { class: 'gear-card', 'aria-label': c.species }, body), {
+    onSwipe: () => remember(CATCH_SWIPED, '1'),
     onTap: () => catchForm(tr, c),
     onRight: () => catchAgain(tr, c), rightLabel: t('Ще така'),
     onLeft: () => dropCatch(tr, c), leftLabel: t('Видалити'),
@@ -4048,6 +4062,12 @@ function pickConsumable(title, fits, onPick, tr = null) {
 }
 
 const modelName = (g) => (g.model ? [g.brand, g.model, sizeText(g)].filter(Boolean).join(' ') : gearTitle(g));
+/** Назва без виду на початку: «Силікон FishUP Pupa» → «FishUP Pupa» (вид і так видно у фільтрі). */
+const bareTitle = (g) => {
+  const title = gearTitle(g);
+  const kind = catOf(g.cat).name;
+  return title.toLowerCase().startsWith(`${kind.toLowerCase()} `) ? title.slice(kind.length + 1) : title;
+};
 const colorName = (g) => g.color || weightText(g) || modelName(g);
 const colorsText = (n) => `${fmt.num(n)} ${plural(n, [t('колір'), t('кольори'), t('кольорів')])}`;
 
@@ -4079,19 +4099,26 @@ function baitPickSheet(title, sorted, onPick) {
       .forEach((g) => { const k = modelKey(g); groups.set(k, [...(groups.get(k) ?? []), g]); });
     rows.replaceChildren(...[...groups].map(([k, list]) => {
       const all = total.get(k);
-      if (all === 1) return row(gearTitle(list[0]), [weightText(list[0]), list[0].color].filter(Boolean).join(' · '), qtyText(list[0]), () => pick(list[0]), { thumb: gearThumb(list[0]) });
+      const fish = list.reduce((n, g) => n + caughtCount(g), 0);
+      const right = h('span', { class: 'bait-side' }, fish ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(fish)) : null,
+        all > 1 && !words.length ? h('span', { class: 'bait-caret', 'aria-hidden': 'true' }, open.has(k) ? '▴' : '▾') : null);
+      if (all === 1) {
+        const g = list[0];
+        return row(bareTitle(g), [weightText(g), g.color, qtyText(g)].filter(Boolean).join(' · '), right, () => pick(g), { thumb: gearThumb(g) });
+      }
       const shown = words.length > 0 || open.has(k);
       const head = row(modelName(list[0]), list.length < all ? t('{n} з {all} кольорів', { n: fmt.num(list.length), all: fmt.num(all) }) : colorsText(all),
-        words.length ? '' : shown ? '▴' : '▾', () => { if (!open.delete(k)) open.add(k); paint(); }, { thumb: modelThumbs(list) });
+        right, () => { if (!open.delete(k)) open.add(k); paint(); }, { thumb: modelThumbs(list) });
       head.setAttribute('aria-expanded', String(shown));
       return h('div', { class: 'bait-model' }, head, shown ? colorChips(list, pick) : null);
     }));
     if (!groups.size) rows.append(h('p', { class: 'muted small' }, t('Нічого не знайдено')));
-    if (thumbIo) dropGoneThumbs();
+    // Лише на екрані: перше малювання — ще до шторки, і «відірвані» мініатюри інакше зняло б із черги назавжди
+    if (thumbIo && rows.isConnected) dropGoneThumbs();
   };
   search.addEventListener('input', paint);
   paint();
-  const close = sheet(title, h('div', {}, filter, search, rows));
+  const close = sheet(title, h('div', {}, h('div', { class: 'pick-top' }, filter, search), rows));
 }
 
 /** Аркуш вибору речі з пошуком; sorted — у потрібному порядку. */
@@ -4102,11 +4129,11 @@ function gearPickSheet(title, sorted, onPick) {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
     rows.replaceChildren(...sorted.filter((g) => { const hs = haystack(g); return words.every((w) => hs.includes(w)); }).map((g) =>
       row(gearTitle(g), groupOf(g) === 'rods' ? rodText(g) : [weightText(g), g.color].filter(Boolean).join(' · '), qtyText(g), () => { close(); onPick(g); }, { thumb: gearThumb(g) })));
-    if (thumbIo) dropGoneThumbs();
+    if (thumbIo && rows.isConnected) dropGoneThumbs();
   };
   search.addEventListener('input', paint);
   paint();
-  const close = sheet(title, h('div', {}, search, rows));
+  const close = sheet(title, h('div', {}, h('div', { class: 'pick-top' }, search), rows));
 }
 
 function catchForm(tr, c = null) {
