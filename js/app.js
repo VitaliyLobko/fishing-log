@@ -351,11 +351,53 @@ const GROUP_FIELDS = {
   rods: ['length', 'test', 'action', 'pieces', 'rodType'], reels: ['size', 'ratio', 'spools'], lines: ['pe', 'mm', 'length'],
   lures: ['lureSize', 'sizeUnit'],
 };
-// Поля лише окремої категорії: у воблера — плавучість і заглиблення
-const CAT_FIELDS = { wobbler: ['buoy', 'depth'] };
+// Поля лише окремої категорії: у воблера — тип, плавучість, заглиблення; у блешні — тип і пелюстка; в обох — гачки
+const CAT_FIELDS = { wobbler: ['wobType', 'buoy', 'depth', 'hook', 'hookNo'], spoon: ['spoonType', 'blade', 'hook', 'hookNo'] };
 const SPEC_FIELDS = [...new Set([...Object.values(GROUP_FIELDS).flat(), ...Object.values(CAT_FIELDS).flat()])];
 const SIZE_UNITS = [['mm', 'мм'], ['cm', 'см'], ['in', 'дюйми']];
 const BUOYS = [['', '—'], ['F', 'F — плаває'], ['SP', 'SP — суспендер'], ['S', 'S — тоне'], ['SS', 'SS — повільно тоне']];
+const WOB_TYPES = [['', '—'], ['minnow', 'Мінноу'], ['shad', 'Шед'], ['crank', 'Кренк'], ['popper', 'Поппер'], ['walker', 'Волкер'], ['rattlin', 'Ратлін'], ['jerk', 'Джеркбейт']];
+const SPOON_TYPES = [['', '—'], ['osc', 'Коливалка'], ['spin', 'Вертушка'], ['pilk', 'Пількер / кастмастер']];
+// Номер пелюстки вертушки (Mepps, Blue Fox): #00 — найменша
+const BLADES = [['', '—'], ...['00', '0', '1', '2', '3', '4', '5'].map((n) => [n, `#${n}`])];
+const HOOKS = [['', '—'], ['treble', 'Трійник'], ['double', 'Двійник'], ['single', 'Одинарник']];
+/** Тип приманки: ключ для фільтра («wobbler:minnow») і словом («Мінноу», «Вертушка #3»). */
+const lureType = (g) => {
+  const k = g.cat === 'wobbler' ? g.wobType : g.cat === 'spoon' ? g.spoonType : '';
+  return k ? `${g.cat}:${k}` : '';
+};
+const lureTypeText = (g) => (g.cat === 'wobbler' ? label(WOB_TYPES, g.wobType)
+  : g.cat === 'spoon' ? [label(SPOON_TYPES, g.spoonType), g.spoonType === 'spin' && g.blade ? `#${g.blade}` : null].filter(Boolean).join(' ') : '');
+// Силуети приманок для чипів «Усі приманки»: контур 32×16, голова ліворуч
+const MINNOW = '<path d="M6 8c3-3.2 12-4 19-2l4 2-4 2c-7 2-16 1.2-19-2z"/><path d="M6 8.5 2.5 11.5"/><circle cx="10" cy="7.9" r=".6"/>';
+const OSC = '<circle cx="3" cy="8" r="1.2"/><path d="M4.5 8c2-3.4 8-4.4 14-3.4 4 .7 6.5 2 7.5 3.4-1 1.4-3.5 2.7-7.5 3.4-6 1-12 0-14-3.4z"/><path d="M26 8h2.5c1.6 0 1.6 3 0 3"/>';
+const LURE_ICONS = {
+  wobbler: MINNOW,
+  spoon: OSC,
+  soft: '<path d="M3 8c0-1.6 1.2-2.6 3-2.6h9c1.8 0 3 1 3 2.6s-1.2 2.6-3 2.6H6c-1.8 0-3-1-3-2.6z"/><path d="M18 8c3 0 4.5-3 7-2.4 2.4.6 2 4.4-.6 4.4"/><circle cx="6" cy="7.4" r=".6"/>',
+  fly: '<path d="M8 4v6.5a3 3 0 0 0 6 0V9"/><path d="M8 5c3-2 9-2 14 0M8 6.5c4-.6 10 0 15 2.5M8 8c3 .4 8 2 12 5"/>',
+  lure: '<path d="M5 8c3-4 11-4.5 17-2l5 2-5 2c-6 2.5-14 2-17-2z"/><circle cx="8.5" cy="7.4" r=".6"/>',
+  'wobbler:minnow': MINNOW,
+  'wobbler:shad': '<path d="M7 8.5c1.5-5 13-5.4 18-1.5l4 1.5-4 1.5c-5 3.8-16.5 3.4-18-1.5z"/><path d="M7 9.5 3 13"/><circle cx="10.5" cy="7" r=".6"/>',
+  'wobbler:crank': '<path d="M9 8c0-4.4 10-5.4 15-2.2L28 8l-4 2.2C19 13.4 9 12.4 9 8z"/><path d="M9.5 9.5 3.5 14l3.5.4"/><circle cx="12.5" cy="7" r=".6"/>',
+  'wobbler:popper': '<path d="M5 4.5c1.2 2.4 1.2 4.6 0 7 6 1.8 14 1.6 20-.9l4-2.6-4-2.6c-6-2.5-14-2.7-20-.9z"/><path d="M1.5 5 3 6M1.5 11 3 10M1 8h2"/><circle cx="9" cy="7" r=".6"/>',
+  'wobbler:walker': '<path d="M3 7.5C3 6 5 5 8 5h15l5 2.5-5 2.5H8c-3 0-5-1-5-2.5z"/><path d="M8 13.5l3-1.5 3 1.5 3-1.5 3 1.5"/><circle cx="6.5" cy="7" r=".6"/>',
+  'wobbler:rattlin': '<path d="M5 9.5c.8-4.4 6.5-6.4 12.5-5.4C22 4.8 26 7 28.5 9.5 25.5 11.6 21 12.8 17 12.8c-6 0-11.2-1.2-12-3.3z"/><circle cx="10.5" cy="3.3" r=".9"/><circle cx="8.5" cy="8.6" r=".6"/>',
+  'wobbler:jerk': '<path d="M5 9c3-2.4 13-3 20-1.4L29 9l-4 1.4c-7 1.6-17 1-20-1.4z"/><path d="M5 9.3 3 11"/><path d="M11 4.5l2.2-1.8 2.2 1.8 2.2-1.8 2.2 1.8"/><circle cx="9" cy="9.1" r=".5"/>',
+  'spoon:osc': OSC,
+  'spoon:spin': '<path d="M2 8h20"/><ellipse cx="8" cy="5" rx="4.2" ry="2.3" transform="rotate(-14 8 5)"/><path d="M13.5 6.4h5a1.6 1.6 0 0 1 0 3.2h-5z"/><path d="M22 8h3.5c1.8 0 1.8 3.2 0 3.2"/>',
+  'spoon:pilk': '<circle cx="2.6" cy="10" r="1.2"/><path d="M4 11 7 5h17l-3 6z"/><path d="M10 5 7 11"/><path d="M24 8h2.5c1.6 0 1.6 3 0 3"/>',
+};
+/** Силует приманки чи її типу; невідомого — нема. */
+const lureIco = (k) => {
+  if (!LURE_ICONS[k]) return null;
+  const el = h('span', { class: 'ico lure-ico', 'aria-hidden': 'true' });
+  el.append(svgClone(`<svg viewBox="0 0 32 16">${LURE_ICONS[k]}</svg>`));
+  return el;
+};
+/** Гачки: «Трійник #6»; номер вписують і з «#», і без. */
+const hookNoText = (g) => (g.hookNo ? `#${String(g.hookNo).trim().replace(/^#/, '')}` : null);
+const hookText = (g) => [label(HOOKS, g.hook), hookNoText(g)].filter(Boolean).join(' ');
 /** Розмір приманки: «95 мм», «3"». */
 const sizeText = (g) => (num(g.lureSize) ? (g.sizeUnit === 'in' ? `${fmt.num(g.lureSize)}"` : `${fmt.num(g.lureSize)} ${t(g.sizeUnit === 'cm' ? 'см' : 'мм')}`) : null);
 
@@ -949,7 +991,7 @@ function quickAction(g) {
 }
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/[’ʼ`']/g, "'");
-const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), sizeText(g), g.buoy, whereText(g)].join(' '));
+const haystack = (g) => norm([g.name, g.brand, g.model, g.color, g.note, catOf(g.cat).name, weightText(g), sizeText(g), g.buoy, lureTypeText(g), hookText(g), whereText(g)].join(' '));
 const sectionIndex = (key) => catsCache().secIndex.get(key) ?? 999;
 const byGroup = (a, b) => sectionIndex(groupOf(a)) - sectionIndex(groupOf(b)) || collate(gearTitle(a), gearTitle(b));
 
@@ -1324,6 +1366,11 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null, link =
     { name: 'color', label: t('Колір'), value: src.color, half: true, list: 'color-list' },
     { name: 'buoy', label: t('Плавучість'), type: 'select', options: BUOYS, value: src.buoy ?? '', half: true },
     { name: 'depth', label: t('Заглиблення, м'), value: src.depth, half: true, placeholder: '0.5–1.2' },
+    { name: 'wobType', label: t('Тип воблера'), type: 'select', options: WOB_TYPES.map(([k, l]) => [k, k ? t(l) : l]), value: src.wobType ?? '', half: true },
+    { name: 'spoonType', label: t('Тип блешні'), type: 'select', options: SPOON_TYPES.map(([k, l]) => [k, k ? t(l) : l]), value: src.spoonType ?? '', half: true },
+    { name: 'blade', label: t('Пелюстка'), type: 'select', options: BLADES, value: src.blade ?? '', half: true },
+    { name: 'hook', label: t('Гачки'), type: 'select', options: HOOKS.map(([k, l]) => [k, k ? t(l) : l]), value: src.hook ?? '', half: true },
+    { name: 'hookNo', label: t('Номер гачка'), value: src.hookNo, half: true, placeholder: '6' },
     { name: 'length', label: t('Довжина, м'), type: 'number', value: src.length, half: true },
     { name: 'test', label: t('Тест, г'), value: src.test, half: true, placeholder: '5–25' },
     { name: 'action', label: t('Стрій'), type: 'select', options: ACTIONS.map(([k, l]) => [k, k ? t(l) : l]), value: src.action ?? '', half: true },
@@ -1344,11 +1391,14 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null, link =
   const lowNote = h('p', { class: 'muted small form-note' }, t('Поріг «мало»: стільки й менше — у «Докупити»'));
   const qtyBox = box(t('Скільки'), h('div', {}, h('div', { class: 'form' }, field('qty'), field('unit'), field('low'), field('weight')), lowNote));
   // Розмір приманки, місце й колір — сіткою після блоку
-  const rest = h('div', { class: 'form' }, field('lureSize'), field('sizeUnit'), field('placeId'), field('color'));
+  // Тип воблера чи блешні — головне, по ньому й шукають: теж на виду
+  const rest = h('div', { class: 'form' }, field('wobType'), field('spoonType'), field('blade'), field('lureSize'), field('sizeUnit'), field('placeId'), field('color'));
   // Поля, що стосуються категорії: кількість — для приманок, оснастки й фідерного, свої — для вудилищ, котушок, шнурів
   const fit = () => {
     const c = catOf(f.inputs.cat.value);
     const own = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(CAT_FIELDS[c.id] ?? []), ...(qtyCat(c) ? ['qty', 'unit', 'low'] : []), ...(hasWeight(c) ? ['weight'] : [])]);
+    // Пелюстка — лише у вертушки
+    if (f.inputs.spoonType.value !== 'spin') own.delete('blade');
     for (const n of [...SPEC_FIELDS, 'qty', 'unit', 'low', 'weight']) f.inputs[n].closest('.field').hidden = !own.has(n);
     f.inputs.dir.closest('.field').hidden = c.group === 'camp';
     f.inputs.price.closest('.field').querySelector('.field-label').textContent = qtyCat(c) ? t('Ціна за одиницю, грн') : t('Ціна, грн');
@@ -1356,6 +1406,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null, link =
     qtyBox.hidden = ['qty', 'unit', 'low', 'weight'].every((n) => field(n).hidden);
   };
   f.inputs.cat.addEventListener('change', fit);
+  f.inputs.spoonType.addEventListener('change', fit);
   // Напрямок іде за категорією й типом вудилища, доки людина не вибрала його сама
   let dirTouched = Boolean(src.dir !== undefined && g);
   f.inputs.dir.addEventListener('change', () => { dirTouched = true; });
@@ -1370,7 +1421,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null, link =
     h('summary', {}, t('Бренд, розміри, ціна, нотатка…')), moreBody);
   more.addEventListener('toggle', () => { if (!filled) remember('fishing-log:open:gear-form-more', more.open ? '1' : ''); });
   // Колір і розмір приманки — на виду; решта характеристик — у згорнутому
-  for (const n of ['brand', 'model', ...SPEC_FIELDS.filter((x) => !['lureSize', 'sizeUnit'].includes(x)), 'price', 'buyDate', 'note', 'specs']) moreBody.append(f.inputs[n].closest('.field'));
+  for (const n of ['brand', 'model', ...SPEC_FIELDS.filter((x) => !['lureSize', 'sizeUnit', 'wobType', 'spoonType', 'blade'].includes(x)), 'price', 'buyDate', 'note', 'specs']) moreBody.append(f.inputs[n].closest('.field'));
   f.el.append(h('datalist', { id: 'color-list' }, [...new Set(state.gear.map((x) => x.color).filter(Boolean))].sort(collate).map((c) => h('option', { value: c }))));
   const lookup = () => [f.inputs.brand.value, f.inputs.model.value, f.inputs.name.value, f.inputs.color.value].map((x) => x.trim()).filter(Boolean)
     .filter((x, i, a) => !a.slice(0, i).some((y) => y.toLowerCase().includes(x.toLowerCase()))).join(' ');
@@ -1392,7 +1443,9 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null, link =
     const v = f.values();
     const c = catOf(v.cat);
     const keep = new Set([...(GROUP_FIELDS[c.group] ?? []), ...(CAT_FIELDS[c.id] ?? [])]);
-    for (const n of SPEC_FIELDS) if (!keep.has(n)) delete v[n];
+    if (v.spoonType !== 'spin') keep.delete('blade');
+    // Поле не цієї категорії: у новій речі — не пишемо, у старій — стираємо (інакше лишилося б з { ...g, ...v })
+    for (const n of SPEC_FIELDS) if (!keep.has(n)) { if (g?.[n] != null && g[n] !== '') v[n] = null; else delete v[n]; }
     if (!hasWeight(c)) delete v.weight;
     if (qtyCat(c)) { v.qty = Math.max(0, num(v.qty)); v.low = Math.max(0, num(v.low)); } else { v.qty = null; delete v.unit; delete v.low; }
     // Перша покупка — для експорту в Марнотрат; після «+ Купив» ціна в картці вже не перша, її не чіпаємо
@@ -1575,11 +1628,13 @@ function specTiles(g) {
     tile(t('Діаметр'), num(g.mm) ? `${fmt.num(g.mm)} ${t('мм')}` : null),
     tile(t('Довжина'), num(g.length) ? `${fmt.num(g.length)} ${t('м')}` : null),
   ] : [
-    // Приманки, оснастка, фідерне: розмір, вага, у воблера — плавучість кодом (F, SP…) і словами
+    // Приманки, оснастка, фідерне: тип, розмір, вага, у воблера — плавучість кодом (F, SP…) і словами, гачки
+    tile(t('Тип'), lureTypeText(g) || null),
     tile(t('Розмір'), sizeText(g)),
     tile(t('Вага'), weightText(g)),
     tile(t('Плавучість'), g.buoy || null, g.buoy ? label(BUOYS, g.buoy).split('—')[1]?.trim() : null),
     tile(t('Заглиблення'), num(g.depth) ? `${fmt.num(g.depth)} ${t('м')}` : null),
+    tile(t('Гачки'), hookText(g) || null),
   ];
   const list = tiles.filter(Boolean);
   return list.length ? h('div', { class: 'spec-tiles' }, list) : null;
@@ -4111,7 +4166,7 @@ function baitPreviewTop(g) {
   return [
     h(shot ? 'button' : 'span', { type: shot ? 'button' : null, class: 'bp-img', 'aria-label': shot ? t('Фото на весь екран') : null, onclick: shot ? () => showPhoto(g.photoId) : null }, gearThumb(g)),
     h('span', { class: 'bp-text' },
-      h('span', { class: 'bp-kind' }, catOf(g.cat).name),
+      h('span', { class: 'bp-kind' }, [catOf(g.cat).name, lureTypeText(g)].filter(Boolean).join(' · ')),
       h('b', { class: 'bp-name' }, g.model ? modelName(g) : bareTitle(g)),
       g.color ? h('span', { class: 'bp-color' }, g.color) : null,
       h('span', { class: 'bp-meta' }, [weightText(g), qtyText(g) ? t('є {q}', { q: qtyText(g) }) : null].filter(Boolean).join(' · '),
@@ -4131,9 +4186,12 @@ function baitPickSheet(title, all, onPick, fits = () => true) {
   const pool = () => (more ? all : all.filter(fits));
   const kinds = [...new Map(all.filter(fits).map((g) => [g.cat, catOf(g.cat).name])).entries()].sort((a, b) => collate(a[1], b[1]));
   let kind = '';
-  const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук: модель, колір'), autocomplete: 'off' });
-  const filter = kinds.length > 1 ? chips([['', t('Усі')], ...kinds], '', (v) => { kind = v; model = null; paint(); }) : null;
+  let type = '';
+  const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук: модель, колір, тип'), autocomplete: 'off' });
+  const filter = kinds.length > 1 ? chips([['', t('Усі')], ...kinds.map(([k, n]) => [k, [lureIco(k), n]])], '', (v) => { kind = v; type = ''; model = null; paint(); }) : null;
   filter?.classList.add('chips-sm', 'bait-kinds');
+  // Другий ряд — тип воблера чи блешні (мінноу, кренк…; коливалка, вертушка…): коли вид один або вибраний
+  const types = h('div', { class: 'bait-types' });
   const rows = h('div', { class: 'bait-shelf' });
   const pick = (g) => { close(); onPick(g); };
   const tile = (g, name, sub, onclick, { fish = caughtCount(g), badge = null, label = name } = {}) => h('button', { type: 'button', class: 'bait-tile', 'aria-label': label, onclick },
@@ -4143,7 +4201,14 @@ function baitPickSheet(title, all, onPick, fits = () => true) {
     h('span', { class: 'bt-title' }, name), sub ? h('span', { class: 'bt-sub' }, sub) : null);
   const paint = () => {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
-    const found = (words.length ? all : pool()).filter((g) => (!kind || g.cat === kind) && words.every((w) => haystack(g).includes(w)));
+    const ofKind = (kind || kinds.length <= 1) && !words.length ? pool().filter((g) => !kind || g.cat === kind) : [];
+    const typeOpts = [...new Map(ofKind.filter(lureType).map((g) => [lureType(g), label(g.cat === 'wobbler' ? WOB_TYPES : SPOON_TYPES, lureType(g).split(':')[1])])).entries()]
+      .sort((a, b) => collate(a[1], b[1]));
+    if (!typeOpts.some(([k]) => k === type)) type = '';
+    const typeChips = typeOpts.length > 1 ? chips([['', t('Усі')], ...typeOpts.map(([k, n]) => [k, [lureIco(k), n]])], type, (v) => { type = v; model = null; paint(); }) : null;
+    typeChips?.classList.add('chips-sm', 'bait-kinds');
+    types.replaceChildren(...(typeChips ? [typeChips] : []));
+    const found = (words.length ? all : pool()).filter((g) => (!kind || g.cat === kind) && (!type || lureType(g) === type) && words.every((w) => haystack(g).includes(w)));
     let head = null;
     let tiles;
     if (model && !words.length) {
@@ -4157,20 +4222,20 @@ function baitPickSheet(title, all, onPick, fits = () => true) {
       const groups = new Map();
       found.forEach((g) => { const k = modelKey(g); groups.set(k, [...(groups.get(k) ?? []), g]); });
       tiles = [...groups].map(([k, list]) => (list.length === 1
-        ? tile(list[0], bareTitle(list[0]), [list[0].color, weightText(list[0])].filter(Boolean).join(' · '), () => pick(list[0]))
-        : tile(list.find((g) => findPhoto(g.photoId)) ?? list[0], modelName(list[0]), colorsText(list.length), () => { model = k; paint(); rows.closest('.sheet-body')?.scrollTo(0, 0); },
+        ? tile(list[0], bareTitle(list[0]), [lureTypeText(list[0]), list[0].color, weightText(list[0])].filter(Boolean).join(' · '), () => pick(list[0]))
+        : tile(list.find((g) => findPhoto(g.photoId)) ?? list[0], modelName(list[0]), [lureTypeText(list[0]), colorsText(list.length)].filter(Boolean).join(' · '), () => { model = k; paint(); rows.closest('.sheet-body')?.scrollTo(0, 0); },
           { fish: list.reduce((n, g) => n + caughtCount(g), 0), badge: `+${list.length - 1}` })));
     }
     rows.replaceChildren(...[head,
       tiles.length ? h('div', { class: 'bait-grid' }, tiles) : h('p', { class: 'muted small' }, t('Нічого не знайдено')),
-      other.length && !more && !model && !words.length && !kind
+      other.length && !more && !model && !words.length && !kind && !type
         ? h('button', { type: 'button', class: 'add-more', onclick: () => { more = true; paint(); } }, t('Для іншої ловлі · {n}', { n: fmt.num(other.length) })) : null].filter(Boolean));
     // Лише на екрані: перше малювання — ще до шторки, і «відірвані» мініатюри інакше зняло б із черги назавжди
     if (thumbIo && rows.isConnected) dropGoneThumbs();
   };
   search.addEventListener('input', () => { model = null; paint(); });
   paint();
-  const close = sheet(title, h('div', {}, h('div', { class: 'pick-top' }, filter, search), rows));
+  const close = sheet(title, h('div', {}, h('div', { class: 'pick-top' }, filter, types, search), rows));
 }
 
 /** Аркуш вибору речі з пошуком; sorted — у потрібному порядку. */
