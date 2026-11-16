@@ -4031,8 +4031,6 @@ function baitChips(select, baits, tr, onOther) {
   const kinds = tr.kinds?.length ? tr.kinds : [...new Set((tr.gearIds ?? []).map(findGear).map((r) => r?.rodType).filter(Boolean))];
   const fits = (g) => baitFits(g, kinds) || own.has(g.id) || g.id === was;
   const pool = ranked.filter(fits);
-  const full = (g) => [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ');
-  const note = h('p', { class: 'muted small bait-note' });
   const wrap = h('div', { class: 'field bait-pick' }, h('span', { class: 'field-label' }, t('На що')));
   const set = (x) => { select.value = x; select.dispatchEvent(new Event('change')); paint(); };
   const paint = () => {
@@ -4045,15 +4043,13 @@ function baitChips(select, baits, tr, onOther) {
       if (at >= 0) shown[at] = g; else shown.unshift(g);
     }
     const colors = g ? pool.filter((x) => modelKey(x) === modelKey(g)) : [];
-    note.replaceChildren(...(g ? [full(g), caughtCount(g) ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(caughtCount(g))) : null].filter(Boolean)
-      .flatMap((x, i) => (i ? [' · ', x] : [x])) : []));
     wrap.replaceChildren(wrap.firstChild, h('div', { class: 'chips bait-chips' },
       shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
         h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, modelName(x)), x.color ? h('small', {}, x.color) : null)),
       ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id), fits) },
         t('Усі приманки ({n})', { n: pool.length })) : null,
       h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))),
-    ...(g ? [note] : []),
+    ...(g ? [baitPreview(g)] : []),
     ...(colors.length > 1 ? [h('div', { class: 'field-label bait-colors-label' }, t('Кольори {name}', { name: modelName(g) })),
       colorChips(colors, (x) => set(x.id), v)] : []));
     // Стрічка кольорів — вибраний посередині, щоб сусідні було видно з обох боків
@@ -4086,6 +4082,20 @@ const bareTitle = (g) => {
 };
 const colorName = (g) => g.color || weightText(g) || modelName(g);
 const colorsText = (n) => `${fmt.num(n)} ${plural(n, [t('колір'), t('кольори'), t('кольорів')])}`;
+
+/** Вибрана приманка великим планом: фото (тап — на весь екран), назва, колір, вага й розмір, скільки є й скільки риб на неї. */
+function baitPreview(g) {
+  const shot = findPhoto(g.photoId);
+  const fish = caughtCount(g);
+  return h('div', { class: 'bait-preview' },
+    h(shot ? 'button' : 'span', { type: shot ? 'button' : null, class: 'bp-img', 'aria-label': shot ? t('Фото на весь екран') : null, onclick: shot ? () => showPhoto(g.photoId) : null }, gearThumb(g)),
+    h('span', { class: 'bp-text' },
+      h('span', { class: 'bp-kind' }, catOf(g.cat).name),
+      h('b', { class: 'bp-name' }, g.model ? modelName(g) : bareTitle(g)),
+      g.color ? h('span', { class: 'bp-color' }, g.color) : null,
+      h('span', { class: 'bp-meta' }, [weightText(g), qtyText(g) ? t('є {q}', { q: qtyText(g) }) : null].filter(Boolean).join(' · '),
+        fish ? h('span', { class: 'fish-count' }, icon('fish'), fishText(fish)) : null)));
+}
 
 /** Кольори однієї моделі чипами з фото; on — id вибраного. */
 function colorChips(list, onPick, on = '') {
