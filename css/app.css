@@ -26,6 +26,8 @@
   --radius: 16px;
   --tabs-h: 64px;
   --shadow: 0 1px 0 rgb(255 255 255 / .03) inset, 0 6px 16px rgb(0 0 0 / .22);
+  /* поля довкола фото, що не заповнює рамку: трохи світліше за картку, а не біле (у темній біле сліпить) */
+  --photo-bg: color-mix(in srgb, var(--text) 7%, var(--surface-2));
   color-scheme: dark;
 }
 
@@ -128,10 +130,10 @@
 .bait-wheel .bg-nav { width: 36px; height: 40px; font-size: 22px; }
 .bait-wheel .bg-picks { gap: 8px; padding-block: 3px 2px; }
 /* Приманка видовжена: плитка 3:2, а не 3:4 — без білих полів зверху й знизу */
-.bait-wheel .bait-sw { aspect-ratio: 3 / 2; border-radius: 9px; background: #fff; }
+.bait-wheel .bait-sw { aspect-ratio: 3 / 2; border-radius: 9px; background: var(--photo-bg); }
 .bait-wheel .bait-sw img.thumb { object-fit: contain; }
-/* Видовжене фото (силікон) не заповнює рамку — поля білі, як фон знімка, а не темні */
-:is(.bait-sw, .bp-img) > img.thumb { background: #fff; }
+/* Фото майже в пропорції рамки (.fill, ставить fitThumb) — заповнює її, обрізаючи краї; видовжене — цілком, поля кольору картки */
+:is(.bait-sw, .bp-img, .bt-img, .catch-lure) > img.thumb.fill { object-fit: cover; }
 .bait-wheel .bg-pick > span:last-child { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; font-size: 11px; }
 /* Стрічка стовпчиком: гортається вгору-вниз, «˄ ˅» зверху й знизу, вибраний посередині */
 .bg-wheel.vertical { grid-template-columns: none; grid-template-rows: auto minmax(0, 1fr) auto; justify-items: center; }
@@ -142,8 +144,10 @@
 .bait-wheel.vertical .bg-nav { width: 56px; height: 22px; font-size: 20px; line-height: 1; }
 /* На сенсорному екрані стрічку й так гортають пальцем — стрілки лише забирали б висоту */
 @media (pointer: coarse) { .bait-wheel.vertical .bg-nav { display: none; } }
-.bait-wheel.vertical .bg-picks { height: 96px; gap: 6px; padding-inline: 3px; }
-.bait-wheel.vertical .bg-pick { width: 56px; }
+.bait-wheel.vertical .bg-picks { height: 104px; gap: 6px; padding-inline: 3px; }
+/* Плитка кольору — не менше 44 px заввишки: 4:3 при ширині 60 */
+.bait-wheel.vertical .bg-pick { width: 60px; }
+.bait-wheel.vertical .bait-sw { aspect-ratio: 4 / 3; }
 .bait-wheel.vertical .bg-pick > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .bait-sw { aspect-ratio: 1; background: var(--surface-2); }
 .bait-sw .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; font-size: 26px; }
@@ -154,8 +158,12 @@
 .bait-wheel .bg-pick small { -webkit-line-clamp: 1; font-weight: 500; font-size: 11px; }
 /* Вибрана приманка великим планом під чипами «На що» */
 .bait-preview { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); box-shadow: 0 6px 14px rgb(0 0 0 / .25); }
+/* Закріплене превʼю: над ним і під ним — смуга кольору шторки, тож чипи ховаються під рівним краєм, а не визирають з-під нього */
+.bait-preview::before, .bait-preview::after { content: ''; position: absolute; left: -17px; right: -17px; pointer-events: none; }
+.bait-preview::before { bottom: 100%; height: 6px; background: var(--surface); }
+.bait-preview::after { top: calc(100% + 1px); height: 9px; background: linear-gradient(var(--surface), transparent); }
 .bp-top { display: flex; align-items: center; gap: 12px; }
-.bp-img { display: grid; place-items: center; flex: none; width: 104px; height: 70px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: #fff; }
+.bp-img { display: grid; place-items: center; flex: none; width: 104px; height: 70px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: var(--photo-bg); }
 button.bp-img { cursor: zoom-in; }
 .bp-img > .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; object-fit: contain; }
 .bp-img > .thumb.mono { background: var(--surface); }
@@ -496,6 +504,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .chips.chips-num { flex-wrap: nowrap; }
 .chips.chips-num button { flex: 1 1 0; min-width: 0; padding-inline: 2px; }
 .chips.check button.on::before { content: '✓ '; }
+/* Чипи одним рядком (scrollRow): гортаються вбік, край тьмяніє, коли за ним ще є чипи */
+.chips.chips-scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.chips.chips-scroll::-webkit-scrollbar { display: none; }
+.chips.chips-scroll > * { flex: none; }
+.chips-scroll.more-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
+.chips-scroll.more-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+.chips-scroll.more-l.more-r { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
 
 .chips.segmented {
   display: grid;
@@ -514,6 +529,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: transparent; font-weight: 650; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 400px) { .chips.segmented button { font-size: 14px; padding: 6px 4px; } }
+/* «Виїзди · Куди й коли · Закономірності»: колонки за довжиною підпису — «Закономірності» не обрізається на 384 px */
+.chips.segmented.trips-switch { grid-auto-columns: minmax(0, auto); }
 /* Перемикач напрямку — як розділи в Shooter's Log: значок над дрібним підписом, вибраний — помаранчевою заливкою */
 .chips.segmented.dir-switch { gap: 2px; padding: 3px; border-radius: 18px; }
 .chips.segmented.dir-switch button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 0; height: 54px; padding: 5px 0;
@@ -528,6 +545,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .panel .chips.segmented { margin-bottom: 0; }
 
 .form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* «Скільки»: число вузьке, перемикач «шт · кг · уп · л» ширший — кнопки по 44 px під палець */
+.form.qty-grid { grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); }
 .form > .chips { grid-column: 1 / -1; margin-top: -4px; }
 .form > .check { grid-column: 1 / -1; margin: 0; }
 .field { display: flex; flex-direction: column; gap: 4px; grid-column: 1 / -1; }
@@ -551,6 +570,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field .time-field { display: flex; align-items: center; text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
 .field .time-field:empty, .field .time-field.blank { color: var(--muted); }
 .field input:focus, .field select:focus, .field textarea:focus, .field .time-field:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* Підказка в полі — кольору приглушеного тексту (≥ 4.5:1), а не сіра браузерна (≈ 3.7:1 у темній) */
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 /* Циферблат часу — як у shooting-log: JS перенесли ще в 0.1.0, а стилі ні, тож години стояли голим рядком кнопок */
 .tp-now { display: flex; justify-content: center; align-items: center; gap: 2px; margin: 0 0 14px; font-size: 40px; font-weight: 800; }
 .tp-part { padding: 0 10px; border: 0; border-radius: 12px; background: var(--surface-2); color: var(--muted); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
@@ -705,8 +726,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   touch-action: pan-y;
   transition: translate .15s ease, opacity .15s ease;
 }
-/* відкрита шторка: тост згори, а не на її кнопках */
-body:has(#layer .backdrop) .toast:not(.reminder) { bottom: auto; top: calc(env(safe-area-inset-top) + 12px); }
+/* відкрита шторка: тост унизу над її кнопками (відступ рахує toast()), а не згори на ✕ і ✎ */
+body:has(#layer .backdrop) .toast:not(.reminder) { bottom: var(--toast-bottom, calc(env(safe-area-inset-bottom) + 12px)); }
 /* тост завжди темний: помаранчевий текст — сталий світлий, а не з теми */
 /* Нагадування — під шторкою (.backdrop — 20): не закриває її кнопки */
 .toast.reminder { z-index: 19; }
@@ -1047,7 +1068,7 @@ button.about-avatar { padding: 0; border: 0; }
 /* Зразки кольорів моделі — віялом: кожен наступний трохи насуває на попередній */
 .model-thumbs { display: flex; flex: none; }
 .model-thumbs .thumb { width: 36px; height: 36px; border: 2px solid var(--surface); box-sizing: content-box; }
-.model-thumbs .thumb + .thumb { margin-left: -12px; }
+.model-thumbs .thumb + .thumb { margin-left: -18px; }
 .thumb-more { display: grid; place-items: center; color: var(--muted); font-size: 12px; font-weight: 750; }
 .model-head .sec-count { min-width: auto; }
 .model-rows { margin: 6px 0 4px 14px; }
@@ -1065,8 +1086,11 @@ button.about-avatar { padding: 0; border: 0; }
 .view .btn.quiet { background: color-mix(in srgb, var(--surface) 88%, transparent); border-color: var(--line-soft); }
 .view .box .btn.quiet, .view .row .btn.quiet { background: none; border-color: transparent; }
 .view > div > p.muted, .gear-groups + p.muted { padding: 10px 12px; border-radius: 12px; background: var(--surface); }
-/* Назва моделі приманки — переноситься, а не «…» */
-.model-head .sec-name { white-space: normal; overflow: visible; }
+/* Назва моделі приманки — до двох рядків; під нею — кольорів, штук і «мало» */
+.model-head .sec-name { display: grid; gap: 1px; white-space: normal; overflow: visible; }
+.model-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
+.model-sub { display: flex; flex-wrap: wrap; gap: 0 8px; color: var(--muted); font-size: 13px; font-weight: 500; }
+.model-sub .sec-low { font-size: 13px; }
 
 /* ---------- Картки (0.19.0): шапка, чипи, залишок, рядки списку ---------- */
 /* Шапка аркуша з трьома й більше кнопками: кнопки — рядком угорі, назва — під ними на всю ширину */
@@ -1074,7 +1098,8 @@ button.about-avatar { padding: 0; border: 0; }
 .sheet-head.stacked h2 { order: 3; flex: 1 0 100%; font-size: 21px; line-height: 1.25; text-wrap: balance; -webkit-line-clamp: 4; line-clamp: 4; }
 .sheet-head.stacked .sheet-tools { margin-left: auto; }
 /* Фото речі: світла підкладка під товарні фото на білому, без обрізання */
-.gear-sheet .item-photo { aspect-ratio: 4 / 3; max-height: 240px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
+/* Кадр — у пропорціях самого фото (довга приманка — низький кадр без полів); високе фото — до 240 px заввишки */
+.gear-sheet .item-photo { height: auto; max-height: 240px; object-fit: contain; background: var(--photo-bg); border: 1px solid var(--line); }
 .gear-sheet .photo-btn { width: 100%; }
 /* Плитки характеристик: акцентна цифра, підпис — дрібно й спокійно */
 .spec-tile { border: 1px solid var(--line-soft); }
@@ -1109,7 +1134,7 @@ button.meta-chip:active { background: var(--seg-on); }
 .row-place .ico svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .row-place > :last-child { overflow: hidden; text-overflow: ellipsis; }
 .row-side { display: grid; justify-items: end; gap: 4px; }
-.fish-count { display: inline-flex; align-items: center; gap: 4px; color: var(--clean); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fish-count { display: inline-flex; align-items: center; gap: 4px; color: color-mix(in srgb, var(--clean) 90%, var(--text)); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .fish-count .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 /* Дії залишку: головна («−1 Втратив» / «Витратив») — на всю ширину, під нею дві рівні */
@@ -1516,9 +1541,15 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .blocks-form > .chips.segmented { margin-top: 12px; }
 /* Чип приманки: мініатюра, назва, колір дрібно */
 .bait-chips button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+/* Моделі — рядком із прокруткою; довга назва не забирає весь рядок, сусідній чип визирає */
+.bait-chips { margin: 4px 0 12px; }
+.bait-chips > .chips { margin: 0; }
+.bait-row > button { max-width: 80%; }
+.bait-more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px !important; }
+.bait-more > button { justify-content: center; }
 .bait-chips button > span:not(.bait-sw) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bait-chips button small { color: inherit; opacity: .75; font-size: 12px; }
-.bait-chips .bait-sw { display: inline-grid; flex: none; width: 34px; height: 34px; margin-left: -9px; border-radius: 9px; overflow: hidden; background: #fff; }
+.bait-chips .bait-sw { display: inline-grid; flex: none; width: 34px; height: 34px; margin-left: -9px; border-radius: 9px; overflow: hidden; background: var(--photo-bg); }
 .bait-chips .bait-sw > * { width: 34px; height: 34px; border: 0; border-radius: 0; }
 .bait-chips .bait-sw img { width: 100%; height: 100%; object-fit: contain; }
 .bait-chips .bait-sw svg { width: 22px; height: 22px; }
@@ -1535,16 +1566,19 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .cal-mh .fish-count { font-size: 11px; gap: 2px; }
 .cal-mh .fish-count .ico svg { width: 13px; height: 13px; }
 .cal-m.idle .cal-mh { color: var(--muted); font-weight: 500; }
+/* Місяць з виїздами натискається цілим (кілька виїздів — список) */
+button.cal-m { display: block; width: 100%; min-width: 0; margin: -4px; padding: 4px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; box-sizing: content-box; }
+button.cal-m:active { background: var(--surface-2); }
+button.cal-m:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+@media (hover: hover) { button.cal-m:hover { background: var(--surface-2); } }
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .cal-d { --cal: var(--clean); display: block; aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: 3px; background: var(--line-soft); }
-button.cal-d { cursor: pointer; }
 .cal-d.zero { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .cal-d.l1 { background: color-mix(in srgb, var(--cal) 38%, var(--line-soft)); }
 .cal-d.l2 { background: color-mix(in srgb, var(--cal) 60%, var(--line-soft)); }
 .cal-d.l3 { background: color-mix(in srgb, var(--cal) 82%, var(--line-soft)); }
 .cal-d.l4 { background: var(--cal); box-shadow: 0 0 6px color-mix(in srgb, var(--cal) 60%, transparent); }
 .cal-d.today { outline: 1.5px solid var(--accent); outline-offset: 1px; }
-button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cal-legend { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 12px; color: var(--muted); font-size: 11px; }
 .cal-legend .cal-d { width: 11px; height: 11px; }
 .cal-legend .cal-gap { width: 10px; }
@@ -1564,15 +1598,19 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .catch-n { color: var(--muted); font-weight: 600; }
 .catch-tags > .catch-size { color: var(--text); font-weight: 800; }
 .catch-bait { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 13px; }
-.catch-bait > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Приманка з кольором — до двох рядків: колір і відрізняє улови, тож «…» на ньому не ставимо */
+.catch-bait > span:last-child { display: -webkit-box; min-width: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .catch-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.catch-lure { display: grid; place-items: center; flex: none; align-self: stretch; width: 76px; min-height: 64px; border-radius: 10px; overflow: hidden; background: #fff; }
+.catch-lure { display: grid; place-items: center; flex: none; align-self: stretch; width: 76px; min-height: 64px; border-radius: 10px; overflow: hidden; background: var(--photo-bg); }
 .catch-lure > .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; object-fit: contain; background: none; }
 .catch-lure.none { background: color-mix(in srgb, var(--text) 6%, transparent); }
+/* Фото приманки — у своїх пропорціях посередині картки, без полів згори й знизу */
+.catch-lure:not(.none) { align-self: center; min-height: 0; }
+.catch-lure:not(.none) > .thumb { height: auto; max-height: 120px; }
 .catch-lure.none > .thumb { background: none; }
 .catch-lure .thumb-ico svg { width: 30px; height: 30px; }
-.catch-tags > span { padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--muted); font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; }
-.catch-tags > .catch-rel.rel { color: var(--buy); background: color-mix(in srgb, var(--buy) 15%, transparent); font-weight: 650; }
+.catch-tags > span { padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); color: color-mix(in srgb, var(--muted) 82%, var(--text)); font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.catch-tags > .catch-rel.rel { color: color-mix(in srgb, var(--buy) 72%, var(--text)); background: color-mix(in srgb, var(--buy) 15%, transparent); font-weight: 650; }
 .catch-hint { margin: 8px 2px 0; text-align: center; }
 
 /* Плитки дій виїзду: «−1 Втратив» / «Витратив» */
@@ -1596,10 +1634,8 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
   background: var(--surface); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
 .bait-tile:active { border-color: var(--fill); }
 @media (hover: hover) { .bait-tile:hover { border-color: var(--fill); } }
-.bt-img { position: relative; display: grid; place-items: center; aspect-ratio: 1; margin-bottom: 3px; border-radius: 10px; overflow: hidden; background: #fff; }
+.bt-img { position: relative; display: grid; place-items: center; aspect-ratio: 3 / 2; margin-bottom: 3px; border-radius: 10px; overflow: hidden; background: var(--photo-bg); }
 .bt-img > .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; object-fit: contain; }
-/* Фото не квадратне — поля довкола білі, як фон знімка, а не темні */
-.bt-img > img.thumb { background: #fff; }
 .bt-img > .thumb.mono { background: var(--surface-2); }
 .bt-img .thumb-ico svg { width: 44px; height: 44px; }
 .bt-fish, .bt-badge { position: absolute; display: inline-flex; align-items: center; gap: 2px; padding: 1px 6px; border-radius: 999px;
@@ -1609,7 +1645,8 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .bt-badge { left: 5px; bottom: 5px; }
 .bt-title, .bt-sub { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; overflow-wrap: anywhere; padding: 0 2px; }
 .bt-title { -webkit-line-clamp: 2; font-size: 13px; font-weight: 700; line-height: 1.25; }
-.bt-sub { -webkit-line-clamp: 1; color: var(--muted); font-size: 11.5px; line-height: 1.3; }
+/* Тип і колір — до двох рядків: «Мінноу · 3 кольори» не обрізається на «Мінноу · 3…» */
+.bt-sub { -webkit-line-clamp: 2; color: var(--muted); font-size: 12px; line-height: 1.3; }
 .bt-back { display: flex; align-items: baseline; gap: 8px; width: 100%; min-height: 44px; margin: 0 0 8px; padding: 6px 4px; border: 0; background: none; color: var(--text);
   font: inherit; font-size: 16px; font-weight: 750; text-align: left; cursor: pointer; }
 .bt-back > span { color: var(--accent-2); font-size: 22px; line-height: 1; }
@@ -1736,7 +1773,7 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .link-box .link-fill { margin: 4px 0 0; padding: 0; border: 0; background: none; }
 
 /* Підказка температури води: оцінка за повітрям, тап — підставити в поле */
-.water-hint { grid-column: 1 / -1; justify-self: start; min-height: 36px; margin-top: -4px; padding: 6px 12px; border: 1px dashed color-mix(in srgb, var(--accent-2) 55%, var(--line));
+.water-hint { grid-column: 1 / -1; justify-self: start; min-height: 44px; margin-top: -4px; padding: 6px 12px; border: 1px dashed color-mix(in srgb, var(--accent-2) 55%, var(--line));
   border-radius: 18px; background: none; color: var(--accent-2); font: inherit; font-size: 14px; cursor: pointer; }
 .water-hint[hidden] { display: none; }
 
@@ -1774,7 +1811,7 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 /* Де впіймав: глибина під картою; закономірності — вибір виду чипами */
 .catch-depth { margin-top: 8px; }
 .catch-depth input { max-width: 140px; }
-.pattern-species { flex-wrap: wrap; margin-bottom: 8px; }
+.pattern-species { margin-bottom: 8px; }
 .patterns .bars { margin-bottom: 8px; }
 
 /* Підсвітка бровок і ям у «Глибинах»; глибина з листа під полем */
@@ -1826,10 +1863,11 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .bite .field { margin: 4px 0 8px; }
 .bite-days { display: grid; gap: 4px; margin: 4px 0 8px; }
 .bite-row { border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
-.bite-day { display: grid; grid-template-columns: 88px auto 1fr; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 12px;
+.bite-day { display: grid; grid-template-columns: 74px auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 6px 12px;
   border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-.bite-date { font-weight: 650; font-size: 14px; }
-.bite-wx { text-align: right; }
+.bite-date { font-weight: 650; font-size: 14px; white-space: nowrap; }
+/* Тиск, вітер і вода — одним рядком: на вузькому екрані «вода ≈ 5°» не падає на другий */
+.bite-wx { overflow: hidden; text-align: right; white-space: nowrap; text-overflow: ellipsis; }
 .bite-dots { display: inline-flex; gap: 3px; }
 .bite-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
 .bite-dots i.on { background: var(--accent); }

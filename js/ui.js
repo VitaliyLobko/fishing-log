@@ -285,6 +285,9 @@ export function toast(message, { action, onAction, reminder = false, timeout = a
   };
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
+  // Відкрита шторка: тост унизу над її кнопками («Зберегти»), а не згори на ✕ і ✎
+  const foot = !reminder && [...document.querySelectorAll('#layer .sheet')].at(-1)?.querySelector('.sheet-actions');
+  if (foot) el.style.setProperty('--toast-bottom', `${Math.max(12, innerHeight - foot.getBoundingClientRect().top + 8)}px`);
   document.body.append(el);
   root.setProperty('--toast-lift', `${el.offsetHeight + 8}px`);
   toastTimer = setTimeout(remove, timeout);
@@ -714,6 +717,40 @@ export function chips(options, value, onPick) {
   }
   sync();
   return wrap;
+}
+
+/**
+ * Чипи одним рядком із прокруткою вбік (на телефоні не з'їдають півекрана): край тьмяніє, коли за ним ще є чипи;
+ * коліщатко миші гортає вбік; вибраний чип при першому показі — у полі зору. reveal() — показати вибраний знову.
+ */
+export function scrollRow(el) {
+  el.classList.add('chips-scroll');
+  const edges = () => {
+    const max = el.scrollWidth - el.clientWidth;
+    el.classList.toggle('more-l', el.scrollLeft > 2);
+    el.classList.toggle('more-r', el.scrollLeft < max - 2);
+  };
+  el.reveal = () => {
+    const on = el.querySelector('.on');
+    if (!on) return;
+    const r = on.getBoundingClientRect();
+    const b = el.getBoundingClientRect();
+    if (r.left < b.left + 28) el.scrollLeft -= b.left + 28 - r.left;
+    else if (r.right > b.right - 28) el.scrollLeft += r.right - (b.right - 28);
+  };
+  el.addEventListener('scroll', edges, { passive: true });
+  el.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  }, { passive: false });
+  let shown = false;
+  new ResizeObserver(() => {
+    if (!el.clientWidth) return;
+    if (!shown) { shown = true; el.reveal(); }
+    edges();
+  }).observe(el);
+  return el;
 }
 
 /**

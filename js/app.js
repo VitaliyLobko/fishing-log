@@ -8,7 +8,7 @@ import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, o
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto, prepareSheet as preparePhotoSheet } from './photos.js';
 import { weatherAt, waterEstimate, forecastDays, moonPhase, compass } from './weather.js';
-import { h, svgClone, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip } from './ui.js';
+import { h, svgClone, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip, scrollRow } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], charts: [], photos: [], prefs: [] };
 let tab = 'gear';
@@ -150,11 +150,21 @@ function dropGoneThumbs() {
   for (const img of thumbWait) if (!img.isConnected) { thumbIo.unobserve(img); thumbWait.delete(img); }
 }
 
+/** Фото майже в пропорції рамки (до ×1.35) — .fill: заповнює її, а не стоїть з полями; видовжене лишається цілим. */
+function fitThumb(e) {
+  const img = e.target;
+  const w = img.clientWidth;
+  const hh = img.clientHeight;
+  if (!w || !hh || !img.naturalHeight) return;
+  const r = (img.naturalWidth / img.naturalHeight) / (w / hh);
+  img.classList.toggle('fill', r > 1 / 1.35 && r < 1.35);
+}
+
 function thumbImg(photoId, fallback = '') {
   const p = findPhoto(photoId);
   if (!p) return h('span', { class: 'thumb mono', style: '--h: 25' }, fallback);
-  if (!thumbIo) return h('img', { class: 'thumb', src: thumbUrl(p), alt: '', decoding: 'async' });
-  const img = h('img', { class: 'thumb', alt: '', decoding: 'async', dataset: { src: thumbUrl(p) } });
+  if (!thumbIo) return h('img', { class: 'thumb', src: thumbUrl(p), alt: '', decoding: 'async', onload: fitThumb });
+  const img = h('img', { class: 'thumb', alt: '', decoding: 'async', onload: fitThumb, dataset: { src: thumbUrl(p) } });
   thumbIo.observe(img);
   thumbWait.add(img);
   return img;
@@ -1102,10 +1112,12 @@ function modelHead(gs) {
   const g = gs[0];
   const total = gs.reduce((s, x) => s + num(x.qty), 0);
   const low = gs.filter(isLow).length;
+  // Кількість і «мало» — рядком під назвою, а не плашкою праворуч: на телефоні назва не ламається на 3–4 рядки
   return h('span', { class: 'sec-head model-head' }, modelThumbs(gs),
-    h('span', { class: 'sec-name' }, [[g.brand, g.model].filter(Boolean).join(' ') || gearTitle(g), sizeText(g)].filter(Boolean).join(' · ')),
-    low ? h('span', { class: 'sec-low' }, t('мало: {n}', { n: low })) : null,
-    h('span', { class: 'sec-count' }, t('{c} кол. · {n} шт', { c: gs.length, n: fmt.num(total) })));
+    h('span', { class: 'sec-name model-name' },
+      h('span', { class: 'model-title' }, [[g.brand, g.model].filter(Boolean).join(' ') || gearTitle(g), sizeText(g)].filter(Boolean).join(' · ')),
+      h('span', { class: 'model-sub' }, t('{c} кол. · {n} шт', { c: gs.length, n: fmt.num(total) }),
+        low ? h('span', { class: 'sec-low' }, t('мало: {n}', { n: low })) : null)));
 }
 
 const MODEL_THUMBS = 3;
@@ -1389,7 +1401,7 @@ function gearForm(g = null, { preset = null, file = null, onSaved = null, link =
   const field = (name) => f.inputs[name].closest('.field');
   // «Скільки» — окремим блоком; підказка про поріг — під ним на всю ширину, сусідні поля не зсуває
   const lowNote = h('p', { class: 'muted small form-note' }, t('Поріг «мало»: стільки й менше — у «Докупити»'));
-  const qtyBox = box(t('Скільки'), h('div', {}, h('div', { class: 'form' }, field('qty'), field('unit'), field('low'), field('weight')), lowNote));
+  const qtyBox = box(t('Скільки'), h('div', {}, h('div', { class: 'form qty-grid' }, field('qty'), field('unit'), field('low'), field('weight')), lowNote));
   // Розмір приманки, місце й колір — сіткою після блоку
   // Тип воблера чи блешні — головне, по ньому й шукають: теж на виду
   const rest = h('div', { class: 'form' }, field('wobType'), field('spoonType'), field('blade'), field('lureSize'), field('sizeUnit'), field('placeId'), field('color'));
@@ -4097,9 +4109,12 @@ function baitChips(select, baits, tr, onOther) {
   const top = h('div', { class: 'bp-top' });
   // Превʼю й ряд чипів не виймаються з DOM: вийнята стрічка скидає прокрутку — і на компі «дергається»
   const preview = h('div', { class: 'bait-preview', hidden: true }, top);
-  const chips = h('div', { class: 'chips bait-chips' });
-  wrap.append(preview, chips);
+  // Чипи моделей — одним рядком із прокруткою вбік; «Усі приманки» й «Інше» — окремим рядком під ним, завжди на виду
+  const row = scrollRow(h('div', { class: 'chips bait-row' }));
+  const more = h('div', { class: 'chips bait-more' });
+  wrap.append(preview, h('div', { class: 'bait-chips' }, row, more));
   let stripFor = null;
+  let shownOn = null;
   let stripVal = null;
   const paint = () => {
     const v = select.value;
@@ -4126,9 +4141,11 @@ function baitChips(select, baits, tr, onOther) {
     } else stripFor = null;
     // Превʼю — над чипами й закріплене: видно, що вибрано, поки гортаєш чипи
     preview.hidden = !g;
-    chips.replaceChildren(
-      ...shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
-        h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, x.model ? modelName(x) : bareTitle(x)))),
+    row.replaceChildren(...shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
+      h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, x.model ? modelName(x) : bareTitle(x)))));
+    // Вибрали з «Усіх приманок» чи стрічкою — чип вибраної моделі прокручується в поле зору
+    if (shownOn !== v) { shownOn = v; row.reveal(); }
+    more.replaceChildren(
       ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id), fits) },
         t('Усі приманки ({n})', { n: pool.length })) : '',
       h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу')));
@@ -4190,6 +4207,7 @@ function baitPickSheet(title, all, onPick, fits = () => true) {
   const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук: модель, колір, тип'), autocomplete: 'off' });
   const filter = kinds.length > 1 ? chips([['', t('Усі')], ...kinds.map(([k, n]) => [k, [lureIco(k), n]])], '', (v) => { kind = v; type = ''; model = null; paint(); }) : null;
   filter?.classList.add('chips-sm', 'bait-kinds');
+  if (filter) scrollRow(filter);
   // Другий ряд — тип воблера чи блешні (мінноу, кренк…; коливалка, вертушка…): коли вид один або вибраний
   const types = h('div', { class: 'bait-types' });
   const rows = h('div', { class: 'bait-shelf' });
@@ -4207,6 +4225,7 @@ function baitPickSheet(title, all, onPick, fits = () => true) {
     if (!typeOpts.some(([k]) => k === type)) type = '';
     const typeChips = typeOpts.length > 1 ? chips([['', t('Усі')], ...typeOpts.map(([k, n]) => [k, [lureIco(k), n]])], type, (v) => { type = v; model = null; paint(); }) : null;
     typeChips?.classList.add('chips-sm', 'bait-kinds');
+    if (typeChips) scrollRow(typeChips);
     types.replaceChildren(...(typeChips ? [typeChips] : []));
     const found = (words.length ? all : pool()).filter((g) => (!kind || g.cat === kind) && (!type || lureType(g) === type) && words.every((w) => haystack(g).includes(w)));
     let head = null;
@@ -4582,9 +4601,9 @@ function fishByDay(sp = '') {
 }
 
 /** Тап по дню: один виїзд — одразу він, кілька — список. */
-function openDay(iso, trips) {
+function openTrips(title, trips) {
   if (trips.length === 1) { tripDetail(trips[0].id); return; }
-  const close = sheet(dayLabel(iso), h('div', { class: 'rows' }, trips.map((tr) => {
+  const close = sheet(title, h('div', { class: 'rows' }, trips.map((tr) => {
     const el = tripRow(tr);
     el.addEventListener('click', () => close(), { capture: true });
     return el;
@@ -4612,9 +4631,8 @@ function calendarBox(sp = '') {
   const cell = (iso) => {
     const x = days.get(iso);
     const cls = ['cal-d', x ? (x.n ? `l${level(x.n)}` : 'zero') : '', iso === now ? 'today' : ''].filter(Boolean).join(' ');
-    if (!x) return h('span', { class: cls });
-    const text = `${fmt.date(iso)} — ${x.trips.map(tripTitle).join(', ')} · ${x.n ? fishText(x.n) : t('без улову')}`;
-    return h('button', { type: 'button', class: cls, title: text, 'aria-label': text, onclick: () => openDay(iso, x.trips) });
+    // День — лише клітинка теплокарти: 13 px пальцем не влучити, тож натискається весь місяць
+    return h('span', { class: cls, title: x ? `${fmt.date(iso)} — ${x.trips.map(tripTitle).join(', ')} · ${x.n ? fishText(x.n) : t('без улову')}` : null });
   };
   const paint = () => {
     const y = Number(year);
@@ -4627,7 +4645,13 @@ function calendarBox(sp = '') {
       if (fish && (!bestM || fish > bestM.fish)) bestM = { m, fish };
       const lead = (new Date(y, m, 1).getDay() + 6) % 7;
       const dim = new Date(y, m + 1, 0).getDate();
-      return h('div', { class: `cal-m${inMonth.length ? '' : ' idle'}` },
+      // Місяць з виїздами — кнопка: один виїзд — одразу він, кілька — список (найновіші зверху)
+      const trips = [...new Set(inMonth.flatMap(([, x]) => x.trips))].sort((a, b) => collate(b.date, a.date));
+      const name = new Date(y, m, 15).toLocaleDateString(locale(), { month: 'long', year: 'numeric' });
+      return h(trips.length ? 'button' : 'div', {
+        class: `cal-m${inMonth.length ? '' : ' idle'}`,
+        ...(trips.length ? { type: 'button', 'aria-label': `${name}: ${daysText(inMonth.length)}, ${fishText(fish)}`, onclick: () => openTrips(name, trips) } : {}),
+      },
         h('div', { class: 'cal-mh' }, h('span', {}, new Date(y, m, 15).toLocaleDateString(locale(), { month: 'short' }).replace('.', '')),
           fish ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(fish)) : null),
         h('div', { class: 'cal-grid' }, Array.from({ length: lead }, () => h('span', {})),
@@ -4801,6 +4825,7 @@ function renderPatterns() {
   };
   const pick = chips([['', t('Усі риби')], ...list.map((x) => [x, x])], sp, (v) => { sp = v; remember(PATTERN_SP, v); paint(); });
   pick.classList.add('pattern-species');
+  scrollRow(pick);
   paint();
   return h('div', {}, tripsSwitch(), h('div', { class: 'box-like' }, pick, body));
 }
@@ -4937,6 +4962,7 @@ function renderBite() {
     };
     const spPick = chips(species.slice(0, 12).map((x) => [x, x]), sp, (v) => { sp = v; remember(BITE_SP, v); open = null; paint(); });
     spPick.classList.add('pattern-species');
+    scrollRow(spPick);
     const spotPick = spots.length > 1 ? h('select', { class: 'bite-spot', 'aria-label': t('Водойма') },
       [...spots].sort((a, b) => collate(a.name, b.name)).map((s) => h('option', { value: s.id, selected: s.id === spotId }, s.name))) : null;
     spotPick?.addEventListener('change', () => { spotId = spotPick.value; remember(BITE_SPOT, spotId); open = null; paint(); });
