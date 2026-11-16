@@ -4040,7 +4040,10 @@ function baitChips(select, baits, tr, onOther) {
   // Превʼю живе весь час: верх (фото, назва) перемальовується, стрічка кольорів — лише коли змінилась модель,
   // інакше вона злетіла б посеред гортання
   const top = h('div', { class: 'bp-top' });
-  const preview = h('div', { class: 'bait-preview' }, top);
+  // Превʼю й ряд чипів не виймаються з DOM: вийнята стрічка скидає прокрутку — і на компі «дергається»
+  const preview = h('div', { class: 'bait-preview', hidden: true }, top);
+  const chips = h('div', { class: 'chips bait-chips' });
+  wrap.append(preview, chips);
   let stripFor = null;
   let stripVal = null;
   const paint = () => {
@@ -4067,12 +4070,13 @@ function baitChips(select, baits, tr, onOther) {
       }
     } else stripFor = null;
     // Превʼю — над чипами й закріплене: видно, що вибрано, поки гортаєш чипи
-    wrap.replaceChildren(wrap.firstChild, ...(g ? [preview] : []), h('div', { class: 'chips bait-chips' },
-      shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
+    preview.hidden = !g;
+    chips.replaceChildren(
+      ...shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
         h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, x.model ? modelName(x) : bareTitle(x)))),
       ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id), fits) },
-        t('Усі приманки ({n})', { n: pool.length })) : null,
-      h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))));
+        t('Усі приманки ({n})', { n: pool.length })) : '',
+      h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу')));
   };
   field.after(wrap);
   paint();

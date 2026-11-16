@@ -768,6 +768,8 @@ export function wheelStrip(strip, onFocus, item) {
       setTimeout(() => { drag = null; }, 0);
     } else drag = null;
   };
+  // Фото в плитці браузер тягне як картинку (drag-and-drop) і обриває перетягування стрічки
+  strip.addEventListener('dragstart', (e) => e.preventDefault());
   strip.addEventListener('click', (e) => { if (drag?.moved) { e.stopPropagation(); e.preventDefault(); } }, true);
   strip.addEventListener('pointerup', dragEnd);
   strip.addEventListener('pointercancel', dragEnd);
