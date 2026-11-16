@@ -1007,7 +1007,7 @@ function paintGear() {
   const body = query || picking
     ? (list.length ? h('div', { class: 'rows' }, list.map(gearRow)) : h('p', { class: 'muted' }, t('Нічого не знайдено')))
     : h('div', { class: 'gear-groups' },
-      only ? (only.key === 'lures' ? lureBody(list) : h('div', { class: 'rows' }, list.map(gearRow))) : sections().map((x) => {
+      only ? (only.key === 'lures' ? lureBody(list) : catBody(list, only)) : sections().map((x) => {
         const items = list.filter((g) => groupOf(g) === x.key);
         // Порожній свій розділ теж видно — щоб змінити чи видалити, як порожні групи в Хобі-плані
         return items.length || !x.builtin ? fold(`gear-${x.key}`, sectionHead(x.icon, x.name, items.length, items.filter(isLow).length, () => sectionForm(x), sectionColor(x.color)),
@@ -1035,6 +1035,16 @@ function lureBody(items) {
   return h('div', { class: 'gear-groups sub-groups' }, allCats().filter((c) => used.has(c.id)).map((c) => {
     const its = items.filter((g) => g.cat === c.id).sort(lureSort);
     return fold(`lures-${c.id}`, sectionHead('lures', c.name, its.length, its.filter(isLow).length, null, sectionColor(sectionOf('lures')?.color)), () => h('div', { class: 'rows' }, modelRows(its)), '', its.map((g) => g.id));
+  }));
+}
+
+/** Розділ без своєї картки (напрямок звузив до нього): підгрупи за категорією (намети, спальники…); одна категорія — просто список. */
+function catBody(items, sec) {
+  const used = new Set(items.map((g) => g.cat));
+  if (used.size < 2) return h('div', { class: 'rows' }, items.map(gearRow));
+  return h('div', { class: 'gear-groups sub-groups' }, allCats().filter((c) => used.has(c.id)).map((c) => {
+    const its = items.filter((g) => g.cat === c.id);
+    return fold(`cats-${sec.key}-${c.id}`, sectionHead(sec.icon, c.name, its.length, its.filter(isLow).length, null, sectionColor(sec.color)), () => h('div', { class: 'rows' }, its.map(gearRow)), '', its.map((g) => g.id));
   }));
 }
 
@@ -2642,7 +2652,11 @@ function waterLevelRow(onChange) {
     onChange();
   });
   paint(cur.v, cur.at);
-  return h('div', { class: 'water-level' }, h('div', { class: 'wl-head' }, h('span', { class: 'field-label' }, t('Вода сьогодні')), out), input, note);
+  // Поділки під повзунком; «звичайна» — кнопка: тап повертає рівень на нуль
+  const at = (v) => `${((v + 2) / 5) * 100}%`;
+  const ticks = h('div', { class: 'wl-ticks' }, [-2, -1, 1, 2, 3].map((v) => h('span', { style: `left: ${at(v)}`, 'aria-hidden': 'true' }, v > 0 ? `+${v}` : `−${-v}`)),
+    h('button', { type: 'button', class: 'wl-zero', style: `left: ${at(0)}`, onclick: () => { input.value = '0'; input.dispatchEvent(new Event('input')); } }, t('звичайна')));
+  return h('div', { class: 'water-level' }, h('div', { class: 'wl-head' }, h('span', { class: 'field-label' }, t('Вода сьогодні')), out), input, ticks, note);
 }
 
 /** Перемикач підкладки «Супутник / Схема» під картою. */
@@ -3665,6 +3679,7 @@ function renderTrips() {
     tripsSwitch(),
     packBox(),
     seasonBox(),
+    calendarBox(),
     recordsBox(),
     list.length ? byMonth(list).map(([head, rows]) => [h('h3', { class: 'list-head' }, head), h('div', { class: 'rows month-rows' }, rows.map(tripRow))])
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]));
@@ -3908,15 +3923,21 @@ function tripBody(tr) {
         ...losses.map((x) => row(gearTitle(x.g), [weightText(x.g), x.g.color, label(REASONS, x.reason)].filter(Boolean).join(' · '), `−${fmt.num(num(x.n) || 1)}`, () => gearDetail(x.g.id))),
         ...spends.map((x) => row(gearTitle(x.g), t('витрачено'), `−${fmt.num(x.n)} ${unitLabel(x.g)}`, () => gearDetail(x.g.id))),
       ]) : null,
-      h('div', { class: 'btn-row' },
-        btn(t('−1 Втратив'), () => pickConsumable(t('Що втратив'), (g) => g && pieces(g), (g) => lostOne(g, tr.id), tr)),
-        btn(t('Витратив'), () => pickConsumable(t('Що витратив'), (g) => g && !pieces(g), (g) => spendSheet(g, tr.id), tr))))),
+      h('div', { class: 'act-tiles' },
+        actTile('hook', t('−1 Втратив'), t('обрив, зачеп'), 'loss', () => pickConsumable(t('Що втратив'), (g) => g && pieces(g), (g) => lostOne(g, tr.id), tr)),
+        actTile('bucket', t('Витратив'), t('прикормка, насадка'), 'spend', () => pickConsumable(t('Що витратив'), (g) => g && !pieces(g), (g) => spendSheet(g, tr.id), tr))))),
     box(photos.length ? `${t('Фото')} · ${photos.length}` : t('Фото'), h('div', {},
       photos.length ? h('div', { class: 'photo-strip' }, photos.map((pid) => h('button', { type: 'button', class: 'photo-btn', 'aria-label': t('Фото на весь екран'), onclick: () => showPhoto(pid, photos) }, h('img', { src: findPhoto(pid).thumb, alt: '' })))) : null,
       h('div', { class: 'btn-row' }, btn(t('+ Фото'), () => addTripPhoto(tr))))));
 }
 
 const baitText = (c) => (c.baitId ? (findGear(c.baitId) ? [gearTitle(findGear(c.baitId)), findGear(c.baitId).color].filter(Boolean).join(' ') : null) : c.bait) || null;
+
+/** Плитка дії: значок у кольоровому колі, назва й підказка, що сюди йде. */
+function actTile(ico, title, hint, cls, onclick) {
+  return h('button', { type: 'button', class: `act-tile ${cls}`, onclick },
+    h('span', { class: 'act-ico' }, icon(ico)), h('span', { class: 'act-title' }, title), h('span', { class: 'act-hint' }, hint));
+}
 
 /** Рядок улову: тап — форма, свайп вправо — «Ще така», вліво — видалити. */
 function catchRow(tr, c) {
@@ -4398,6 +4419,92 @@ function seasonBox() {
       fish && onTrips && gear ? [t('Без покупок'), fmt.money(onTrips / fish)] : null,
     ]),
     h('p', { class: 'muted small' }, t('На виїздах — втрачене й прикормка за ціною покупки плюс «Інші витрати» виїзду. Покупки — з карток снастей і «+ Купив».'))));
+}
+
+// ---------- календар виїздів ----------
+
+/** Дні на воді: день → { n — риб того дня, trips }; виїзд на кілька днів — кожен день окремо, улов — у свій день. */
+function fishByDay() {
+  const days = new Map();
+  for (const tr of state.trips) {
+    for (let i = 0; i < tripDays(tr); i++) {
+      const d = addDays(tr.date, i);
+      const x = days.get(d) ?? { n: 0, trips: [] };
+      if (!x.trips.includes(tr)) x.trips.push(tr);
+      days.set(d, x);
+    }
+    for (const c of tr.catches ?? []) { const x = days.get(catchDate(tr, c)); if (x) x.n += num(c.n) || 1; }
+  }
+  return days;
+}
+
+/** Тап по дню: один виїзд — одразу він, кілька — список. */
+function openDay(iso, trips) {
+  if (trips.length === 1) { tripDetail(trips[0].id); return; }
+  const close = sheet(dayLabel(iso), h('div', { class: 'rows' }, trips.map((tr) => {
+    const el = tripRow(tr);
+    el.addEventListener('click', () => close(), { capture: true });
+    return el;
+  })));
+}
+
+/**
+ * Календар виїздів теплокартою: місяці сіткою по днях, колір дня — скільки риб. Шкала — від власних квартилів
+ * (ваш «добрий день», а не чужі сотні), день без улову — порожня рамка. Згортається; рік — стрілками.
+ */
+function calendarBox() {
+  const days = fishByDay();
+  const years = [...new Set([...days.keys()].map((d) => d.slice(0, 4)))].sort();
+  if (!years.length) return null;
+  const counts = [...days.values()].map((x) => x.n).filter(Boolean).sort((a, b) => a - b);
+  const q = (p) => counts[Math.floor(p * (counts.length - 1))] ?? 0;
+  const cuts = [q(0.25), q(0.5), q(0.75)];
+  const level = (n) => (n ? 1 + cuts.filter((c) => n > c).length : 0);
+  const now = today();
+  let year = years.includes(now.slice(0, 4)) ? now.slice(0, 4) : years.at(-1);
+  const body = h('div', { class: 'cal' });
+  const cell = (iso) => {
+    const x = days.get(iso);
+    const cls = ['cal-d', x ? (x.n ? `l${level(x.n)}` : 'zero') : '', iso === now ? 'today' : ''].filter(Boolean).join(' ');
+    if (!x) return h('span', { class: cls });
+    const text = `${fmt.date(iso)} — ${x.trips.map(tripTitle).join(', ')} · ${x.n ? fishText(x.n) : t('без улову')}`;
+    return h('button', { type: 'button', class: cls, title: text, 'aria-label': text, onclick: () => openDay(iso, x.trips) });
+  };
+  const paint = () => {
+    const y = Number(year);
+    const last = year === now.slice(0, 4) ? Number(now.slice(5, 7)) : 12;
+    let bestM = null;
+    const months = Array.from({ length: last }, (_, m) => {
+      const mm = String(m + 1).padStart(2, '0');
+      const inMonth = [...days].filter(([d]) => d.startsWith(`${year}-${mm}`));
+      const fish = inMonth.reduce((s, [, x]) => s + x.n, 0);
+      if (fish && (!bestM || fish > bestM.fish)) bestM = { m, fish };
+      const lead = (new Date(y, m, 1).getDay() + 6) % 7;
+      const dim = new Date(y, m + 1, 0).getDate();
+      return h('div', { class: `cal-m${inMonth.length ? '' : ' idle'}` },
+        h('div', { class: 'cal-mh' }, h('span', {}, new Date(y, m, 15).toLocaleDateString(locale(), { month: 'short' }).replace('.', '')),
+          fish ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(fish)) : null),
+        h('div', { class: 'cal-grid' }, Array.from({ length: lead }, () => h('span', {})),
+          Array.from({ length: dim }, (_, d) => cell(`${year}-${mm}-${String(d + 1).padStart(2, '0')}`))));
+    });
+    const inYear = [...days].filter(([d]) => d.startsWith(year));
+    const fish = inYear.reduce((s, [, x]) => s + x.n, 0);
+    const at = years.indexOf(year);
+    const go = (i) => { year = years[i]; paint(); };
+    body.replaceChildren(
+      h('div', { class: 'cal-top' },
+        years.length > 1 ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('Попередній рік'), disabled: at === 0, onclick: () => go(at - 1) }, '‹') : null,
+        h('span', { class: 'cal-year' }, year),
+        years.length > 1 ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('Наступний рік'), disabled: at === years.length - 1, onclick: () => go(at + 1) }, '›') : null),
+      h('p', { class: 'cal-sum' }, [daysText(inYear.length), fishText(fish),
+        bestM ? t('найкраще — {m}', { m: new Date(y, bestM.m, 15).toLocaleDateString(locale(), { month: 'long' }) }) : null].filter(Boolean).join(' · ')),
+      h('div', { class: 'cal-months' }, months),
+      h('div', { class: 'cal-legend', 'aria-hidden': 'true' },
+        h('span', { class: 'cal-d zero' }), h('span', {}, t('без улову')), h('span', { class: 'cal-gap' }),
+        h('span', {}, t('мало')), [1, 2, 3, 4].map((l) => h('span', { class: `cal-d l${l}` })), h('span', {}, t('багато'))));
+  };
+  paint();
+  return fold('calendar', t('Календар виїздів'), body, 'cal-fold');
 }
 
 // ---------- рекорди ----------

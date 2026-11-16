@@ -1479,6 +1479,44 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .bait-chips .bait-sw > * { width: 24px; height: 24px; }
 .bait-chips .bait-sw img { width: 100%; height: 100%; object-fit: cover; }
 .bait-chips .bait-sw svg { width: 18px; height: 18px; }
+/* Календар виїздів: теплокарта днів, колір — скільки риб (шкала від власних квартилів) */
+.cal { padding: 2px 0 8px; }
+.cal-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cal-top .icon-btn:disabled { opacity: .3; }
+.cal-year { flex: 1; text-align: center; font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cal-sum { margin: -4px 0 12px; text-align: center; color: var(--muted); font-size: 13px; }
+.cal-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+@media (min-width: 560px) { .cal-months { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 860px) { .cal-months { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.cal-mh { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: 18px; margin-bottom: 4px; font-size: 12px; font-weight: 700; text-transform: capitalize; }
+.cal-mh .fish-count { font-size: 11px; gap: 2px; }
+.cal-mh .fish-count .ico svg { width: 13px; height: 13px; }
+.cal-m.idle .cal-mh { color: var(--muted); font-weight: 500; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.cal-d { --cal: var(--clean); display: block; aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: 3px; background: var(--line-soft); }
+button.cal-d { cursor: pointer; }
+.cal-d.zero { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.cal-d.l1 { background: color-mix(in srgb, var(--cal) 38%, var(--line-soft)); }
+.cal-d.l2 { background: color-mix(in srgb, var(--cal) 60%, var(--line-soft)); }
+.cal-d.l3 { background: color-mix(in srgb, var(--cal) 82%, var(--line-soft)); }
+.cal-d.l4 { background: var(--cal); box-shadow: 0 0 6px color-mix(in srgb, var(--cal) 60%, transparent); }
+.cal-d.today { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cal-legend { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+.cal-legend .cal-d { width: 11px; height: 11px; }
+.cal-legend .cal-gap { width: 10px; }
+
+/* Плитки дій виїзду: «−1 Втратив» / «Витратив» */
+.act-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 4px; }
+.act-tile { --c: var(--shoot); display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; min-height: 60px; padding: 10px 12px; text-align: left;
+  color: var(--text); background: var(--surface); border: 1px solid color-mix(in srgb, var(--c) 35%, var(--line)); border-radius: 16px; cursor: pointer; }
+.act-tile.spend { --c: var(--warn); }
+.act-tile:active { background: color-mix(in srgb, var(--c) 12%, var(--surface)); }
+.act-ico { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.act-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.act-title { font-weight: 750; font-size: 15px; line-height: 1.2; white-space: nowrap; }
+.act-hint { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.25; }
+@media (hover: hover) { .act-tile:hover { border-color: var(--c); } }
 .bait-colors { margin: 2px 0 10px; }
 .bait-pick .bait-colors { position: relative; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
 .bait-pick .bait-colors::-webkit-scrollbar { display: none; }
@@ -1503,8 +1541,7 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .restock-hint { margin: 10px 0 0; }
 .sec-text .sec-name { flex: none; }
 /* Видалити — внизу шторки, підписано, окремо від решти дій */
-.sheet-del { min-height: 40px; padding-block: 6px; }
-.sheet-del svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon-btn.tool.sheet-del { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shoot) 50%, var(--line)); }
 .with-add > .field { grid-column: auto; }
 .blocks-form > * + .form, .blocks-form > .form-note + .form { margin-top: 12px; }
 .bait-pick { margin-top: 2px; }
@@ -1684,6 +1721,12 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .wl-head .field-label { margin: 0; }
 .wl-value { font-weight: 600; }
 .water-level input[type=range] { width: 100%; accent-color: #0ea5e9; }
+/* Поділки під повзунком: відступ = половина бігунка, щоб мітка стояла під його центром */
+.wl-ticks { position: relative; height: 26px; margin: -2px 8px 2px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wl-ticks > * { position: absolute; top: 0; transform: translateX(-50%); padding-top: 6px; line-height: 1; white-space: nowrap; }
+.wl-ticks > *::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 4px; background: currentColor; opacity: .6; }
+.wl-zero { display: block; padding: 6px 4px 6px; border: 0; background: none; color: #0ea5e9; font: inherit; font-weight: 700; line-height: 1; cursor: pointer; }
+.wl-ticks > .wl-zero::before { width: 2px; height: 6px; margin-left: -1px; opacity: 1; }
 .from-sheet { display: block; margin-top: 4px; }
 .bottom-label { margin-top: 12px; }
 
