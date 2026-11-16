@@ -1475,10 +1475,10 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .bait-chips button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
 .bait-chips button > span:not(.bait-sw) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bait-chips button small { color: inherit; opacity: .75; font-size: 12px; }
-.bait-chips .bait-sw { display: inline-grid; flex: none; width: 24px; height: 24px; margin-left: -6px; border-radius: 6px; overflow: hidden; }
-.bait-chips .bait-sw > * { width: 24px; height: 24px; }
-.bait-chips .bait-sw img { width: 100%; height: 100%; object-fit: cover; }
-.bait-chips .bait-sw svg { width: 18px; height: 18px; }
+.bait-chips .bait-sw { display: inline-grid; flex: none; width: 34px; height: 34px; margin-left: -9px; border-radius: 9px; overflow: hidden; background: #fff; }
+.bait-chips .bait-sw > * { width: 34px; height: 34px; border: 0; border-radius: 0; }
+.bait-chips .bait-sw img { width: 100%; height: 100%; object-fit: contain; }
+.bait-chips .bait-sw svg { width: 22px; height: 22px; }
 /* Календар виїздів: теплокарта днів, колір — скільки риб (шкала від власних квартилів) */
 .cal { padding: 2px 0 8px; }
 .cal-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -1544,14 +1544,32 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .bait-pick .bait-colors::-webkit-scrollbar { display: none; }
 .bait-pick .bait-colors button { flex: none; max-width: 75%; }
 .bait-colors-label { margin-top: 4px; }
-.bait-model { display: grid; }
-.bait-model > .bait-colors { margin: 6px 0 4px 12px; }
-.bait-model > .row[aria-expanded="true"] { border-color: var(--fill); }
 .bait-kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 8px; padding: 0 16px; }
 .bait-kinds::-webkit-scrollbar { display: none; }
 .bait-kinds button { flex: none; }
-.bait-side { display: flex; align-items: center; gap: 10px; flex: none; }
-.bait-caret { color: var(--muted); font-size: 12px; }
+/* «Усі приманки» — вітрина великих фото: по 3 в ряд на телефоні */
+.bait-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.bait-tile { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 5px 5px 8px; text-align: left; color: var(--text);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
+.bait-tile:active { border-color: var(--fill); }
+@media (hover: hover) { .bait-tile:hover { border-color: var(--fill); } }
+.bt-img { position: relative; display: grid; place-items: center; aspect-ratio: 1; margin-bottom: 3px; border-radius: 10px; overflow: hidden; background: #fff; }
+.bt-img > .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; object-fit: contain; }
+.bt-img > .thumb.mono { background: var(--surface-2); }
+.bt-img .thumb-ico svg { width: 44px; height: 44px; }
+.bt-fish, .bt-badge { position: absolute; display: inline-flex; align-items: center; gap: 2px; padding: 1px 6px; border-radius: 999px;
+  background: rgb(0 0 0 / .62); color: #fff; font-size: 11px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.bt-fish { top: 5px; right: 5px; color: #8ad4f2; }
+.bt-fish .ico svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bt-badge { left: 5px; bottom: 5px; }
+.bt-title, .bt-sub { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; overflow-wrap: anywhere; padding: 0 2px; }
+.bt-title { -webkit-line-clamp: 2; font-size: 13px; font-weight: 700; line-height: 1.25; }
+.bt-sub { -webkit-line-clamp: 1; color: var(--muted); font-size: 11.5px; line-height: 1.3; }
+.bt-back { display: flex; align-items: baseline; gap: 8px; width: 100%; min-height: 44px; margin: 0 0 8px; padding: 6px 4px; border: 0; background: none; color: var(--text);
+  font: inherit; font-size: 16px; font-weight: 750; text-align: left; cursor: pointer; }
+.bt-back > span { color: var(--accent-2); font-size: 22px; line-height: 1; }
+.bt-back small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.bait-shelf > .add-more { margin-top: 12px; }
 /* Фільтр і пошук аркуша вибору — угорі, поки гортаєш довгий список */
 .pick-top { position: sticky; top: -4px; z-index: 2; margin: -4px -16px 8px; padding: 4px 16px 8px; background: var(--surface); }
 .pick-top .gear-search { margin: 0; }
@@ -1603,7 +1621,7 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .gear-checks .row .row-qty { display: grid; place-items: center; }
 .gear-checks .row .box-check { margin: 0 2px 0 0; width: 22px; height: 22px; border-radius: 6px; }
 .gear-checks .row.on .row-title { color: var(--accent-2); }
-.gear-checks .add-more, .rows > .add-more { display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; background: none; color: var(--accent-2); font: inherit; font-weight: 600; cursor: pointer; }
+.gear-checks .add-more, .bait-shelf > .add-more { display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; background: none; color: var(--accent-2); font: inherit; font-weight: 600; cursor: pointer; }
 .blocks-form > .box .chips { margin-bottom: 0; }
 
 /* Наведення мишею: невибрана комірка перемикача чи чип ледь сіріє */

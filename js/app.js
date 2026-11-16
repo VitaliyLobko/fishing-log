@@ -4094,52 +4094,55 @@ function colorChips(list, onPick, on = '') {
 }
 
 /**
- * «Усі приманки»: зверху вид чипами, пошук; кольори однієї моделі — одним рядком, тап розкриває їх чипами з фото.
- * Під час пошуку моделі розкриті й показують лише кольори, що підійшли. sorted — у потрібному порядку.
- * fits — що підходить під спосіб ловлі; решта — за кнопкою внизу, пошук шукає серед усього.
+ * «Усі приманки» — вітрина великих фото, як відкрита коробка: впізнати приманку можна й не знаючи назви.
+ * Модель з кількома кольорами — одна плитка з «+N», тап відкриває її кольори; пошук — одразу приманки плитками.
+ * Зверху вид чипами й пошук. fits — що підходить під спосіб ловлі; решта — кнопкою внизу, пошук шукає серед усього.
  */
 function baitPickSheet(title, all, onPick, fits = () => true) {
   const other = all.filter((g) => !fits(g));
   let more = false;
+  let model = null;
   const pool = () => (more ? all : all.filter(fits));
-  const total = new Map();
-  all.forEach((g) => total.set(modelKey(g), (total.get(modelKey(g)) ?? 0) + 1));
   const kinds = [...new Map(all.filter(fits).map((g) => [g.cat, catOf(g.cat).name])).entries()].sort((a, b) => collate(a[1], b[1]));
   let kind = '';
-  const open = new Set();
   const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук: модель, колір'), autocomplete: 'off' });
-  const filter = kinds.length > 1 ? chips([['', t('Усі')], ...kinds], '', (v) => { kind = v; paint(); }) : null;
+  const filter = kinds.length > 1 ? chips([['', t('Усі')], ...kinds], '', (v) => { kind = v; model = null; paint(); }) : null;
   filter?.classList.add('chips-sm', 'bait-kinds');
-  const rows = h('div', { class: 'rows' });
+  const rows = h('div', { class: 'bait-shelf' });
   const pick = (g) => { close(); onPick(g); };
+  const tile = (g, name, sub, onclick, { fish = caughtCount(g), badge = null, label = name } = {}) => h('button', { type: 'button', class: 'bait-tile', 'aria-label': label, onclick },
+    h('span', { class: 'bt-img' }, gearThumb(g),
+      fish ? h('span', { class: 'bt-fish' }, icon('fish'), fmt.num(fish)) : null,
+      badge ? h('span', { class: 'bt-badge' }, badge) : null),
+    h('span', { class: 'bt-title' }, name), sub ? h('span', { class: 'bt-sub' }, sub) : null);
   const paint = () => {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
-    const groups = new Map();
-    (words.length ? all : pool()).filter((g) => (!kind || g.cat === kind) && words.every((w) => haystack(g).includes(w)))
-      .forEach((g) => { const k = modelKey(g); groups.set(k, [...(groups.get(k) ?? []), g]); });
-    rows.replaceChildren(...[...groups].map(([k, list]) => {
-      const all = total.get(k);
-      const fish = list.reduce((n, g) => n + caughtCount(g), 0);
-      const right = h('span', { class: 'bait-side' }, fish ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(fish)) : null,
-        all > 1 && !words.length ? h('span', { class: 'bait-caret', 'aria-hidden': 'true' }, open.has(k) ? '▴' : '▾') : null);
-      if (all === 1) {
-        const g = list[0];
-        return row(bareTitle(g), [weightText(g), g.color, qtyText(g)].filter(Boolean).join(' · '), right, () => pick(g), { thumb: gearThumb(g) });
-      }
-      const shown = words.length > 0 || open.has(k);
-      const head = row(modelName(list[0]), list.length < all ? t('{n} з {all} кольорів', { n: fmt.num(list.length), all: fmt.num(all) }) : colorsText(all),
-        right, () => { if (!open.delete(k)) open.add(k); paint(); }, { thumb: modelThumbs(list) });
-      head.setAttribute('aria-expanded', String(shown));
-      return h('div', { class: 'bait-model' }, head, shown ? colorChips(list, pick) : null);
-    }));
-    if (!groups.size) rows.append(h('p', { class: 'muted small' }, t('Нічого не знайдено')));
-    if (other.length && !more && !words.length && !kind) {
-      rows.append(h('button', { type: 'button', class: 'add-more', onclick: () => { more = true; paint(); } }, t('Для іншої ловлі · {n}', { n: fmt.num(other.length) })));
+    const found = (words.length ? all : pool()).filter((g) => (!kind || g.cat === kind) && words.every((w) => haystack(g).includes(w)));
+    let head = null;
+    let tiles;
+    if (model && !words.length) {
+      // Кольори однієї моделі — кожен великим фото
+      const colors = all.filter((g) => modelKey(g) === model);
+      head = h('button', { type: 'button', class: 'bt-back', onclick: () => { model = null; paint(); } }, h('span', { 'aria-hidden': 'true' }, '‹'), modelName(colors[0]), h('small', {}, colorsText(colors.length)));
+      tiles = colors.map((g) => tile(g, colorName(g), qtyText(g), () => pick(g), { label: `${modelName(g)} ${colorName(g)}` }));
+    } else if (words.length) {
+      tiles = found.map((g) => tile(g, bareTitle(g), [g.color, weightText(g)].filter(Boolean).join(' · '), () => pick(g)));
+    } else {
+      const groups = new Map();
+      found.forEach((g) => { const k = modelKey(g); groups.set(k, [...(groups.get(k) ?? []), g]); });
+      tiles = [...groups].map(([k, list]) => (list.length === 1
+        ? tile(list[0], bareTitle(list[0]), [list[0].color, weightText(list[0])].filter(Boolean).join(' · '), () => pick(list[0]))
+        : tile(list.find((g) => findPhoto(g.photoId)) ?? list[0], modelName(list[0]), colorsText(list.length), () => { model = k; paint(); rows.closest('.sheet-body')?.scrollTo(0, 0); },
+          { fish: list.reduce((n, g) => n + caughtCount(g), 0), badge: `+${list.length - 1}` })));
     }
+    rows.replaceChildren(...[head,
+      tiles.length ? h('div', { class: 'bait-grid' }, tiles) : h('p', { class: 'muted small' }, t('Нічого не знайдено')),
+      other.length && !more && !model && !words.length && !kind
+        ? h('button', { type: 'button', class: 'add-more', onclick: () => { more = true; paint(); } }, t('Для іншої ловлі · {n}', { n: fmt.num(other.length) })) : null].filter(Boolean));
     // Лише на екрані: перше малювання — ще до шторки, і «відірвані» мініатюри інакше зняло б із черги назавжди
     if (thumbIo && rows.isConnected) dropGoneThumbs();
   };
-  search.addEventListener('input', paint);
+  search.addEventListener('input', () => { model = null; paint(); });
   paint();
   const close = sheet(title, h('div', {}, h('div', { class: 'pick-top' }, filter, search), rows));
 }
