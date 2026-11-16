@@ -3925,7 +3925,7 @@ function tripBody(tr) {
         : t('Open-Meteo, на {h}:00', { h: String(w.hour).padStart(2, '0') })) : null)),
     rods.length ? box(t('Чим ловив'), h('div', { class: 'rows' }, rods.map((g) => row(gearTitle(g), rodText(g), '', () => gearDetail(g.id), { thumb: gearThumb(g) })))) : null,
     box([t('Улов'), catches.length ? fmt.num(tripCatch(tr)) : null, tripKg(tr) ? `${fmt.num(Math.round(tripKg(tr) * 100) / 100)} ${t('кг')}` : null].filter(Boolean).join(' · '), h('div', {},
-      catches.length ? h('div', { class: 'rows' }, catches.map((c) => catchRow(tr, c))) : h('p', { class: 'muted small' }, t('Без улову — теж запис.')),
+      catches.length ? h('div', { class: 'rows catch-list' }, catches.map((c) => catchRow(tr, c))) : h('p', { class: 'muted small' }, t('Без улову — теж запис.')),
       catches.length && !recall(CATCH_SWIPED) ? h('p', { class: 'muted small catch-hint' }, t('Змахніть улов: вправо — ще така, вліво — видалити')) : null,
       h('div', { class: 'btn-row' }, btn(t('+ Улов'), () => catchForm(tr), 'primary')))),
     box(t('Втрати й витрати'), h('div', {},
@@ -3953,21 +3953,26 @@ function actTile(ico, title, hint, cls, onclick) {
 // Підказку про свайп показуємо, доки людина жодного разу не змахнула улов
 const CATCH_SWIPED = 'fishing-log:catch-swiped';
 
+/** Свій відтінок для кожного виду — щука, окунь і судак у списку розрізняються з першого погляду. */
+const SPECIES_HUE = { 'Щука': 120, 'Окунь': 28, 'Судак': 205, 'Жерех': 190, 'Сом': 265, 'Головень': 170, 'Короп': 38, 'Карась': 50, 'Лящ': 45,
+  'Плітка': 0, 'Краснопірка': 350, 'Лин': 85, 'Синець': 225, 'Густера': 215, 'Чехоня': 180, 'Йорж': 300, 'Форель': 330 };
+const speciesHue = (sp) => SPECIES_HUE[Object.keys(SPECIES_HUE).find((k) => t(k) === sp)] ?? [...String(sp)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 360, 7);
+
 function catchRow(tr, c) {
   const bait = findGear(c.baitId);
+  const size = [num(c.weight) ? `${fmt.num(c.weight)} ${t('кг')}` : null, num(c.length) ? `${fmt.num(c.length)} ${t('см')}` : null].filter(Boolean);
   const tags = [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.time || null,
     hasDepth(c) ? depthText(c.depth) : null, c.bottom ? bottomLabel(c.bottom).toLowerCase() : null].filter(Boolean);
-  const body = h('div', { class: 'row catch-row swipe-body', role: 'button' },
-    c.photoId ? thumbImg(c.photoId) : h('span', { class: 'thumb catch-ico', 'aria-hidden': 'true' }, icon('fish')),
-    h('span', { class: 'row-main' },
-      h('span', { class: 'row-title' }, c.species, num(c.n) > 1 ? h('span', { class: 'catch-n' }, ` × ${fmt.num(c.n)}`) : null),
+  const body = h('div', { class: 'catch-row swipe-body', role: 'button' },
+    c.photoId ? thumbImg(c.photoId) : h('span', { class: 'thumb catch-ico', style: `--h: ${speciesHue(c.species)}`, 'aria-hidden': 'true' }, icon('fish')),
+    h('span', { class: 'catch-main' },
+      h('span', { class: 'catch-head' },
+        h('b', { class: 'catch-sp' }, c.species, num(c.n) > 1 ? h('span', { class: 'catch-n' }, ` × ${fmt.num(c.n)}`) : null),
+        size.length ? h('span', { class: 'catch-size' }, size.join(' · ')) : null),
       bait || c.bait ? h('span', { class: 'catch-bait' }, bait ? h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(bait)) : null,
         h('span', {}, bait ? [bareTitle(bait), bait.color].filter(Boolean).join(' ') : c.bait)) : null,
-      tags.length ? h('span', { class: 'catch-tags' }, tags.map((x) => h('span', {}, x))) : null),
-    h('span', { class: 'catch-side' },
-      num(c.weight) ? h('b', {}, `${fmt.num(c.weight)} ${t('кг')}`) : null,
-      num(c.length) ? h('span', { class: num(c.weight) ? 'muted small' : 'catch-len' }, `${fmt.num(c.length)} ${t('см')}`) : null,
-      h('span', { class: `catch-rel${c.released ? ' rel' : ''}` }, c.released ? t('відпустив') : t('забрав'))));
+      h('span', { class: 'catch-tags' }, tags.map((x) => h('span', {}, x)),
+        h('span', { class: `catch-rel${c.released ? ' rel' : ''}` }, c.released ? t('↺ відпустив') : t('забрав')))));
   return swipeable(h('div', { class: 'gear-card catch-card', 'aria-label': c.species }, body), {
     onSwipe: () => remember(CATCH_SWIPED, '1'),
     onTap: () => catchForm(tr, c),

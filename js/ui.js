@@ -171,7 +171,7 @@ export function sheet(title, body, { actions = [], onClose, live, tools = [], le
     backdrop.inert = true;
     document.removeEventListener('keydown', onKey);
     // Фокус — назад на кнопку, що відкрила; поле вводу не чіпаємо, щоб на телефоні не вискакувала клавіатура
-    if (opener?.isConnected && !opener.matches('input, textarea') && backdrop.contains(document.activeElement)) opener.focus({ preventScroll: true });
+    if (opener?.isConnected && !opener.matches('input, textarea') && backdrop.contains(document.activeElement)) opener.focus({ preventScroll: true, focusVisible: false });
     liveSheets.delete(rebuild);
     backdrop.classList.remove('open');
     setTimeout(() => backdrop.remove(), 180);

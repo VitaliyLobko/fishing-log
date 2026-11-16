@@ -1525,26 +1525,30 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .cal-legend .cal-d { width: 11px; height: 11px; }
 .cal-legend .cal-gap { width: 10px; }
 
-/* Рядок улову: фото чи значок риби, приманка з мініатюрою, мітки; праворуч — вага й відпустив/забрав */
-.catch-row { align-items: center; }
-.catch-row .thumb { width: 52px; height: 52px; }
-.thumb.catch-ico { display: grid; place-items: center; color: var(--clean); background: color-mix(in srgb, var(--clean) 12%, var(--surface-2)); border-color: color-mix(in srgb, var(--clean) 25%, var(--line)); }
-.thumb.catch-ico svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.catch-row .row-title { font-weight: 750; }
+/* Улов — окремі картки: значок у кольорі виду, праворуч угорі вага, під назвою приманка, далі мітки */
+.box .catch-list { gap: 8px; margin-top: 4px; }
+.box .catch-card { border-radius: 14px; }
+.catch-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 10px; background: var(--surface-2); border-radius: inherit; color: var(--text); }
+.box .gear-card .catch-row.swipe-body { background: var(--surface-2); }
+@media (hover: hover) { .catch-row:hover { background: color-mix(in srgb, var(--surface-2) 88%, var(--text)); } }
+.catch-row > .thumb { flex: none; width: 56px; height: 56px; border-radius: 12px; }
+.thumb.catch-ico { display: grid; place-items: center; color: hsl(var(--h) 75% 66%); background: hsl(var(--h) 45% 20%); border-color: hsl(var(--h) 45% 32%); }
+:root[data-theme="light"] .thumb.catch-ico { color: hsl(var(--h) 55% 32%); background: hsl(var(--h) 45% 88%); border-color: hsl(var(--h) 35% 76%); }
+.thumb.catch-ico svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.catch-main { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.catch-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.catch-sp { min-width: 0; font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
 .catch-n { color: var(--muted); font-weight: 600; }
-.catch-bait { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 3px; color: var(--muted); font-size: 13px; }
+.catch-size { flex: none; font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+.catch-bait { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 13px; }
 .catch-bait > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.catch-bait .bait-sw { display: inline-grid; flex: none; width: 20px; height: 20px; border-radius: 5px; overflow: hidden; }
-.catch-bait .bait-sw > * { width: 20px; height: 20px; border: 0; border-radius: 0; }
-.catch-bait .bait-sw img { object-fit: cover; }
+.catch-bait .bait-sw { display: inline-grid; flex: none; width: 22px; height: 22px; border-radius: 6px; overflow: hidden; background: #fff; }
+.catch-bait .bait-sw > * { width: 22px; height: 22px; border: 0; border-radius: 0; }
+.catch-bait .bait-sw img { object-fit: contain; }
 .catch-bait .bait-sw svg { width: 14px; height: 14px; }
-.catch-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.catch-tags > span { padding: 1px 8px; border-radius: 999px; background: var(--line-soft); color: var(--muted); font-size: 12px; line-height: 1.6; }
-.catch-side { display: grid; justify-items: end; align-content: center; gap: 3px; flex: none; text-align: right; }
-.catch-side b { font-size: 16px; font-variant-numeric: tabular-nums; }
-.catch-len { font-weight: 700; font-variant-numeric: tabular-nums; }
-.catch-rel { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; color: var(--muted); background: var(--line-soft); }
-.catch-rel.rel { color: var(--buy); background: color-mix(in srgb, var(--buy) 14%, transparent); }
+.catch-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.catch-tags > span { padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--muted); font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.catch-tags > .catch-rel.rel { color: var(--buy); background: color-mix(in srgb, var(--buy) 15%, transparent); font-weight: 650; }
 .catch-hint { margin: 8px 2px 0; text-align: center; }
 
 /* Плитки дій виїзду: «−1 Втратив» / «Витратив» */
