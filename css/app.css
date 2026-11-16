@@ -1583,6 +1583,8 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 @media (hover: hover) { .bait-tile:hover { border-color: var(--fill); } }
 .bt-img { position: relative; display: grid; place-items: center; aspect-ratio: 1; margin-bottom: 3px; border-radius: 10px; overflow: hidden; background: #fff; }
 .bt-img > .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; object-fit: contain; }
+/* Фото не квадратне — поля довкола білі, як фон знімка, а не темні */
+.bt-img > img.thumb { background: #fff; }
 .bt-img > .thumb.mono { background: var(--surface-2); }
 .bt-img .thumb-ico svg { width: 44px; height: 44px; }
 .bt-fish, .bt-badge { position: absolute; display: inline-flex; align-items: center; gap: 2px; padding: 1px 6px; border-radius: 999px;
