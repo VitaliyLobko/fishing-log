@@ -4047,13 +4047,13 @@ function baitChips(select, baits, tr, onOther) {
       if (at >= 0) shown[at] = g; else shown.unshift(g);
     }
     const colors = g ? pool.filter((x) => modelKey(x) === modelKey(g)) : [];
-    wrap.replaceChildren(wrap.firstChild, h('div', { class: 'chips bait-chips' },
+    // Превʼю — над чипами й закріплене: видно, що вибрано, поки гортаєш чипи
+    wrap.replaceChildren(wrap.firstChild, ...(g ? [baitPreview(g)] : []), h('div', { class: 'chips bait-chips' },
       shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
         h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, modelName(x)), x.color ? h('small', {}, x.color) : null)),
       ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id), fits) },
         t('Усі приманки ({n})', { n: pool.length })) : null,
       h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))),
-    ...(g ? [baitPreview(g)] : []),
     ...(colors.length > 1 ? [h('div', { class: 'field-label bait-colors-label' }, t('Кольори {name}', { name: modelName(g) })),
       colorChips(colors, (x) => set(x.id), v)] : []));
     // Стрічка кольорів — вибраний посередині, щоб сусідні було видно з обох боків
