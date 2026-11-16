@@ -123,11 +123,14 @@
   background: color-mix(in srgb, var(--accent) 42%, transparent); }
 /* «На що» в улові: плитки — фото приманки; підпис — модель і колір, по два рядки */
 .bait-pick .bg-wheel { margin-top: 4px; }
-.bait-wheel .bg-pick { width: 76px; }
+.bait-wheel .bg-pick { width: 64px; gap: 3px; }
 .bait-preview .bg-wheel { margin: 0 -10px -4px; }
-.bait-wheel .bait-sw { background: #fff; }
+.bait-wheel .bg-nav { width: 36px; height: 40px; font-size: 22px; }
+.bait-wheel .bg-picks { gap: 8px; padding-block: 3px 2px; }
+/* Приманка видовжена: плитка 3:2, а не 3:4 — без білих полів зверху й знизу */
+.bait-wheel .bait-sw { aspect-ratio: 3 / 2; border-radius: 9px; background: #fff; }
 .bait-wheel .bait-sw img.thumb { object-fit: contain; }
-.bait-wheel .bg-pick > span:last-child { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; font-weight: 600; font-size: 11.5px; }
+.bait-wheel .bg-pick > span:last-child { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; font-size: 11px; }
 .bait-sw { aspect-ratio: 1; background: var(--surface-2); }
 .bait-sw .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; font-size: 26px; }
 .bait-sw .thumb-ico svg { width: 30px; height: 30px; }
@@ -136,17 +139,17 @@
 .bait-wheel .bg-pick :is(b, small) { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .bait-wheel .bg-pick small { -webkit-line-clamp: 1; font-weight: 500; font-size: 11px; }
 /* Вибрана приманка великим планом під чипами «На що» */
-.bait-preview { position: sticky; top: 0; z-index: 3; display: grid; gap: 10px; margin: 4px 0 10px; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); box-shadow: 0 6px 14px rgb(0 0 0 / .25); }
-.bp-top { display: flex; align-items: center; gap: 14px; }
-.bp-img { display: grid; place-items: center; flex: none; width: 112px; height: 112px; padding: 0; border: 0; border-radius: 12px; overflow: hidden; background: #fff; }
+.bait-preview { position: sticky; top: 0; z-index: 3; display: grid; gap: 6px; margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); box-shadow: 0 6px 14px rgb(0 0 0 / .25); }
+.bp-top { display: flex; align-items: center; gap: 12px; }
+.bp-img { display: grid; place-items: center; flex: none; width: 84px; height: 56px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: #fff; }
 button.bp-img { cursor: zoom-in; }
 .bp-img > .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; object-fit: contain; }
 .bp-img > .thumb.mono { background: var(--surface); }
-.bp-img .thumb-ico svg { width: 48px; height: 48px; }
-.bp-text { display: grid; gap: 3px; min-width: 0; }
+.bp-img .thumb-ico svg { width: 32px; height: 32px; }
+.bp-text { display: grid; gap: 1px; min-width: 0; }
 .bp-kind { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.bp-name { font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
-.bp-color { font-size: 14px; overflow-wrap: anywhere; }
+.bp-name { font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+.bp-color { font-size: 13px; overflow-wrap: anywhere; }
 .bp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--muted); font-size: 12.5px; }
 /* Плитки тем: власні кольори теми (токени тем живуть на :root і плитці не дістаються); спецрежими — тим самим фільтром */
 .theme-sw { --tb: #0b1d26; --tc: #17323d; --tx: #8eacb4; --ta: #fb923c; display: grid; align-content: start; gap: 8px; padding: 12px 9px; background: var(--tb); }
@@ -643,6 +646,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .backdrop.open .sheet { transform: none; }
+/* Телефон: шторка росте до самого верху (під виріз камери) — місця й так мало; коротка лишається короткою */
+@media (max-width: 600px) { .sheet { max-height: calc(100dvh - env(safe-area-inset-top)); } }
 .sheet:focus { outline: none; }
 /* Картка з великим фото — на весь екран: шапка під вирізом камери, без заокруглення */
 .sheet.full { height: 100dvh; max-height: 100dvh; border-radius: 0; border-top: 0; padding-top: env(safe-area-inset-top); }
