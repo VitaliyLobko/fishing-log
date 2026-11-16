@@ -8,7 +8,7 @@ import { loadLeaflet, makeMap, pinIcon, UA, sheetGeo, sheetPinned, sheetLayer, o
 import { t, lang, locale, collate, plural, applyStatic } from './i18n.js';
 import { prepare as preparePhoto, prepareSheet as preparePhotoSheet } from './photos.js';
 import { weatherAt, waterEstimate, forecastDays, moonPhase, compass } from './weather.js';
-import { h, svgClone, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip, scrollRow } from './ui.js';
+import { h, svgClone, fmt, sheet, refreshSheets, toast, form, chips, confirmSheet, selectOptions, toolBtn, toolIcon, icon, popMenu, goTab, confirmed, fieldError, setUndo, swipeStep, swipeable, pickStrip, scrollRow, selectPicker } from './ui.js';
 
 let state = { places: [], gear: [], spots: [], trips: [], packs: [], wishes: [], charts: [], photos: [], prefs: [] };
 let tab = 'gear';
@@ -4966,8 +4966,11 @@ function renderBite() {
     const spotPick = spots.length > 1 ? h('select', { class: 'bite-spot', 'aria-label': t('Водойма') },
       [...spots].sort((a, b) => collate(a.name, b.name)).map((s) => h('option', { value: s.id, selected: s.id === spotId }, s.name))) : null;
     spotPick?.addEventListener('change', () => { spotId = spotPick.value; remember(BITE_SPOT, spotId); open = null; paint(); });
+    // Список водойм — нашою шторкою з пошуком, як у формах, а не системним вікном
+    const spotField = spotPick ? h('div', { class: 'field' }, h('span', { class: 'field-label' }, t('Водойма')), spotPick) : null;
+    if (spotPick) selectPicker(spotPick, t('Водойма'));
     paint();
-    return h('div', { class: 'bite box-like' }, spPick, spotPick ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('Водойма')), spotPick) : null, days,
+    return h('div', { class: 'bite box-like' }, spPick, spotField, days,
       h('p', { class: 'muted small' }, t('Оцінка — за стабільністю тиску, вітром і водою для виду. Де шукати — загальні правила сезону; ваші «Закономірності» йдуть першими, коли їх достатньо. Прогноз Open-Meteo.')));
   })());
 }
