@@ -4037,6 +4037,12 @@ function baitChips(select, baits, tr, onOther) {
   const pool = ranked.filter(fits);
   const wrap = h('div', { class: 'field bait-pick' }, h('span', { class: 'field-label' }, t('На що')));
   const set = (x) => { select.value = x; select.dispatchEvent(new Event('change')); paint(); };
+  // Превʼю живе весь час: верх (фото, назва) перемальовується, стрічка кольорів — лише коли змінилась модель,
+  // інакше вона злетіла б посеред гортання
+  const top = h('div', { class: 'bp-top' });
+  const preview = h('div', { class: 'bait-preview' }, top);
+  let stripFor = null;
+  let stripVal = null;
   const paint = () => {
     const v = select.value;
     const g = findGear(v);
@@ -4048,20 +4054,25 @@ function baitChips(select, baits, tr, onOther) {
       const at = shown.findIndex((x) => modelKey(x) === modelKey(g));
       if (at >= 0) shown[at] = g; else shown.unshift(g);
     }
-    const colors = g ? pool.filter((x) => modelKey(x) === modelKey(g)) : [];
+    if (g) {
+      top.replaceChildren(...baitPreviewTop(g));
+      // Колір цієї ж моделі вибрали не стрічкою (з «Усіх приманок») — стрічку теж будуємо заново
+      if (stripFor !== modelKey(g) || stripVal !== v) {
+        stripFor = modelKey(g);
+        stripVal = v;
+        const colors = pool.filter((x) => modelKey(x) === stripFor);
+        // Кольори — стрічкою як у Shooter's Log: вибраний посередині в рамці, сусіди видно, «‹ ›» по боках
+        preview.replaceChildren(top, ...(colors.length > 1 ? [pickStrip(colors.map((x) => [x.id, colorName(x), h('span', { class: 'bg-sw bait-sw', 'aria-hidden': 'true' }, gearThumb(x))]),
+          v, (id) => { stripVal = id; if (id !== select.value) set(id); }, { label: t('Колір'), cls: 'bait-wheel' })] : []));
+      }
+    } else stripFor = null;
     // Превʼю — над чипами й закріплене: видно, що вибрано, поки гортаєш чипи
-    wrap.replaceChildren(wrap.firstChild, ...(g ? [baitPreview(g)] : []), h('div', { class: 'chips bait-chips' },
+    wrap.replaceChildren(wrap.firstChild, ...(g ? [preview] : []), h('div', { class: 'chips bait-chips' },
       shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
         h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, x.model ? modelName(x) : bareTitle(x)))),
       ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id), fits) },
         t('Усі приманки ({n})', { n: pool.length })) : null,
-      h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))),
-    ...(colors.length > 1 ? [h('div', { class: 'field-label bait-colors-label' }, t('Кольори {name}', { name: modelName(g) })),
-      colorChips(colors, (x) => set(x.id), v)] : []));
-    // Стрічка кольорів — вибраний посередині, щоб сусідні було видно з обох боків
-    const strip = wrap.querySelector('.bait-colors');
-    const on = strip?.querySelector('.on');
-    if (on) requestAnimationFrame(() => { strip.scrollLeft = on.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2; });
+      h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))));
   };
   field.after(wrap);
   paint();
@@ -4089,24 +4100,19 @@ const bareTitle = (g) => {
 const colorName = (g) => g.color || weightText(g) || modelName(g);
 const colorsText = (n) => `${fmt.num(n)} ${plural(n, [t('колір'), t('кольори'), t('кольорів')])}`;
 
-/** Вибрана приманка великим планом: фото (тап — на весь екран), назва, колір, вага й розмір, скільки є й скільки риб на неї. */
-function baitPreview(g) {
+/** Вибрана приманка великим планом: фото (тап — на весь екран), вид, назва, колір, вага, скільки є й скільки риб на неї. */
+function baitPreviewTop(g) {
   const shot = findPhoto(g.photoId);
   const fish = caughtCount(g);
-  return h('div', { class: 'bait-preview' },
+  return [
     h(shot ? 'button' : 'span', { type: shot ? 'button' : null, class: 'bp-img', 'aria-label': shot ? t('Фото на весь екран') : null, onclick: shot ? () => showPhoto(g.photoId) : null }, gearThumb(g)),
     h('span', { class: 'bp-text' },
       h('span', { class: 'bp-kind' }, catOf(g.cat).name),
       h('b', { class: 'bp-name' }, g.model ? modelName(g) : bareTitle(g)),
       g.color ? h('span', { class: 'bp-color' }, g.color) : null,
       h('span', { class: 'bp-meta' }, [weightText(g), qtyText(g) ? t('є {q}', { q: qtyText(g) }) : null].filter(Boolean).join(' · '),
-        fish ? h('span', { class: 'fish-count' }, icon('fish'), fishText(fish)) : null)));
-}
-
-/** Кольори однієї моделі чипами з фото; on — id вибраного. */
-function colorChips(list, onPick, on = '') {
-  return h('div', { class: 'chips bait-chips bait-colors' }, list.map((g) => h('button', { type: 'button', class: g.id === on ? 'on' : '', onclick: () => onPick(g) },
-    h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(g)), h('span', {}, colorName(g)))));
+        fish ? h('span', { class: 'fish-count' }, icon('fish'), fishText(fish)) : null)),
+  ];
 }
 
 /**
