@@ -3679,7 +3679,6 @@ function renderTrips() {
     tripsSwitch(),
     packBox(),
     seasonBox(),
-    calendarBox(),
     recordsBox(),
     list.length ? byMonth(list).map(([head, rows]) => [h('h3', { class: 'list-head' }, head), h('div', { class: 'rows month-rows' }, rows.map(tripRow))])
       : empty(t('Ще немає виїздів'), t('Риболовля: де, коли, погода сама з координат водойми, улов і що обірвав.'), [btn(t('Додати'), () => tripForm(), 'primary add')]));
@@ -4423,8 +4422,8 @@ function seasonBox() {
 
 // ---------- календар виїздів ----------
 
-/** Дні на воді: день → { n — риб того дня, trips }; виїзд на кілька днів — кожен день окремо, улов — у свій день. */
-function fishByDay() {
+/** Дні на воді: день → { n — риб того дня, trips }; виїзд на кілька днів — кожен день окремо, улов — у свій день. sp — лише цей вид. */
+function fishByDay(sp = '') {
   const days = new Map();
   for (const tr of state.trips) {
     for (let i = 0; i < tripDays(tr); i++) {
@@ -4433,7 +4432,7 @@ function fishByDay() {
       if (!x.trips.includes(tr)) x.trips.push(tr);
       days.set(d, x);
     }
-    for (const c of tr.catches ?? []) { const x = days.get(catchDate(tr, c)); if (x) x.n += num(c.n) || 1; }
+    for (const c of tr.catches ?? []) { const x = days.get(catchDate(tr, c)); if (x && (!sp || c.species === sp)) x.n += num(c.n) || 1; }
   }
   return days;
 }
@@ -4448,12 +4447,15 @@ function openDay(iso, trips) {
   })));
 }
 
+// Рік календаря — спільний для перемальовувань (зміна виду в «Закономірностях» не скидає на поточний)
+let calYear = null;
+
 /**
  * Календар виїздів теплокартою: місяці сіткою по днях, колір дня — скільки риб. Шкала — від власних квартилів
- * (ваш «добрий день», а не чужі сотні), день без улову — порожня рамка. Згортається; рік — стрілками.
+ * (ваш «добрий день», а не чужі сотні), день без улову — порожня рамка. Згортається; рік — стрілками. sp — лише цей вид.
  */
-function calendarBox() {
-  const days = fishByDay();
+function calendarBox(sp = '') {
+  const days = fishByDay(sp);
   const years = [...new Set([...days.keys()].map((d) => d.slice(0, 4)))].sort();
   if (!years.length) return null;
   const counts = [...days.values()].map((x) => x.n).filter(Boolean).sort((a, b) => a - b);
@@ -4461,7 +4463,7 @@ function calendarBox() {
   const cuts = [q(0.25), q(0.5), q(0.75)];
   const level = (n) => (n ? 1 + cuts.filter((c) => n > c).length : 0);
   const now = today();
-  let year = years.includes(now.slice(0, 4)) ? now.slice(0, 4) : years.at(-1);
+  let year = years.includes(calYear) ? calYear : years.includes(now.slice(0, 4)) ? now.slice(0, 4) : years.at(-1);
   const body = h('div', { class: 'cal' });
   const cell = (iso) => {
     const x = days.get(iso);
@@ -4490,7 +4492,7 @@ function calendarBox() {
     const inYear = [...days].filter(([d]) => d.startsWith(year));
     const fish = inYear.reduce((s, [, x]) => s + x.n, 0);
     const at = years.indexOf(year);
-    const go = (i) => { year = years[i]; paint(); };
+    const go = (i) => { year = years[i]; calYear = year; paint(); };
     body.replaceChildren(
       h('div', { class: 'cal-top' },
         years.length > 1 ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('Попередній рік'), disabled: at === 0, onclick: () => go(at - 1) }, '‹') : null,
@@ -4650,7 +4652,7 @@ function renderPatterns() {
   const body = h('div', { class: 'patterns' });
   const paint = () => {
     const parts = patternSections(sp);
-    body.replaceChildren(...(parts.length ? parts : [h('p', { class: 'muted small' },
+    body.replaceChildren(calendarBox(sp) ?? '', ...(parts.length ? parts : [h('p', { class: 'muted small' },
       t('Ще замало даних. Вказуйте в улові глибину й точку («Де впіймав»), а погода виїзду підтягнеться сама — тут з’явиться, на якій глибині, при якому тиску й воді у вас бере.'))]));
   };
   const pick = chips([['', t('Усі риби')], ...list.map((x) => [x, x])], sp, (v) => { sp = v; remember(PATTERN_SP, v); paint(); });
