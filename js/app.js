@@ -3968,11 +3968,11 @@ function catchRow(tr, c) {
       num(c.weight) ? h('b', {}, `${fmt.num(c.weight)} ${t('кг')}`) : null,
       num(c.length) ? h('span', { class: num(c.weight) ? 'muted small' : 'catch-len' }, `${fmt.num(c.length)} ${t('см')}`) : null,
       h('span', { class: `catch-rel${c.released ? ' rel' : ''}` }, c.released ? t('відпустив') : t('забрав'))));
-  return swipeable(h('div', { class: 'gear-card', 'aria-label': c.species }, body), {
+  return swipeable(h('div', { class: 'gear-card catch-card', 'aria-label': c.species }, body), {
     onSwipe: () => remember(CATCH_SWIPED, '1'),
     onTap: () => catchForm(tr, c),
-    onRight: () => catchAgain(tr, c), rightLabel: t('Ще така'),
-    onLeft: () => dropCatch(tr, c), leftLabel: t('Видалити'),
+    onRight: () => catchAgain(tr, c), rightLabel: [icon('copy'), t('Ще така')],
+    onLeft: () => dropCatch(tr, c), leftLabel: [t('Видалити'), icon('delete')],
   });
 }
 

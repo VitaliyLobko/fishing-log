@@ -989,12 +989,20 @@ button.about-avatar { padding: 0; border: 0; }
 .gear-card { position: relative; overflow: hidden; border-radius: 18px; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
 .gear-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gear-card .swipe-body { position: relative; z-index: 1; will-change: transform; cursor: pointer; }
-.gear-card .swipe-bg { position: absolute; inset: 0; display: none; align-items: center; padding: 0 20px; font-weight: 800; color: var(--on-accent); border-radius: 18px; }
-.gear-card .swipe-bg.right { background: var(--fill); justify-content: flex-start; }
-.gear-card .swipe-bg.left { background: var(--shoot); color: #fff; justify-content: flex-end; }
-.gear-card.dir-right .swipe-bg.right, .gear-card.dir-left .swipe-bg.left { display: flex; opacity: .55; }
-.gear-card.armed .swipe-bg.right, .gear-card.armed .swipe-bg.left { opacity: 1; }
-.box .gear-card .swipe-body { box-shadow: none; }
+/* Під рядком, що від'їжджає, — смуга дії: спершу тонована з кольоровим підписом, за порогом — суцільна */
+.gear-card .swipe-bg { --c: var(--fill); --on: var(--on-fill); position: absolute; inset: 0; display: none; align-items: center; gap: 8px; padding: 0 20px;
+  font-weight: 800; color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--surface)); border-radius: inherit; transition: background-color .12s, color .12s; }
+.gear-card .swipe-bg.right { justify-content: flex-start; }
+.gear-card .swipe-bg.left { --c: var(--shoot); --on: #fff; justify-content: flex-end; }
+.gear-card .swipe-bg .ico { display: grid; transition: transform .12s; }
+.gear-card .swipe-bg .ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gear-card.dir-right .swipe-bg.right, .gear-card.dir-left .swipe-bg.left { display: flex; }
+.gear-card.armed .swipe-bg { background: var(--c); color: var(--on); }
+.gear-card.armed .swipe-bg .ico { transform: scale(1.15); }
+.box .gear-card { border-radius: 12px; }
+/* У рамці рядки прозорі — під час свайпу рядок мусить бути суцільним, інакше смуга дії просвічує крізь нього */
+.box .gear-card .swipe-body { box-shadow: none; background: var(--surface); }
+.catch-card .swipe-bg.right { --c: var(--buy); --on: #fff; }
 
 /* Розділи: олівець у заголовку й вибір значка — як групи в Хобі-плані */
 .sec-edit { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--muted); cursor: pointer; }
