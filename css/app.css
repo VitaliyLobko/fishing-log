@@ -1603,7 +1603,7 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .gear-checks .row .row-qty { display: grid; place-items: center; }
 .gear-checks .row .box-check { margin: 0 2px 0 0; width: 22px; height: 22px; border-radius: 6px; }
 .gear-checks .row.on .row-title { color: var(--accent-2); }
-.gear-checks .add-more { display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; background: none; color: var(--accent-2); font: inherit; font-weight: 600; cursor: pointer; }
+.gear-checks .add-more, .rows > .add-more { display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; background: none; color: var(--accent-2); font: inherit; font-weight: 600; cursor: pointer; }
 .blocks-form > .box .chips { margin-bottom: 0; }
 
 /* Наведення мишею: невибрана комірка перемикача чи чип ледь сіріє */

@@ -3747,6 +3747,16 @@ function rodFits(g, kinds) {
   return kinds.some((k) => KIND_RODS[k]?.includes(g.rodType));
 }
 
+/** Напрямок риби за способом ловлі; «Інше» — без обмежень. */
+const KIND_DIR = { spin: 'predator', fly: 'predator', feeder: 'peaceful', float: 'peaceful', donka: 'peaceful', makush: 'peaceful' };
+/** Приманка під способи виїзду: спінінг — хижацьке, фідер і поплавок — мирне; універсальне й без способів — завжди. */
+function baitFits(g, kinds) {
+  const dirs = new Set(kinds.map((k) => KIND_DIR[k]));
+  if (!kinds.length || dirs.has(undefined)) return true;
+  const d = dirOf(g);
+  return !d || dirs.has(d);
+}
+
 /** Оцінка води з кешем: та сама водойма й дата — без повторного запиту. */
 const waterCache = new Map();
 function waterGuess(s, date) {
@@ -4015,6 +4025,12 @@ function baitChips(select, baits, tr, onOther) {
   [...tripLosses(tr.id), ...tripSpends(tr.id)].forEach(({ g }) => { if (!own.has(g.id)) own.set(g.id, own.size + 1000); });
   const recent = (g) => Math.max(0, ...[...(g.losses ?? []), ...(g.spends ?? [])].map((x) => Date.parse(x.date) || 0));
   const ranked = [...baits].sort((a, b) => (own.get(a.id) ?? 1e9) - (own.get(b.id) ?? 1e9) || caughtCount(b) - caughtCount(a) || recent(b) - recent(a) || byGroup(a, b));
+  // Під спосіб ловлі: на спінінг — без прикормки; уже використане в цьому виїзді й вибране лишаються
+  const was = select.value;
+  // Способи не вибрано — беремо типи вудилищ, якими ловив
+  const kinds = tr.kinds?.length ? tr.kinds : [...new Set((tr.gearIds ?? []).map(findGear).map((r) => r?.rodType).filter(Boolean))];
+  const fits = (g) => baitFits(g, kinds) || own.has(g.id) || g.id === was;
+  const pool = ranked.filter(fits);
   const full = (g) => [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ');
   const note = h('p', { class: 'muted small bait-note' });
   const wrap = h('div', { class: 'field bait-pick' }, h('span', { class: 'field-label' }, t('На що')));
@@ -4022,20 +4038,20 @@ function baitChips(select, baits, tr, onOther) {
   const paint = () => {
     const v = select.value;
     const g = findGear(v);
-    const shown = ranked.slice(0, BAIT_CHIPS);
+    const shown = pool.slice(0, BAIT_CHIPS);
     // Інший колір тієї ж моделі стає на місце її чипа — ряд не перескакує
     if (g && !shown.includes(g)) {
       const at = shown.findIndex((x) => modelKey(x) === modelKey(g));
       if (at >= 0) shown[at] = g; else shown.unshift(g);
     }
-    const colors = g ? ranked.filter((x) => modelKey(x) === modelKey(g)) : [];
+    const colors = g ? pool.filter((x) => modelKey(x) === modelKey(g)) : [];
     note.replaceChildren(...(g ? [full(g), caughtCount(g) ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(caughtCount(g))) : null].filter(Boolean)
       .flatMap((x, i) => (i ? [' · ', x] : [x])) : []));
     wrap.replaceChildren(wrap.firstChild, h('div', { class: 'chips bait-chips' },
       shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
         h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, modelName(x)), x.color ? h('small', {}, x.color) : null)),
-      ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id)) },
-        t('Усі приманки ({n})', { n: ranked.length })) : null,
+      ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id), fits) },
+        t('Усі приманки ({n})', { n: pool.length })) : null,
       h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))),
     ...(g ? [note] : []),
     ...(colors.length > 1 ? [h('div', { class: 'field-label bait-colors-label' }, t('Кольори {name}', { name: modelName(g) })),
@@ -4080,11 +4096,15 @@ function colorChips(list, onPick, on = '') {
 /**
  * «Усі приманки»: зверху вид чипами, пошук; кольори однієї моделі — одним рядком, тап розкриває їх чипами з фото.
  * Під час пошуку моделі розкриті й показують лише кольори, що підійшли. sorted — у потрібному порядку.
+ * fits — що підходить під спосіб ловлі; решта — за кнопкою внизу, пошук шукає серед усього.
  */
-function baitPickSheet(title, sorted, onPick) {
+function baitPickSheet(title, all, onPick, fits = () => true) {
+  const other = all.filter((g) => !fits(g));
+  let more = false;
+  const pool = () => (more ? all : all.filter(fits));
   const total = new Map();
-  sorted.forEach((g) => total.set(modelKey(g), (total.get(modelKey(g)) ?? 0) + 1));
-  const kinds = [...new Map(sorted.map((g) => [g.cat, catOf(g.cat).name])).entries()].sort((a, b) => collate(a[1], b[1]));
+  all.forEach((g) => total.set(modelKey(g), (total.get(modelKey(g)) ?? 0) + 1));
+  const kinds = [...new Map(all.filter(fits).map((g) => [g.cat, catOf(g.cat).name])).entries()].sort((a, b) => collate(a[1], b[1]));
   let kind = '';
   const open = new Set();
   const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук: модель, колір'), autocomplete: 'off' });
@@ -4095,7 +4115,7 @@ function baitPickSheet(title, sorted, onPick) {
   const paint = () => {
     const words = norm(search.value).split(/\s+/).filter(Boolean);
     const groups = new Map();
-    sorted.filter((g) => (!kind || g.cat === kind) && words.every((w) => haystack(g).includes(w)))
+    (words.length ? all : pool()).filter((g) => (!kind || g.cat === kind) && words.every((w) => haystack(g).includes(w)))
       .forEach((g) => { const k = modelKey(g); groups.set(k, [...(groups.get(k) ?? []), g]); });
     rows.replaceChildren(...[...groups].map(([k, list]) => {
       const all = total.get(k);
@@ -4113,6 +4133,9 @@ function baitPickSheet(title, sorted, onPick) {
       return h('div', { class: 'bait-model' }, head, shown ? colorChips(list, pick) : null);
     }));
     if (!groups.size) rows.append(h('p', { class: 'muted small' }, t('Нічого не знайдено')));
+    if (other.length && !more && !words.length && !kind) {
+      rows.append(h('button', { type: 'button', class: 'add-more', onclick: () => { more = true; paint(); } }, t('Для іншої ловлі · {n}', { n: fmt.num(other.length) })));
+    }
     // Лише на екрані: перше малювання — ще до шторки, і «відірвані» мініатюри інакше зняло б із черги назавжди
     if (thumbIo && rows.isConnected) dropGoneThumbs();
   };
