@@ -4040,8 +4040,10 @@ function baitChips(select, baits, tr, onOther) {
   const paint = () => {
     const v = select.value;
     const g = findGear(v);
-    const shown = pool.slice(0, BAIT_CHIPS);
-    // Інший колір тієї ж моделі стає на місце її чипа — ряд не перескакує
+    // Одна кнопка на модель (найвищий за рейтингом колір): інші кольори — у стрічці «Кольори», без дублів
+    const seen = new Set();
+    const shown = pool.filter((x) => !seen.has(modelKey(x)) && seen.add(modelKey(x))).slice(0, BAIT_CHIPS);
+    // Вибраний колір стає на місце чипа своєї моделі — ряд не перескакує
     if (g && !shown.includes(g)) {
       const at = shown.findIndex((x) => modelKey(x) === modelKey(g));
       if (at >= 0) shown[at] = g; else shown.unshift(g);
@@ -4050,7 +4052,7 @@ function baitChips(select, baits, tr, onOther) {
     // Превʼю — над чипами й закріплене: видно, що вибрано, поки гортаєш чипи
     wrap.replaceChildren(wrap.firstChild, ...(g ? [baitPreview(g)] : []), h('div', { class: 'chips bait-chips' },
       shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
-        h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, modelName(x)), x.color ? h('small', {}, x.color) : null)),
+        h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, x.model ? modelName(x) : bareTitle(x)))),
       ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id), fits) },
         t('Усі приманки ({n})', { n: pool.length })) : null,
       h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))),
