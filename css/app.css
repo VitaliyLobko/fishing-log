@@ -1479,6 +1479,15 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .bait-chips .bait-sw > * { width: 24px; height: 24px; }
 .bait-chips .bait-sw img { width: 100%; height: 100%; object-fit: cover; }
 .bait-chips .bait-sw svg { width: 18px; height: 18px; }
+.bait-colors { margin: 2px 0 10px; }
+.bait-pick .bait-colors { position: relative; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.bait-pick .bait-colors::-webkit-scrollbar { display: none; }
+.bait-pick .bait-colors button { flex: none; max-width: 75%; }
+.bait-colors-label { margin-top: 4px; }
+.bait-model { display: grid; }
+.bait-model > .bait-colors { margin: 6px 0 4px 12px; }
+.bait-model > .row[aria-expanded="true"] { border-color: var(--fill); }
+.bait-kinds { margin-bottom: 8px; }
 /* Заголовок місяця в списку виїздів */
 .list-head { margin: 18px 4px 8px; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 /* Журнал виїздів: місяці поза екраном браузер не верстає (300 виїздів — понад 4 тис. елементів).
@@ -1494,9 +1503,8 @@ legend .fish-count { margin-left: 8px; vertical-align: -2px; }
 .restock-hint { margin: 10px 0 0; }
 .sec-text .sec-name { flex: none; }
 /* Видалити — внизу шторки, підписано, окремо від решти дій */
-.sheet-danger { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
-.sheet-danger .btn { min-height: 44px; }
-.sheet-danger .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sheet-del { min-height: 40px; padding-block: 6px; }
+.sheet-del svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .with-add > .field { grid-column: auto; }
 .blocks-form > * + .form, .blocks-form > .form-note + .form { margin-top: 12px; }
 .bait-pick { margin-top: 2px; }
@@ -1670,6 +1678,12 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .dr-track input[type=range]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--text); outline-offset: 2px; }
 .dr-ticks { position: relative; height: 16px; margin: 0 12px; font-size: 11px; color: var(--muted); }
 .dr-ticks span { position: absolute; transform: translateX(-50%); }
+/* Вода сьогодні: рівень відносно середнього — повзунок під підсвіткою */
+.water-level { display: grid; gap: 2px; margin-top: 6px; }
+.wl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.wl-head .field-label { margin: 0; }
+.wl-value { font-weight: 600; }
+.water-level input[type=range] { width: 100%; accent-color: #0ea5e9; }
 .from-sheet { display: block; margin-top: 4px; }
 .bottom-label { margin-top: 12px; }
 
@@ -1694,3 +1708,7 @@ button.fact:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .offline-area { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0; }
 .offline-area > span { flex: 1 1 200px; }
 .offline-area .btn-row { margin: 0; }
+/* Налаштування → Карта без інтернету: рядок «що лежить · кнопка» */
+.map-store { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; padding: 8px 0; }
+.map-store > span { display: grid; gap: 2px; min-width: 0; }
+.map-areas .map-store { border-top: 1px solid var(--line-soft); }

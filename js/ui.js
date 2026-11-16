@@ -199,31 +199,29 @@ export function sheet(title, body, { actions = [], onClose, live, tools = [], le
     // Фокус (клавіатура, читалка екрана) — на той самий за порядком елемент, інакше він злітає на початок сторінки
     const focusable = () => [...box.querySelectorAll('button, [href], input, select, textarea, [tabindex]')];
     const at = box.contains(document.activeElement) ? focusable().indexOf(document.activeElement) : -1;
-    box.replaceChildren(next, ...(dangerZone ? [dangerZone] : []));
+    box.replaceChildren(next);
     box.scrollTop = top;
     if (at >= 0) focusable()[at]?.focus({ preventScroll: true });
   };
   if (live) liveSheets.add(rebuild);
-  // Червоні дії (кошик) — внизу шторки підписаною кнопкою: ліворуч угорі, де на Android «Назад», її натискали за звичкою,
-  // а поряд із ✕ легко схибити
+  // Червоні дії (кошик) — ліворуч угорі підписаною кнопкою, далеко від ✕; випадковий тап нічого не видалить — далі питання
   const danger = [tools].flat(Infinity).filter((x) => x?.classList?.contains('danger'));
   const rest = [tools].flat(Infinity).filter((x) => !danger.includes(x));
-  const dangerZone = danger.length ? h('div', { class: 'sheet-danger' }, danger.map((b) => {
-    b.className = 'btn quiet danger with-ico';
+  danger.forEach((b) => {
+    b.className = 'btn quiet danger with-ico sheet-del';
     b.removeAttribute('title');
     b.append(h('span', {}, b.getAttribute('aria-label')));
-    return b;
-  })) : null;
-  const left = [lead].flat(Infinity).filter(Boolean);
+  });
+  const left = [danger, lead].flat(Infinity).filter(Boolean);
   const panel = h('section', { class: full ? 'sheet full' : 'sheet', role: 'dialog', 'aria-label': titleOf() },
     h('div', { class: 'sheet-grip' }),
     // Картка на весь екран чи кілька кнопок у шапці (копія, олівець, ✕) — назва окремим рядком на всю ширину, а не «Chubby 38…»
-    h('header', { class: `sheet-head${full || left.length + rest.length >= 2 ? ' stacked' : ''}` },
+    h('header', { class: `sheet-head${full || danger.length || left.length + rest.length >= 2 ? ' stacked' : ''}` },
       left.length ? h('div', { class: 'sheet-lead' }, left) : null,
       h('h2', {}, titleOf()),
       h('div', { class: 'sheet-tools' }, rest,
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('Закрити'), onclick: ask }, '✕'))),
-    h('div', { class: 'sheet-body' }, body, dangerZone),
+    h('div', { class: 'sheet-body' }, body),
     actions.length ? h('footer', { class: 'sheet-actions' }, actions) : null);
   if (dirty === null && actions.length) {
     const body = panel.querySelector('.sheet-body');

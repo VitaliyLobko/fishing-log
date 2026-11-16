@@ -2268,9 +2268,38 @@ function depthOverlay(list = pinnedCharts()) {
 // Маска листа: клітинка ≈ 3 м, значення = номер діапазону легенди × 20 (0 — не вода). Множник — щоб дрібна
 // корекція кольору при розпакуванні PNG не зсунула діапазон.
 const DEPTH_BANDS_M = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 8], [8, 10], [10, 12], [12, null]];
-const bandLabel = (b) => { const [lo, hi] = DEPTH_BANDS_M[b - 1]; return hi === null ? t('понад {n} м', { n: lo }) : lo === 0 ? t('до 1 м') : `${lo}–${hi} ${t('м')}`; };
 const bandMid = (b) => { const [lo, hi] = DEPTH_BANDS_M[b - 1]; return hi === null ? lo : (lo + hi) / 2; };
 const bandsCache = new Map();
+
+// Атлас міряє глибини від рівня на 0,7 м нижче середнього багаторічного. Справжня глибина сьогодні =
+// глибина з листа + 0,7 + рівень води відносно середнього (задає людина в «Глибинах»).
+// Людині всюди показуємо справжню; у глибини листа переводимо лише для підсвітки
+const SHEET_ZERO = 0.7;
+const WATER_LEVEL = 'fishing-log:water-level';
+
+/** Рівень води сьогодні відносно середнього багаторічного: { v (м), at (дата задання) }. */
+function waterLevel() {
+  try {
+    const x = JSON.parse(recall(WATER_LEVEL) ?? 'null');
+    if (Number.isFinite(x?.v)) return x;
+  } catch { /* не задано */ }
+  return { v: 0, at: null };
+}
+const sheetShift = () => SHEET_ZERO + waterLevel().v;
+const round1 = (x) => Math.round(x * 10) / 10;
+/** Рівень зі знаком: «+0,5 м», «−0,3 м». */
+const levelText = (v) => `${v > 0 ? '+' : '−'}${fmt.num(Math.abs(v))} ${t('м')}`;
+/** Справжні метри → глибина на листі (для підсвітки). */
+const toSheet = (r) => r.map((x) => x - sheetShift());
+
+/** Смуга легенди як справжня глибина сьогодні: «4,7–5,7 м», «до 1,7 м», «понад 12,7 м». */
+function realBandLabel(b) {
+  const [lo, hi] = DEPTH_BANDS_M[b - 1];
+  const sh = sheetShift();
+  const m = (x) => fmt.num(Math.max(0, round1(x + sh)));
+  if (hi === null) return t('понад {n} м', { n: m(lo) });
+  return lo + sh <= 0 ? t('до {n} м', { n: m(hi) }) : `${m(lo)}–${m(hi)} ${t('м')}`;
+}
 // Червоний канал маски → номер смуги (значення ×20; корекція кольору при розпакуванні не зсуває смугу)
 const BAND_OF_RED = Uint8Array.from({ length: 256 }, (_, v) => Math.min(10, Math.round(v / 20)));
 
@@ -2317,7 +2346,7 @@ async function depthAt(ll) {
         }
       }
     }
-    if (best) return { band: best.b, label: bandLabel(best.b), mid: bandMid(best.b) };
+    if (best) return { band: best.b, label: realBandLabel(best.b), mid: Math.max(0, round1(bandMid(best.b) + sheetShift())) };
   }
   return null;
 }
@@ -2377,7 +2406,8 @@ const MARKS_KEEP = 40;
 async function markUrl(c, mode, range = null) {
   const m = await chartBands(c);
   if (!m || !mode) return null;
-  const key = `${c.id}:${mode}:${range?.join('-') ?? ''}:${c.bands.png.length}`;
+  // Картинка діапазону залежить лише від набору смуг: зсув рівня води в межах смуги — та сама
+  const key = `${c.id}:${mode}:${mode === 'range' ? bandsIn(range).map(Number).join('') : ''}:${c.bands.png.length}`;
   if (marksCache.has(key)) {
     const hit = marksCache.get(key);
     marksCache.delete(key);
@@ -2475,13 +2505,16 @@ function dropSpecks(on, w, h, min) {
   return on;
 }
 
+/** Які смуги легенди зачіпає діапазон глибин листа [від, до]: масив true/false за DEPTH_BANDS_M. */
+const bandsIn = (range) => DEPTH_BANDS_M.map(([lo, hi]) => Boolean(range) && (hi ?? Infinity) > range[0] && lo < range[1]);
+
 /** Які клітинки маски підсвітити: 1 — так. */
 function markCells({ w, h, data }, mode, range) {
   if (mode === 'hole') return pitCells({ w, h, data });
   const on = new Uint8Array(w * h);
   if (mode !== 'drop') {
     // Діапазон залежить лише від смуги легенди — рішення раз на смугу
-    const band = DEPTH_BANDS_M.map(([lo, hi]) => Boolean(range) && (hi ?? Infinity) > range[0] && lo < range[1]);
+    const band = bandsIn(range);
     for (let i = 0; i < on.length; i += 1) if (data[i] && band[data[i] - 1]) on[i] = 1;
     return on;
   }
@@ -2588,6 +2621,30 @@ function depthSlider(start, onChange) {
   return { el, value };
 }
 
+/** «Вода сьогодні»: рівень відносно середнього багаторічного, −2…+3 м; onChange — після кожного зсуву. */
+function waterLevelRow(onChange) {
+  const cur = waterLevel();
+  const out = h('output', { class: 'wl-value' });
+  const note = h('small', { class: 'muted wl-note' });
+  const input = h('input', { type: 'range', min: '-2', max: '3', step: '0.1', value: String(cur.v), 'aria-label': t('Рівень води сьогодні') });
+  const paint = (v, at) => {
+    const flat = Math.abs(v) < 0.05;
+    out.textContent = flat ? t('звичайна') : levelText(v);
+    input.setAttribute('aria-valuetext', out.textContent);
+    note.textContent = !flat && at
+      ? t('Задано {d}. Рівень міняється — перевіряйте перед виїздом', { d: fmt.date(at) })
+      : t('Відносно середнього багаторічного рівня. Глибини всюди — справжні, з цією поправкою');
+  };
+  input.addEventListener('input', () => {
+    const v = round1(Number(input.value));
+    remember(WATER_LEVEL, JSON.stringify({ v, at: today() }));
+    paint(v, today());
+    onChange();
+  });
+  paint(cur.v, cur.at);
+  return h('div', { class: 'water-level' }, h('div', { class: 'wl-head' }, h('span', { class: 'field-label' }, t('Вода сьогодні')), out), input, note);
+}
+
 /** Перемикач підкладки «Супутник / Схема» під картою. */
 function layerChips(getMap) {
   const el = chips([['sat', t('Супутник')], ['osm', t('Схема')]], mapLayer(), (v) => { getMap()?.setLayer(v); remember(MAP_LAYER, v); });
@@ -2643,7 +2700,9 @@ async function catchPointPicker({ at, depth, center, others = [] }, onDone) {
     const [d, kind] = at ? await Promise.all([depthAt(at), bottomAt(at)]) : [null, null];
     if (at !== point) return;
     bottom = kind;
-    fromSheet.textContent = d ? [t('З листа: {d}', { d: d.label }), kind ? bottomLabel(kind).toLowerCase() : null].filter(Boolean).join(' · ') : '';
+    const wl = waterLevel().v;
+    fromSheet.textContent = d ? [t('З листа: {d}', { d: d.label }), Math.abs(wl) >= 0.05 ? t('вода {n}', { n: levelText(wl) }) : null,
+      kind ? bottomLabel(kind).toLowerCase() : null].filter(Boolean).join(' · ') : '';
     if (d && (auto || depthIn.value.trim() === '')) {
       depthIn.value = String(d.mid).replace('.', ',');
       auto = true;
@@ -2700,7 +2759,7 @@ async function depthView({ title, center, zoom = 15, water = null, park = null, 
     const pos = await myPosition();
     if (pos && map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
   }, 'mini');
-  // «Глибини» — свій діапазон повзунком (межі легенди листа); з «Куди й коли» — уже виставлений і ввімкнений.
+  // «Глибини» — свій діапазон повзунком, у справжніх метрах (з рівнем води); з «Куди й коли» — уже виставлений і ввімкнений.
   // Свій діапазон пам'ятаємо до наступного разу
   let saved = null;
   try { const v = JSON.parse(recall(DEPTH_RANGE) ?? 'null'); if (Array.isArray(v) && v.length === 2 && v.every(Number.isFinite)) saved = v; } catch { /* немає збереженого */ }
@@ -2708,12 +2767,17 @@ async function depthView({ title, center, zoom = 15, water = null, park = null, 
   const startMark = mark?.mode ?? (mark?.range ? 'range' : '');
   const slider = depthSlider(mark?.range ?? saved ?? [3, 6], (r) => {
     remember(DEPTH_RANGE, JSON.stringify(r));
-    depth.setRange(r);
+    depth.setRange(toSheet(r));
     depth.setMark('range');
   });
   const rangeRow = slider.el;
   rangeRow.hidden = startMark !== 'range';
-  depth.setRange(slider.value());
+  depth.setRange(toSheet(slider.value()));
+  // Рівень води змінився — той самий діапазон у метрах лягає на інші смуги листа
+  const level = waterLevelRow(() => {
+    depth.setRange(toSheet(slider.value()));
+    if (marks?.value === 'range') depth.setMark('range');
+  });
   const marks = depth.hasBands ? chips([...MARKS, ['range', 'Глибини']].map(([k, l]) => [k, t(l)]), startMark, (v) => {
     rangeRow.hidden = v !== 'range';
     depth.setMark(v);
@@ -2721,7 +2785,7 @@ async function depthView({ title, center, zoom = 15, water = null, park = null, 
   if (startMark) depth.setMark(startMark);
   marks?.classList.add('segmented', 'depth-marks');
   const close = sheet(title, h('div', { class: 'map-picker depth-view' }, el, depth.el,
-    marks ? h('div', { class: 'depth-marks-row' }, h('span', { class: 'field-label' }, t('Підсвітити')), marks, rangeRow) : null,
+    marks ? h('div', { class: 'depth-marks-row' }, h('span', { class: 'field-label' }, t('Підсвітити')), marks, rangeRow, level) : null,
     h('div', { class: 'map-tools' }, layerChips(() => map), h('div', { class: 'btn-row' }, me))), {
     full: true,
     dirty: false,
@@ -3402,6 +3466,8 @@ const AREA_TILE_KB = 13;
 // Завантаження, що йдуть: spotId → { done, all, failed, bytes, stop }; картка водойми може перемалюватись посеред
 const areaJobs = new Map();
 const areaPainters = new Set();
+// Переглянуті плитки — кеш service worker (та сама назва в sw.js)
+const VIEWED_TILES = 'tiles-fishing-log';
 
 /** Плитки району: ±1,5 км навколо води (зум 12–17), найближчі ±0,5 км — ще й зум 18; під'їзд — ±0,5 км. */
 function areaUrls(s) {
@@ -3421,6 +3487,25 @@ function dropArea(id) {
   if ('caches' in window) caches.delete(AREA_CACHE + id);
   try { localStorage.removeItem(AREA_KEY + id); } catch { /* приватний режим */ }
   areaPainters.forEach((p) => p());
+}
+
+/** Усі збережені райони на пристрої: [{ id, at, n, bytes, partial }], найновіші першими. */
+function savedAreas() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      const meta = k?.startsWith(AREA_KEY) ? areaMeta(k.slice(AREA_KEY.length)) : null;
+      if (meta) out.push({ id: k.slice(AREA_KEY.length), ...meta });
+    }
+  } catch { /* приватний режим */ }
+  return out.sort((a, b) => collate(b.at, a.at));
+}
+
+/** Скільки переглянутих плиток лежить у кеші; кеш не створюємо, якщо його ще немає. */
+async function viewedTiles() {
+  if (!(await caches.has(VIEWED_TILES))) return 0;
+  return (await (await caches.open(VIEWED_TILES)).keys()).length;
 }
 
 /** Завантажити район: по 4 плитки разом, щоб не навантажувати сервер; зупинка — job.stop. */
@@ -3816,10 +3901,7 @@ function tripBody(tr) {
         : t('Open-Meteo, на {h}:00', { h: String(w.hour).padStart(2, '0') })) : null)),
     rods.length ? box(t('Чим ловив'), h('div', { class: 'rows' }, rods.map((g) => row(gearTitle(g), rodText(g), '', () => gearDetail(g.id), { thumb: gearThumb(g) })))) : null,
     box([t('Улов'), catches.length ? fmt.num(tripCatch(tr)) : null, tripKg(tr) ? `${fmt.num(Math.round(tripKg(tr) * 100) / 100)} ${t('кг')}` : null].filter(Boolean).join(' · '), h('div', {},
-      catches.length ? h('div', { class: 'rows' }, catches.map((c) => row(
-        `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
-        [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null, c.length ? `${fmt.num(c.length)} ${t('см')}` : null, hasDepth(c) ? t('глибина {d}', { d: depthText(c.depth) }) : null, c.bottom ? bottomLabel(c.bottom).toLowerCase() : null, baitText(c), c.released ? t('відпустив') : t('забрав')].filter(Boolean).join(' · '),
-        '', () => catchForm(tr, c), { thumb: c.photoId ? thumbImg(c.photoId) : null }))) : h('p', { class: 'muted small' }, t('Без улову — теж запис.')),
+      catches.length ? h('div', { class: 'rows' }, catches.map((c) => catchRow(tr, c))) : h('p', { class: 'muted small' }, t('Без улову — теж запис.')),
       h('div', { class: 'btn-row' }, btn(t('+ Улов'), () => catchForm(tr), 'primary')))),
     box(t('Втрати й витрати'), h('div', {},
       losses.length || spends.length ? h('div', { class: 'rows' }, [
@@ -3836,6 +3918,54 @@ function tripBody(tr) {
 
 const baitText = (c) => (c.baitId ? (findGear(c.baitId) ? [gearTitle(findGear(c.baitId)), findGear(c.baitId).color].filter(Boolean).join(' ') : null) : c.bait) || null;
 
+/** Рядок улову: тап — форма, свайп вправо — «Ще така», вліво — видалити. */
+function catchRow(tr, c) {
+  const el = row(
+    `${c.species}${num(c.n) > 1 ? ` × ${fmt.num(c.n)}` : ''}`,
+    [tripDays(tr) > 1 ? dayLabel(catchDate(tr, c)) : null, c.weight ? `${fmt.num(c.weight)} ${t('кг')}` : null, c.length ? `${fmt.num(c.length)} ${t('см')}` : null, hasDepth(c) ? t('глибина {d}', { d: depthText(c.depth) }) : null, c.bottom ? bottomLabel(c.bottom).toLowerCase() : null, baitText(c), c.released ? t('відпустив') : t('забрав')].filter(Boolean).join(' · '),
+    '', null, { thumb: c.photoId ? thumbImg(c.photoId) : null });
+  const body = h('div', { class: `${el.className} swipe-body`, role: 'button' }, ...el.childNodes);
+  return swipeable(h('div', { class: 'gear-card', 'aria-label': c.species }, body), {
+    onTap: () => catchForm(tr, c),
+    onRight: () => catchAgain(tr, c), rightLabel: t('Ще така'),
+    onLeft: () => dropCatch(tr, c), leftLabel: t('Видалити'),
+  });
+}
+
+/** Ще одна така сама рибина: вид, приманка, точка, глибина, дно; вага, довжина й фото — свої в кожної. */
+async function catchAgain(tr, c) {
+  const now = findTrip(tr.id);
+  const days = tripDays(now) > 1 ? Array.from({ length: tripDays(now) }, (_, i) => addDays(now.date, i)) : [];
+  const date = days.length ? (days.includes(today()) ? today() : catchDate(now, c)) : null;
+  const d = new Date();
+  const time = (date ?? now.date) === today() ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+  const rec = { ...c, id: db.uid(), n: 1, weight: null, length: null, photoId: null, time, date };
+  await save({ trips: { put: [{ ...now, catches: [...(now.catches ?? []), rec] }] } });
+  const undo = () => { const x = findTrip(tr.id); return save({ trips: { put: [{ ...x, catches: (x.catches ?? []).filter((y) => y.id !== rec.id) }] } }); };
+  setUndo(t('Додано «{name}»', { name: c.species }), undo);
+  toast(t('Ще {name} · разом {n}', { name: c.species, n: fmt.num(tripCatch(findTrip(tr.id))) }), { action: t('Скасувати'), onAction: undo });
+}
+
+/** Видалити улов свайпом: без фото — одразу зі «Скасувати»; з фото — з питанням (фото назад не повернеш). */
+async function dropCatch(tr, c) {
+  const without = (x) => ({ ...x, catches: (x.catches ?? []).filter((y) => y.id !== c.id) });
+  if (c.photoId) {
+    confirmSheet(t('Видалити улов «{name}»?', { name: c.species }), t('Разом із фото. Скасувати не можна.'), t('Видалити'),
+      () => save(joinChanges(dropPhotos([c.photoId]), { trips: { put: [without(findTrip(tr.id))] } })));
+    return;
+  }
+  const at = (findTrip(tr.id).catches ?? []).findIndex((y) => y.id === c.id);
+  await save({ trips: { put: [without(findTrip(tr.id))] } });
+  const undo = () => {
+    const x = findTrip(tr.id);
+    const list = [...(x.catches ?? [])];
+    list.splice(Math.max(0, at), 0, c);
+    return save({ trips: { put: [{ ...x, catches: list }] } });
+  };
+  setUndo(t('Видалено «{name}»', { name: c.species }), undo);
+  toast(t('Видалено «{name}»', { name: c.species }), { action: t('Скасувати'), onAction: undo });
+}
+
 const BAIT_CHIPS = 6;
 
 /**
@@ -3851,7 +3981,6 @@ function baitChips(select, baits, tr, onOther) {
   [...tripLosses(tr.id), ...tripSpends(tr.id)].forEach(({ g }) => { if (!own.has(g.id)) own.set(g.id, own.size + 1000); });
   const recent = (g) => Math.max(0, ...[...(g.losses ?? []), ...(g.spends ?? [])].map((x) => Date.parse(x.date) || 0));
   const ranked = [...baits].sort((a, b) => (own.get(a.id) ?? 1e9) - (own.get(b.id) ?? 1e9) || caughtCount(b) - caughtCount(a) || recent(b) - recent(a) || byGroup(a, b));
-  const name = (g) => (g.model ? [g.brand, g.model, sizeText(g)].filter(Boolean).join(' ') : gearTitle(g));
   const full = (g) => [gearTitle(g), weightText(g), g.color].filter(Boolean).join(' · ');
   const note = h('p', { class: 'muted small bait-note' });
   const wrap = h('div', { class: 'field bait-pick' }, h('span', { class: 'field-label' }, t('На що')));
@@ -3860,16 +3989,27 @@ function baitChips(select, baits, tr, onOther) {
     const v = select.value;
     const g = findGear(v);
     const shown = ranked.slice(0, BAIT_CHIPS);
-    if (g && !shown.includes(g)) shown.unshift(g);
+    // Інший колір тієї ж моделі стає на місце її чипа — ряд не перескакує
+    if (g && !shown.includes(g)) {
+      const at = shown.findIndex((x) => modelKey(x) === modelKey(g));
+      if (at >= 0) shown[at] = g; else shown.unshift(g);
+    }
+    const colors = g ? ranked.filter((x) => modelKey(x) === modelKey(g)) : [];
     note.replaceChildren(...(g ? [full(g), caughtCount(g) ? h('span', { class: 'fish-count' }, icon('fish'), fmt.num(caughtCount(g))) : null].filter(Boolean)
       .flatMap((x, i) => (i ? [' · ', x] : [x])) : []));
     wrap.replaceChildren(wrap.firstChild, h('div', { class: 'chips bait-chips' },
       shown.map((x) => h('button', { type: 'button', class: x.id === v ? 'on' : '', onclick: () => set(x.id) },
-        h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, name(x)), x.color ? h('small', {}, x.color) : null)),
-      ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => gearPickSheet(t('На що'), ranked, (x) => set(x.id)) },
+        h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(x)), h('span', {}, modelName(x)), x.color ? h('small', {}, x.color) : null)),
+      ranked.length > shown.length ? h('button', { type: 'button', class: 'add', onclick: () => baitPickSheet(t('На що'), ranked, (x) => set(x.id)) },
         t('Усі приманки ({n})', { n: ranked.length })) : null,
       h('button', { type: 'button', class: v ? 'add' : 'on', onclick: () => { set(''); onOther?.(); } }, t('Інше, впишу'))),
-    ...(g ? [note] : []));
+    ...(g ? [note] : []),
+    ...(colors.length > 1 ? [h('div', { class: 'field-label bait-colors-label' }, t('Кольори {name}', { name: modelName(g) })),
+      colorChips(colors, (x) => set(x.id), v)] : []));
+    // Стрічка кольорів — вибраний посередині, щоб сусідні було видно з обох боків
+    const strip = wrap.querySelector('.bait-colors');
+    const on = strip?.querySelector('.on');
+    if (on) requestAnimationFrame(() => { strip.scrollLeft = on.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2; });
   };
   field.after(wrap);
   paint();
@@ -3885,6 +4025,53 @@ function pickConsumable(title, fits, onPick, tr = null) {
   const here = new Set(tr ? [...(tr.catches ?? []).map((c) => c.baitId), ...tripLosses(tr.id).map((x) => x.g.id), ...tripSpends(tr.id).map((x) => x.g.id)].filter(Boolean) : []);
   const recent = (g) => Math.max(0, ...[...(g.losses ?? []), ...(g.spends ?? [])].map((x) => Date.parse(x.date) || 0));
   gearPickSheet(title, [...list].sort((a, b) => Number(here.has(b.id)) - Number(here.has(a.id)) || recent(b) - recent(a) || byGroup(a, b)), onPick);
+}
+
+const modelName = (g) => (g.model ? [g.brand, g.model, sizeText(g)].filter(Boolean).join(' ') : gearTitle(g));
+const colorName = (g) => g.color || weightText(g) || modelName(g);
+const colorsText = (n) => `${fmt.num(n)} ${plural(n, [t('колір'), t('кольори'), t('кольорів')])}`;
+
+/** Кольори однієї моделі чипами з фото; on — id вибраного. */
+function colorChips(list, onPick, on = '') {
+  return h('div', { class: 'chips bait-chips bait-colors' }, list.map((g) => h('button', { type: 'button', class: g.id === on ? 'on' : '', onclick: () => onPick(g) },
+    h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(g)), h('span', {}, colorName(g)))));
+}
+
+/**
+ * «Усі приманки»: зверху вид чипами, пошук; кольори однієї моделі — одним рядком, тап розкриває їх чипами з фото.
+ * Під час пошуку моделі розкриті й показують лише кольори, що підійшли. sorted — у потрібному порядку.
+ */
+function baitPickSheet(title, sorted, onPick) {
+  const total = new Map();
+  sorted.forEach((g) => total.set(modelKey(g), (total.get(modelKey(g)) ?? 0) + 1));
+  const kinds = [...new Map(sorted.map((g) => [g.cat, catOf(g.cat).name])).entries()].sort((a, b) => collate(a[1], b[1]));
+  let kind = '';
+  const open = new Set();
+  const search = h('input', { type: 'search', class: 'gear-search', placeholder: t('Пошук: модель, колір'), autocomplete: 'off' });
+  const filter = kinds.length > 1 ? chips([['', t('Усі')], ...kinds], '', (v) => { kind = v; paint(); }) : null;
+  filter?.classList.add('chips-sm', 'bait-kinds');
+  const rows = h('div', { class: 'rows' });
+  const pick = (g) => { close(); onPick(g); };
+  const paint = () => {
+    const words = norm(search.value).split(/\s+/).filter(Boolean);
+    const groups = new Map();
+    sorted.filter((g) => (!kind || g.cat === kind) && words.every((w) => haystack(g).includes(w)))
+      .forEach((g) => { const k = modelKey(g); groups.set(k, [...(groups.get(k) ?? []), g]); });
+    rows.replaceChildren(...[...groups].map(([k, list]) => {
+      const all = total.get(k);
+      if (all === 1) return row(gearTitle(list[0]), [weightText(list[0]), list[0].color].filter(Boolean).join(' · '), qtyText(list[0]), () => pick(list[0]), { thumb: gearThumb(list[0]) });
+      const shown = words.length > 0 || open.has(k);
+      const head = row(modelName(list[0]), list.length < all ? t('{n} з {all} кольорів', { n: fmt.num(list.length), all: fmt.num(all) }) : colorsText(all),
+        words.length ? '' : shown ? '▴' : '▾', () => { if (!open.delete(k)) open.add(k); paint(); }, { thumb: modelThumbs(list) });
+      head.setAttribute('aria-expanded', String(shown));
+      return h('div', { class: 'bait-model' }, head, shown ? colorChips(list, pick) : null);
+    }));
+    if (!groups.size) rows.append(h('p', { class: 'muted small' }, t('Нічого не знайдено')));
+    if (thumbIo) dropGoneThumbs();
+  };
+  search.addEventListener('input', paint);
+  paint();
+  const close = sheet(title, h('div', {}, filter, search, rows));
 }
 
 /** Аркуш вибору речі з пошуком; sorted — у потрібному порядку. */
@@ -4393,13 +4580,36 @@ const BITE_SPOT = 'fishing-log:bite-spot';
 const forecastCache = new Map();
 
 /** Прогноз водойми з кешем на годину: [дні] або помилка. */
+// Останній прогноз водойми — на пристрої, щоб на воді без зв'язку «Куди й коли» не був порожнім
+const FORECAST_KEY = 'fishing-log:forecast:';
+
+/** Збережений прогноз без минулих днів: масив днів із savedAt (мс) або null. */
+function savedForecast(key) {
+  try {
+    const v = JSON.parse(recall(FORECAST_KEY + key) ?? 'null');
+    const days = (v?.days ?? []).filter((d) => d.date >= today());
+    return days.length ? Object.assign(days, { savedAt: v.at }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Прогноз водойми з кешем на годину; без мережі — останній збережений (з позначкою savedAt). */
 function spotForecast(s) {
   const key = `${Number(s.lat).toFixed(3)},${Number(s.lon).toFixed(3)}`;
   const hit = forecastCache.get(key);
   if (hit && Date.now() - hit.at < 36e5) return hit.p;
-  const p = forecastDays({ lat: s.lat, lon: s.lon });
+  const p = forecastDays({ lat: s.lat, lon: s.lon }).then((days) => {
+    remember(FORECAST_KEY + key, JSON.stringify({ at: Date.now(), days }));
+    return days;
+  }, (err) => {
+    // Збережений не кешуємо в пам'яті: щойно мережа з'явиться, наступне відкриття візьме свіжий
+    forecastCache.delete(key);
+    const saved = savedForecast(key);
+    if (saved) return saved;
+    throw err;
+  });
   forecastCache.set(key, { at: Date.now(), p });
-  p.catch(() => forecastCache.delete(key));
   return p;
 }
 
@@ -4455,7 +4665,8 @@ function renderBite() {
       const mine = pressureStats(sp);
       const md = myDepth(sp);
       const mb = myBottom(sp);
-      days.replaceChildren(...list.map((d, i) => {
+      const stale = list.savedAt ? h('p', { class: 'muted small bite-stale' }, t('Без інтернету — прогноз, збережений {d} о {t}', { d: fmt.date(today(new Date(list.savedAt))), t: fmt.time(list.savedAt) })) : null;
+      days.replaceChildren(...(stale ? [stale] : []), ...list.map((d, i) => {
         const sc = biteScore(d, list[i - 1], rule);
         const detail = h('div', { class: 'bite-detail', hidden: open !== d.date });
         const head = h('button', { type: 'button', class: 'bite-day', 'aria-expanded': String(open === d.date), onclick: () => {
@@ -4518,11 +4729,9 @@ function biteDetail(s, sp, d, sc, rule, mine, md, mb) {
   const hasSheet = chartsAt(water).some((c) => c.bands?.png);
   const onMap = Number.isFinite(lo) && hasSheet;
   const showOnMap = (mark) => depthView({ title: `${s.name} · ${dayLabel(d.date)}`, center: water, water, park: parkOf(s), catches: spotCatchPoints(s.id), mark });
-  // Глибини на листах — від рівня на 0,7 м нижче звичайного: шукаємо на листі трохи мілкіше
-  const sheetRange = Number.isFinite(lo) ? [Math.max(0, lo - 0.7), hi - 0.7] : null;
   lines.push(h('div', { class: 'btn-row' },
     hasSheet && markKind ? btn([icon('depth'), t(MARK_SHOW[markKind])], () => showOnMap({ mode: markKind }), 'with-ico') : null,
-    onMap ? btn([icon('depth'), t('Показати {lo}–{hi} м на карті', { lo: fmt.num(lo), hi: fmt.num(hi) })], () => showOnMap({ range: sheetRange }), 'with-ico') : null,
+    onMap ? btn([icon('depth'), t('Показати {lo}–{hi} м на карті', { lo: fmt.num(lo), hi: fmt.num(hi) })], () => showOnMap({ range: [lo, hi] }), 'with-ico') : null,
     btn(t('+ Виїзд на цей день'), () => tripForm(null, { spotId: s.id, date: d.date }), 'quiet')));
   return lines;
 }
@@ -5301,6 +5510,41 @@ function demoRow() {
     h('div', { class: 'btn-row' }, btn(t('Завантажити демодані'), loadDemo))]);
 }
 
+/** «Дані → Карта без інтернету»: скільки місця займають переглянуті плитки й райони водойм, і прибрати їх. */
+function mapStorageRow() {
+  if (!('caches' in window)) return null;
+  const viewed = h('div', { class: 'map-store' });
+  const areas = h('div', { class: 'map-areas' });
+  const el = setRow('map-storage', 'map', t('Карта без інтернету'), '', [
+    h('p', { class: 'muted small' }, t('Супутник і схема, які ви вже бачили, застосунок тримає сам — до ~4000 плиток, найстаріші витісняються. Райони водойм зберігаються кнопкою в картці водойми й лежать, доки не приберете.')),
+    viewed, areas]);
+  const head = el.querySelector('.set-val');
+  const paint = async () => {
+    // Налаштування закрили чи перемалювали — цей рядок більше не оновлюємо
+    if (!el.isConnected && el.dataset.drawn) { areaPainters.delete(paint); return; }
+    el.dataset.drawn = '1';
+    const n = await viewedTiles();
+    const list = savedAreas();
+    const bytes = n * AREA_TILE_KB * 1024 + list.reduce((sum, a) => sum + num(a.bytes), 0);
+    head.textContent = n || list.length ? `≈ ${mbText(bytes)} ${t('МБ')}` : '';
+    viewed.replaceChildren(
+      h('span', {}, n ? t('Переглянуті: {n}, ≈ {mb} МБ', { n: tilesText(n), mb: mbText(n * AREA_TILE_KB * 1024) }) : t('Переглянутих плиток ще немає')),
+      n ? btn(t('Очистити'), async () => {
+        await caches.delete(VIEWED_TILES);
+        toast(t('Переглянуті плитки прибрано'));
+        paint();
+      }, 'quiet mini') : null);
+    areas.replaceChildren(...(list.length ? list.map((a) => h('div', { class: 'map-store' },
+      h('span', {}, h('b', {}, findSpot(a.id)?.name ?? t('Водойма видалена')),
+        h('small', { class: 'muted' }, [fmt.date(a.at), tilesText(a.n), `≈ ${mbText(a.bytes)} ${t('МБ')}${a.partial ? t(' (не весь)') : ''}`].join(' · '))),
+      btn(t('Прибрати'), () => dropArea(a.id), 'quiet mini')))
+      : [h('p', { class: 'muted small' }, t('Збережених районів немає'))]));
+  };
+  areaPainters.add(paint);
+  paint();
+  return el;
+}
+
 function wipeRow() {
   return setRow('wipe', 'delete', t('Видалити дані з пристрою'), '',
     h('div', { class: 'btn-row' }, btn(t('Видалити дані з пристрою'), () => confirmSheet(t('Видалити дані з пристрою?'), sync.enabled()
@@ -5309,6 +5553,7 @@ function wipeRow() {
       await db.clearAll();
       // Збережена карта — теж дані з пристрою: переглянуті плитки й райони водойм
       if ('caches' in window) (await caches.keys()).filter((k) => k.startsWith('tiles-')).forEach((k) => caches.delete(k));
+      savedAreas().forEach((a) => dropArea(a.id));
       await refresh(); toast(t('Дані видалено'));
     }), 'danger')),
     { danger: true });
@@ -5463,7 +5708,7 @@ function renderSettings() {
   // «Про застосунок» з версією — згори, як у Shooter’s Log; далі те, по що заходять (копія, синхронізація, категорії)
   return h('div', { class: 'settings' },
     settingsGroup(t('Про застосунок'), [aboutPanel()]),
-    settingsGroup(t('Дані'), [syncRow(), backupRow(), demoRow(), wipeRow()]),
+    settingsGroup(t('Дані'), [syncRow(), backupRow(), mapStorageRow(), demoRow(), wipeRow()]),
     settingsGroup(t('Снасті'), [catsRow(), serviceRow(), aiRow()]),
     settingsGroup(t('Водойми'), [chartsRow()]),
     settingsGroup(t('Вигляд'), [themeRow(), backdropRow(), fortuneRow(), scenesRow()].filter(Boolean)));
