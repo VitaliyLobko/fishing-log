@@ -1528,25 +1528,25 @@ button.cal-d:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 /* Улов — окремі картки: значок у кольорі виду, праворуч угорі вага, під назвою приманка, далі мітки */
 .box .catch-list { gap: 8px; margin-top: 4px; }
 .box .catch-card { border-radius: 14px; }
-.catch-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 10px; background: var(--surface-2); border-radius: inherit; color: var(--text); }
+.catch-row { display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--surface-2); border-radius: inherit; color: var(--text); }
 .box .gear-card .catch-row.swipe-body { background: var(--surface-2); }
 @media (hover: hover) { .catch-row:hover { background: color-mix(in srgb, var(--surface-2) 88%, var(--text)); } }
-.catch-row > .thumb { flex: none; width: 56px; height: 56px; border-radius: 12px; }
+.catch-row > .thumb { flex: none; width: 44px; height: 44px; border-radius: 12px; }
 .thumb.catch-ico { display: grid; place-items: center; color: hsl(var(--h) 75% 66%); background: hsl(var(--h) 45% 20%); border-color: hsl(var(--h) 45% 32%); }
 :root[data-theme="light"] .thumb.catch-ico { color: hsl(var(--h) 55% 32%); background: hsl(var(--h) 45% 88%); border-color: hsl(var(--h) 35% 76%); }
-.thumb.catch-ico svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.thumb.catch-ico svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .catch-main { display: grid; gap: 4px; flex: 1; min-width: 0; }
-.catch-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.catch-sp { min-width: 0; font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
+.catch-sp { min-width: 0; overflow: hidden; font-size: 16px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .catch-n { color: var(--muted); font-weight: 600; }
-.catch-size { flex: none; font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+.catch-tags > .catch-size { color: var(--text); font-weight: 800; }
 .catch-bait { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 13px; }
 .catch-bait > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.catch-bait .bait-sw { display: inline-grid; flex: none; width: 22px; height: 22px; border-radius: 6px; overflow: hidden; background: #fff; }
-.catch-bait .bait-sw > * { width: 22px; height: 22px; border: 0; border-radius: 0; }
-.catch-bait .bait-sw img { object-fit: contain; }
-.catch-bait .bait-sw svg { width: 14px; height: 14px; }
 .catch-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.catch-lure { display: grid; place-items: center; flex: none; align-self: stretch; width: 76px; min-height: 64px; border-radius: 10px; overflow: hidden; background: #fff; }
+.catch-lure > .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; object-fit: contain; background: none; }
+.catch-lure.none { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.catch-lure.none > .thumb { background: none; }
+.catch-lure .thumb-ico svg { width: 30px; height: 30px; }
 .catch-tags > span { padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--muted); font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; }
 .catch-tags > .catch-rel.rel { color: var(--buy); background: color-mix(in srgb, var(--buy) 15%, transparent); font-weight: 650; }
 .catch-hint { margin: 8px 2px 0; text-align: center; }

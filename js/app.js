@@ -3966,13 +3966,12 @@ function catchRow(tr, c) {
   const body = h('div', { class: 'catch-row swipe-body', role: 'button' },
     c.photoId ? thumbImg(c.photoId) : h('span', { class: 'thumb catch-ico', style: `--h: ${speciesHue(c.species)}`, 'aria-hidden': 'true' }, icon('fish')),
     h('span', { class: 'catch-main' },
-      h('span', { class: 'catch-head' },
-        h('b', { class: 'catch-sp' }, c.species, num(c.n) > 1 ? h('span', { class: 'catch-n' }, ` × ${fmt.num(c.n)}`) : null),
-        size.length ? h('span', { class: 'catch-size' }, size.join(' · ')) : null),
-      bait || c.bait ? h('span', { class: 'catch-bait' }, bait ? h('span', { class: 'bait-sw', 'aria-hidden': 'true' }, gearThumb(bait)) : null,
-        h('span', {}, bait ? [bareTitle(bait), bait.color].filter(Boolean).join(' ') : c.bait)) : null,
-      h('span', { class: 'catch-tags' }, tags.map((x) => h('span', {}, x)),
-        h('span', { class: `catch-rel${c.released ? ' rel' : ''}` }, c.released ? t('↺ відпустив') : t('забрав')))));
+      h('b', { class: 'catch-sp' }, c.species, num(c.n) > 1 ? h('span', { class: 'catch-n' }, ` × ${fmt.num(c.n)}`) : null),
+      bait || c.bait ? h('span', { class: 'catch-bait' }, h('span', {}, bait ? [bareTitle(bait), bait.color].filter(Boolean).join(' ') : c.bait)) : null,
+      h('span', { class: 'catch-tags' }, size.length ? h('span', { class: 'catch-size' }, size.join(' · ')) : null, tags.map((x) => h('span', {}, x)),
+        h('span', { class: `catch-rel${c.released ? ' rel' : ''}` }, c.released ? t('↺ відпустив') : t('забрав')))),
+    // Приманка — праворуч на всю висоту картки: видно, на що взяла, не читаючи назви
+    bait ? h('span', { class: `catch-lure${findPhoto(bait.photoId) ? '' : ' none'}`, 'aria-hidden': 'true' }, gearThumb(bait)) : null);
   return swipeable(h('div', { class: 'gear-card catch-card', 'aria-label': c.species }, body), {
     onSwipe: () => remember(CATCH_SWIPED, '1'),
     onTap: () => catchForm(tr, c),
