@@ -4121,7 +4121,7 @@ function baitChips(select, baits, tr, onOther) {
         const colors = pool.filter((x) => modelKey(x) === stripFor);
         // Кольори — стрічкою як у Shooter's Log: вибраний посередині в рамці, сусіди видно, «‹ ›» по боках
         preview.replaceChildren(top, ...(colors.length > 1 ? [pickStrip(colors.map((x) => [x.id, colorName(x), h('span', { class: 'bg-sw bait-sw', 'aria-hidden': 'true' }, gearThumb(x))]),
-          v, (id) => { stripVal = id; if (id !== select.value) set(id); }, { label: t('Колір'), cls: 'bait-wheel' })] : []));
+          v, (id) => { stripVal = id; if (id !== select.value) set(id); }, { label: t('Колір'), cls: 'bait-wheel', vertical: true })] : []));
       }
     } else stripFor = null;
     // Превʼю — над чипами й закріплене: видно, що вибрано, поки гортаєш чипи

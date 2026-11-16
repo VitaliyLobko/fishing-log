@@ -719,16 +719,22 @@ export function chips(options, value, onPick) {
 /**
  * Стрічка-колесо (як у Shooter's Log): плитка посередині — в рамці, onFocus(плитка) — щойно стала посередині.
  * Мишею: коліщатко — на плитку вперед/назад, тачпад гортає плавно; стрічку можна тягнути, клік після перетягування не вибирає.
+ * vertical — стрічка стовпчиком, гортається вгору-вниз.
  */
-export function wheelStrip(strip, onFocus, item) {
+export function wheelStrip(strip, onFocus, item, { vertical = false } = {}) {
+  // Вісь стрічки: усе нижче рахує однаково, лише бере вертикальні чи горизонтальні розміри
+  const POS = vertical ? 'scrollTop' : 'scrollLeft';
+  const size = () => (vertical ? strip.clientHeight : strip.clientWidth);
+  const mid = (b) => (vertical ? b.offsetTop + b.offsetHeight / 2 : b.offsetLeft + b.offsetWidth / 2);
+  const at = (e) => (vertical ? e.clientY : e.clientX);
   // Клацання під пальцем, коли посередину стає інша плитка — лише від руки, не від програмного прокручування
   let last = null; let touched = false;
   strip.addEventListener('pointerdown', () => { touched = true; });
   strip.addEventListener('wheel', () => { touched = true; }, { passive: true });
   const focusMid = () => {
-    const mid = strip.scrollLeft + strip.clientWidth / 2; let best = null; let gap = Infinity;
+    const centre = strip[POS] + size() / 2; let best = null; let gap = Infinity;
     strip.querySelectorAll(item).forEach((b) => {
-      const d = Math.abs(b.offsetLeft + b.offsetWidth / 2 - mid);
+      const d = Math.abs(mid(b) - centre);
       if (d < gap) { gap = d; best = b; }
     });
     strip.querySelectorAll(`${item}.focus`).forEach((b) => b !== best && b.classList.remove('focus'));
@@ -739,13 +745,13 @@ export function wheelStrip(strip, onFocus, item) {
   let raf = 0;
   strip.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(focusMid); }, { passive: true });
   let wheelTo = null;
-  const centerOn = (b) => strip.scrollTo({ left: b.offsetLeft + b.offsetWidth / 2 - strip.clientWidth / 2,
+  const centerOn = (b) => strip.scrollTo({ [vertical ? 'top' : 'left']: mid(b) - size() / 2,
     behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   strip.addEventListener('wheel', (e) => {
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (!d) return;
     e.preventDefault();
-    if (e.deltaMode === 0 && Math.abs(d) < 40) { strip.scrollLeft += d; return; }
+    if (e.deltaMode === 0 && Math.abs(d) < 40) { strip[POS] += d; return; }
     const from = wheelTo ?? strip.querySelector(`${item}.focus`);
     const to = d > 0 ? from?.nextElementSibling : from?.previousElementSibling;
     if (to) { wheelTo = to; centerOn(to); }
@@ -753,12 +759,12 @@ export function wheelStrip(strip, onFocus, item) {
   strip.addEventListener('scrollend', () => { wheelTo = null; touched = false; });
   let drag = null;
   strip.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' && e.button === 0) drag = { x: e.clientX, left: strip.scrollLeft, moved: false };
+    if (e.pointerType === 'mouse' && e.button === 0) drag = { x: at(e), from: strip[POS], moved: false };
   });
   strip.addEventListener('pointermove', (e) => {
     if (!drag || !(e.buttons & 1)) return;
-    if (!drag.moved && Math.abs(e.clientX - drag.x) > 4) { drag.moved = true; strip.style.scrollSnapType = 'none'; strip.setPointerCapture(e.pointerId); }
-    if (drag.moved) strip.scrollLeft = drag.left - (e.clientX - drag.x);
+    if (!drag.moved && Math.abs(at(e) - drag.x) > 4) { drag.moved = true; strip.style.scrollSnapType = 'none'; strip.setPointerCapture(e.pointerId); }
+    if (drag.moved) strip[POS] = drag.from - (at(e) - drag.x);
   });
   const dragEnd = () => {
     if (!drag) return;
@@ -777,9 +783,11 @@ export function wheelStrip(strip, onFocus, item) {
     centerOn,
     // Відступи по краях — щоб і крайня плитка ставала в рамку посередині; вибрана — одразу в рамці, сторінка не гортається
     settle: (on) => {
-      if (!strip.clientWidth) return;
-      strip.style.paddingInline = `${Math.max(0, strip.clientWidth / 2 - (strip.querySelector(item)?.offsetWidth ?? 84) / 2)}px`;
-      strip.scrollLeft = on ? on.offsetLeft + on.offsetWidth / 2 - strip.clientWidth / 2 : 0;
+      if (!size()) return;
+      const first = strip.querySelector(item);
+      const tile = (vertical ? first?.offsetHeight : first?.offsetWidth) ?? 84;
+      strip.style[vertical ? 'paddingBlock' : 'paddingInline'] = `${Math.max(0, size() / 2 - tile / 2)}px`;
+      strip[POS] = on ? mid(on) - size() / 2 : 0;
       focusMid();
     },
   };
@@ -789,7 +797,7 @@ export function wheelStrip(strip, onFocus, item) {
  * Вибір стрічкою плиток-зразків: options — [значення, підпис, плитка]; вибране — посередині, «‹ ›» по краях.
  * onPick(значення) — щойно плитка стала посередині (live) або коли стрічка зупинилась (для важких змін, як тема).
  */
-export function pickStrip(options, value, onPick, { label = '', live = true, cls = '' } = {}) {
+export function pickStrip(options, value, onPick, { label = '', live = true, cls = '', vertical = false } = {}) {
   let now = String(value);
   const strip = h('div', { class: 'bg-picks', role: 'radiogroup', 'aria-label': label }, options.map(([v, name, sw]) => h('button', {
     type: 'button', class: 'bg-pick', role: 'radio', 'aria-checked': String(String(v) === now), dataset: { v },
@@ -808,21 +816,24 @@ export function pickStrip(options, value, onPick, { label = '', live = true, cls
     if (live) { pick(b); return; }
     clearTimeout(timer);
     timer = setTimeout(() => pick(strip.querySelector('.bg-pick.focus') ?? b), 220);
-  }, '.bg-pick');
+  }, '.bg-pick', { vertical });
   const step = (dir) => {
     const on = strip.querySelector('.bg-pick.focus') ?? strip.querySelector('[aria-checked="true"]');
     const to = dir < 0 ? on?.previousElementSibling : on?.nextElementSibling;
     if (to) wheel.centerOn(to);
   };
   const nav = (dir, text, mark) => h('button', { type: 'button', class: 'bg-nav', 'aria-label': text, onclick: () => step(dir) }, mark);
-  // Поля й вибраний посередині рахуються від ширини стрічки: поки її не видно, досчитуємо, щойно з'явиться
-  let width = 0;
+  // Поля й вибраний посередині рахуються від розміру стрічки: поки її не видно, досчитуємо, щойно з'явиться
+  // Лише розмір уздовж стрічки: інший міняється, коли довантажилось фото, — стрічка не має від того стрибати
+  let seen = 0;
   new ResizeObserver(() => {
-    if (!strip.clientWidth || strip.clientWidth === width) return;
-    width = strip.clientWidth;
+    const now = vertical ? strip.clientHeight : strip.clientWidth;
+    if (!strip.clientWidth || !strip.clientHeight || now === seen) return;
+    seen = now;
     wheel.settle(strip.querySelector('[aria-checked="true"]'));
   }).observe(strip);
-  return h('div', { class: `bg-wheel ${cls}`.trim() }, nav(-1, t('Попередній'), '‹'), strip, nav(1, t('Наступний'), '›'));
+  return h('div', { class: `bg-wheel${vertical ? ' vertical' : ''} ${cls}`.trim() },
+    nav(-1, t('Попередній'), vertical ? '˄' : '‹'), strip, nav(1, t('Наступний'), vertical ? '˅' : '›'));
 }
 
 /**

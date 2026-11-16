@@ -131,6 +131,15 @@
 .bait-wheel .bait-sw { aspect-ratio: 3 / 2; border-radius: 9px; background: #fff; }
 .bait-wheel .bait-sw img.thumb { object-fit: contain; }
 .bait-wheel .bg-pick > span:last-child { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; font-size: 11px; }
+/* Стрічка стовпчиком: гортається вгору-вниз, «˄ ˅» зверху й знизу, вибраний посередині */
+.bg-wheel.vertical { grid-template-columns: none; grid-template-rows: auto minmax(0, 1fr) auto; justify-items: center; }
+.bg-wheel.vertical .bg-picks { flex-direction: column; overflow-x: hidden; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain;
+  mask-image: linear-gradient(180deg, transparent, #000 24%, #000 76%, transparent); }
+/* У превʼю — праворуч від фото; назва кольору вже є ліворуч, тож під плиткою її не пишемо (лишається для читача екрана) */
+.bait-preview .bg-wheel.vertical { margin: 0; }
+.bait-wheel.vertical .bg-nav { width: 64px; height: 22px; font-size: 20px; line-height: 1; }
+.bait-wheel.vertical .bg-picks { height: 104px; gap: 6px; padding-inline: 3px; }
+.bait-wheel.vertical .bg-pick > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .bait-sw { aspect-ratio: 1; background: var(--surface-2); }
 .bait-sw .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; font-size: 26px; }
 .bait-sw .thumb-ico svg { width: 30px; height: 30px; }
@@ -139,7 +148,7 @@
 .bait-wheel .bg-pick :is(b, small) { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .bait-wheel .bg-pick small { -webkit-line-clamp: 1; font-weight: 500; font-size: 11px; }
 /* Вибрана приманка великим планом під чипами «На що» */
-.bait-preview { position: sticky; top: 0; z-index: 3; display: grid; gap: 6px; margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); box-shadow: 0 6px 14px rgb(0 0 0 / .25); }
+.bait-preview { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); box-shadow: 0 6px 14px rgb(0 0 0 / .25); }
 .bp-top { display: flex; align-items: center; gap: 12px; }
 .bp-img { display: grid; place-items: center; flex: none; width: 84px; height: 56px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: #fff; }
 button.bp-img { cursor: zoom-in; }
